@@ -1,0 +1,151 @@
+\documentclass[12pt]{article}
+\usepackage{natbib}
+\usepackage{color}
+\usepackage[dvipsnames,svgnames*]{xcolor}
+\usepackage{array}
+\usepackage[colorlinks=TRUE, linkcolor=blue]{hyperref}
+\usepackage[font=small,skip=5pt]{caption}
+\usepackage[aboveskip=2pt]{subcaption}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amsfonts}
+\usepackage{url}
+\usepackage{ulem}
+\usepackage{afterpage}
+\usepackage{bbm}
+
+\graphicspath{{images/}}
+\DeclareGraphicsRule{.tif}{png}{.png}{`convert #1 `dirname #1`/`basename #1 .tif`.png}
+
+\usepackage{Sweave}
+\begin{document}
+\input{gradient_ascent-concordance}
+
+\section{Gradient Ascent}
+
+Say we want to maximise an arbitary function $F(x, y)$, where the partial derivatives $\delta(F(x, y)) / \delta x$ and $\delta(F(x, y)) / \delta y$ can not be found analytically. Then gradient ascent is a simple search algorithm that can be used to find a local maximum.
+
+Gradient ascent has a simple mechanism, start at an arbitary point, calculate numerical partial derivatives for each variable then step in the direction of that derivative. Each step is
+$$\left[ \begin{array}{c}
+x^{(t)} \\
+y^{(t)} \end{array} \right] 
+= 
+  \left[ \begin{array}{c}
+           x^{(t-1)} \\
+           y^{(t-1)}  \end{array} \right] 
++ p_t
+  \left[ \begin{array}{c}
+         \frac{\delta F(x, y)}{\delta x} \vline_{(x, y) = (x^{(t-1)}, y^{(t-1)})} \\
+         \frac{\delta F(x, y)}{\delta y} \vline_{(x, y) = (x^{(t-1)}, y^{(t-1)})} \end{array} \right]
+$$
+
+and the algorithm is guaranteed to converge to a local minimum with
+
+\begin{eqnarray*}
+\sum_{t=1}^{\infty} p_t & = & \infty \\
+\sum_{t=1}^{\infty} p_t^2 & < & \infty.
+\end{eqnarray*}
+
+$p_t = t^{-a}, 0.5 < a \leq 1$ satisfies this condition.
+
+Intuitively, if the function is increasing, the algorithm steps forwards, and if it is decreasing the algorithm steps backwards. Smaller and smaller steps allow it to zig zag between either side of the maximum as it converges.
+
+\section{Stochastic Gradient Ascent}
+
+In the derivation for variational bayes, we had
+$$\ln(p(y)) = KL [q(\theta) || p(\theta | y)] + \mathcal{L}(q, y),$$
+
+where the Evidence Lower Bound (ELBO) is
+\begin{equation}
+\label{ELBO}
+\mathcal{L}(q, y) = \int_{\theta} q(\theta) \ln \left( \frac{p(y, \theta)}{q(\theta)} \right) d\theta.
+\end{equation}
+
+As $KL[q(\theta) || p(\theta | y)]$ is non-negative, maximising $\mathcal{L}(q, y)$ with respect to a distribution  $q(\theta)$ is equivalent to minimising the KL Divergence between $p(\theta | y)$ and $q(\theta)$.
+If $q(\theta)$ factorises into $\prod_{i} q(\theta_i)$, and the likelihood and prior form exponential family conjugate pairs, then variational bayes maximises $\mathcal{L}(q, y)$ with the solutions
+
+$$q(\theta_{i}) \propto \exp(E_{\setminus i} (ln(p(y,\theta)))) \mbox{ for all } i.$$
+
+However, (\ref{ELBO}) makes no assumption about the form of $q(\theta)$, and gradient ascent can be used to find the maximum of $\mathcal{L}(q, y)$ for a much more flexible choice of $q$.
+
+With $\lambda$ as the vector of hyperparameters in the approximate distribution $q(\theta | \lambda)$, we require the partial derivative of $\mathcal{L}(q, y)$ with respect to $\lambda$. Paisley, Blei and Jordan (2012) introduce the stochastic gradient ascent approach, assuming the conditions to exchange the order of differentiation and integration hold.
+
+\begin{eqnarray}
+\nabla_{\lambda} \mathcal{L} & = & \nabla_{\lambda} \int_{\theta} q(\theta | \lambda) \left( \ln (p(y, \theta)) - \ln(q(\theta | \lambda)) \right) d\theta \nonumber \\
+& = &  \int_{\theta} \nabla_{\lambda}[  q(\theta | \lambda) \left( \ln (p(y, \theta)) - \ln(q(\theta | \lambda)) \right)] d\theta \nonumber \\
+& = &  \int_{\theta}  q(\theta | \lambda) \nabla_{\lambda}[( \ln (p(y, \theta)) - \ln(q(\theta | \lambda))] d\theta + \int_{\theta} \nabla_{\lambda} [q(\theta | \lambda)] \left( \ln (p(y, \theta)) - \ln(q(\theta | \lambda)) \right) d\theta \nonumber \\
+& = & -  \int_{\theta} \nabla_{\lambda}  [\ln(q(\theta | \lambda)] q(\theta | \lambda) d\theta +  \int_{\theta} \nabla_{\lambda} [q(\theta | \lambda)] \left( \ln (p(y, \theta)) - \ln(q(\theta | \lambda)) \right) d\theta \nonumber \\
+& = &-  \int_{\theta} \frac{\nabla_{\lambda}q(\theta | \lambda)}{q(\theta | \lambda)} q(\theta | \lambda) d\theta +   \int_{\theta} \nabla_{\lambda} [q(\theta | \lambda)] \left( \ln (p(y, \theta)) - \ln(q(\theta | \lambda)) \right) d\theta \nonumber \\
+& = & -  \nabla_{\lambda}\int_{\theta} q(\theta | \lambda) d\theta +  \int_{\theta} \nabla_{\lambda} [q(\theta | \lambda)] \left( \ln (p(y, \theta)) - \ln(q(\theta | \lambda)) \right) d\theta \nonumber \\
+& = &  \int_{\theta} \nabla_{\lambda} [q(\theta | \lambda)] \left( \ln (p(y, \theta)) - \ln(q(\theta | \lambda)) \right) d\theta \nonumber
+\end{eqnarray}
+
+This expression can be further simplified by the identity $\nabla_{\lambda} [q(\theta | \lambda)] =  \nabla_{\lambda} [\ln(q(\theta | \lambda))]q(\theta | \lambda)$.
+
+\begin{eqnarray}
+\label{gradient}
+\nabla_{\lambda} \mathcal{L} & = & \int_{\theta} \nabla_{\lambda} [q(\theta | \lambda)] \left( \ln (p(y, \theta)) - \ln(q(\theta | \lambda)) \right) d\theta \nonumber \\
+& = &   \int_{\theta} \nabla_{\lambda} [\ln(q(\theta | \lambda))]\left( \ln (p(y, \theta)) - \ln(q(\theta | \lambda)) \right)q(\theta | \lambda) d\theta \nonumber \\
+& = & E_q [  \nabla_{\lambda} [\ln(q(\theta | \lambda))]\left( \ln (p(y, \theta)) - \ln(q(\theta | \lambda)) \right)].
+\end{eqnarray}
+
+We can compute a noisy but unbiased estimate of (\ref{gradient}) by 
+
+\begin{equation}
+\label{mc}
+\nabla_{\lambda}\mathcal{L} \approx \frac{1}{N}\sum_{n=1}^{N} \nabla_{\lambda} [\ln(q(\theta_n | \lambda))] (\ln (p(y, \theta_n)) - \ln(q(\theta_n | \lambda)))
+\end{equation}
+
+with $\theta_n \sim q(\theta | \lambda)$.
+
+To use stochastic gradient ascent to maximise $\mathcal{L}$ we just need to be able to evaluate the log-joint density and each log-approximate density, as well as calculate partial derivatives of each log-approximate density within a Monte-Carlo approximation.
+
+\section{Variance Reduction}
+
+The Monte-Carlo approximation is unbiased but can have a large variance if a small amount of draws is chosen. We can reduce the variance by instead sampling another variable with the same expected value but a reduced variance. 
+
+For the scalar $\theta$ case, consider the function
+
+\begin{equation}
+\label{control}
+\hat{f}(\theta) = f(\theta) - a(g(\theta)-E[g(\theta)])
+\end{equation}
+
+Paisley, Blei and Jordan (2012) call the function $g$ a control variate. Note that
+$$E[\hat{f}(\theta)] = E[f(\theta)]$$
+and 
+\begin{equation}
+\label{var}
+Var(\hat{f}) = Var(f) + a^2 Var(g) - 2a Cov(f, g)
+\end{equation}
+
+The variance of $\hat{f}$ is minimised at 
+
+$$a^* = \frac{Cov(f, g)}{Var(g)}$$
+
+A similar approach holds for a vector $\theta$.
+
+Ranganath, Gerrish and Blei (2014) suggest the following function $g$
+
+$$g(\theta) = \nabla_{\lambda} [\ln(q(\theta_n | \lambda))]$$
+
+as it has a high covariance with (\ref{gradient}) and thus efficiently reduces variance in (\ref{var}).
+
+
+If the joint and approximating distributions factorise, a Rao-Blackwellisation approach can be used to ignore the parts of the function that do not depend on the $\theta_i$ of interest in that step of the algorithm and further reduce variance. More details are in Ranganath, Gerrish and Blei (2014).
+
+\section{Copula Variational Inference}
+
+Using stochastic gradient ascent, we are no longer restricted to the mean-field assumption $q(\theta) = \prod_i q(\theta_i)$, and Tran, Blei and Airoldi (2015) suggest a copula model,
+
+\begin{equation}
+\label{copula}
+q(\theta | \lambda, \eta) = \prod_{i} q(\theta_i|\lambda) c(Q(\theta_1|\lambda), \dots , Q(\theta_D|\lambda) |\eta) \mbox{ for } i = 1, \dots D.
+\end{equation}
+
+
+The copula function is factorised into a sequence of pairs $c(Q(\theta_i |\lambda), Q(\theta_j | \lambda) | \eta)$ using a vine copula and a stochastic gradient ascent algorithm alternates between maximising $\mathcal{L}$ with respect to the variational parameters $\lambda$ and the copula parameters $\eta$. 
+The algorithm is not particularly fast to converge but allows and extremely flexible approximation with strong predictive abilities. If data was streaming, and the model was just incrementing $q(\theta_t)$ to $q(\theta_{t+1})$ repeatedly it may be faster.
+
+\end{document}

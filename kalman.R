@@ -1,0 +1,7 @@
+library(FKF)
+library(gridExtra)
+library(Rcpp)
+library(RcppArmadillo)
+library(microbenchmark)
+library(ggplot2)
+sourceCpp("kalman.cpp")

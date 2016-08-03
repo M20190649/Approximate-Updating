@@ -1,0 +1,242 @@
+\documentclass[12pt]{article}
+\usepackage{natbib}
+\usepackage{color}
+\usepackage[dvipsnames,svgnames*]{xcolor}
+\usepackage{array}
+\usepackage[colorlinks=TRUE, linkcolor=blue]{hyperref}
+\usepackage[font=small,skip=5pt]{caption}
+\usepackage[aboveskip=2pt]{subcaption}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amsfonts}
+\usepackage{url}
+\usepackage{ulem}
+\usepackage{afterpage}
+\usepackage{bbm}
+
+\graphicspath{{images/}}
+\DeclareGraphicsRule{.tif}{png}{.png}{`convert #1 `dirname #1`/`basename #1 .tif`.png}
+
+\begin{document}
+
+
+\section{Variational Bayes - Normal Mixture Model}
+
+We have $iid$ observations $y_i$ genrated by a two level Normal Mixture Model with means $\mu_1 \mbox{ and } \mu_2$ and known variance $1$, so
+
+$$p(y_i | \mu_1, \mu_2, k_i) = \mathcal{N}(\mu_1, 1)^{k_i} \mathcal{N}(\mu_2, 1)^{1-k_i}.$$
+
+where the latent variable $k_i = 1$ if $y_i$ is drawn from $\mathcal{N}(\mu_1, 1)$ and $k_i = 0$ otherwise.
+
+Further, $\bold{k}$ is modelled as $iid$ Bernoulli with parameter $\pi$, so
+$$p(k_i | \pi) = \pi^{k_i} (1-\pi)^{1-k_i}. $$
+
+Introducing the priors $p(\pi) \sim U(0, 1)$ and $p(\mu_1, \mu_2) \propto 1$, the joint distribution becomes
+\begin{eqnarray}
+\label{1}
+p(y, k, \mu_1, \mu_2, \pi) & = & \prod^{n}_{i=1} p(y_i | k_i, \mu_1, \mu_2, \pi) p(k_i | \pi) p(\pi) p(\mu_1 \mu_2) \nonumber \\
+& \propto & \prod^{n}_{i=1} \left(\frac{1}{\sqrt{2\pi}} \exp \left\{\frac{-(y_i-\mu_1)^2}{2}\right\}\right)^{k_i} \left(\frac{1}{\sqrt{2\pi}} \exp \left\{\frac{-(y_i-\mu_2)^2}{2}\right\}\right)^{1-k_i} \nonumber \\
+& \times & \pi^{k_i} (1-\pi)^{1-k_i} \nonumber \\
+\ln(p(y, k, \mu_1, \mu_2, \pi)) & = & \sum_{i=1}^{N} \left[ \ln\left(\exp \left\{\frac{-(y_i-\mu_1)^2}{2}\right\}^{k_i}\right)\right] + \sum_{i=1}^{N} \left[ \ln\left(\exp \left\{\frac{-(y_i-\mu_2)^2}{2}\right\}^{1-k_i}\right)\right] \nonumber \\
+& + & \sum_{i=1}^{N} k_i \ln(\pi) + \sum_{i=1}^{N} (1-k_i) \ln(1-\pi) \nonumber \\
+& = & \sum_{i=1}^{N} \left[ k_{i} \frac{-(y_i-\mu_1)^2}{2}\right] + \sum_{i=1}^{N} \left[ (1-k_{i}) \frac{-(y_i-\mu_2)^2}{2}\right] \nonumber \\
+& + & \sum_{i=1}^{N} k_i \ln(\pi) + \sum_{i=1}^{N} (1-k_i) \ln(1-\pi) + c.
+\end{eqnarray}
+
+We can take the variational approximation factorisation $q(k_{1:n}, \mu_1, \mu_2, \pi) = \prod_{i=1}^{n} q(k_i)q(\mu_1)q(\mu_2)q(\pi)$, which implies independence of $k_i, k_j$ for $i \neq j$:
+
+It can be shown that the factorisable distribution that minmises the KL Divergence between $q(\theta)$ and $p(\theta|y)$ satisfies
+
+\begin{equation}
+\label{2}
+q_{i} \propto \exp (\mathbb{E}_{q_{j \neq i}} (\ln(p(y, x, \theta))))
+\end{equation}
+
+for all $q_{i}$, where $y$ is the observed data, $x$ is a latent variable and $\theta$ is a vector of unknown parameters.
+
+Substituting (\ref{1}) into (\ref{2}) yields
+
+\begin{eqnarray*}
+\ln(q(\pi)) & = & \mathbb{E}_{k_{1:n}} \left[ \sum_{i=1}^{n} k_i \ln(\pi) + (1-k_i) \ln(1-\pi) + c \right] \\
+& = & \sum_{i=1}^{n} \mathbb{E}(k_i) \ln (\pi) + (n- \sum_{i=1}^{n}\mathbb{E}(k_i)) \ln(1-\pi) + c \\
+& = & \ln(\pi^{\sum_{i=1}^{n}\mathbb{E}(k_i)}(1-\pi)^{n-\sum_{i=1}^{n}\mathbb{E}(k_i)}) + c\\
+q(\pi) & \propto & \pi^{\sum_{i=1}^{n}\mathbb{E}(k_i)}(1-\pi)^{n-\sum_{i=1}^{n}\mathbb{E}(k_i)} 
+\end{eqnarray*}
+
+Recognizing the kernel of a Beta distribution, we see that $q(\pi) \sim  \mathcal{B} (\alpha = \sum_{i=1}^{n} \mathbb{E}(k_i)+1, \beta = n-\sum_{i=1}^{n}\mathbb{E}(k_i) + 1)$. Continuing, we can find
+
+\begin{eqnarray*}
+\ln(q(\mu_1)) & = & \mathbb{E}_{k_{1:n}} \sum_{i=1}^{n} -k_i \frac{(y_i-\mu_1)^2}{2} + c  \\
+& = & -\frac{1}{2} \left(\sum_{i=1}^{n}\mathbb{E}(k_i) (y_i-\mu_{1})^2\right) + c \\ 
+& = & -\frac{1}{2}\left(\sum_{i=1}^{n}\mathbb{E}(k_i) ((y_i - \tilde{y}_1) + (\tilde{y}_1 - \mu_1))^2 \right)+ c \\
+& = & -\frac{1}{2}\left(\sum_{i=1}^{n}\mathbb{E}(k_i) ((y_i - \tilde{y}_1)^2 + (\tilde{y}_1 - \mu_1)^2 - 2(y_i - \tilde{y}_1)(\tilde{y}_1 - \mu_1))\right) + c.
+\end{eqnarray*}
+
+Where
+$$\tilde{y}_1 = \frac{\sum_{i=1}^{n} \mathbb{E}(k_i)y_i}{\sum_{i=1}^{n} \mathbb{E}(k_i)}.$$
+
+Note that
+$$\sum_{i=1}^{n}\mathbb{E}(k_i)(y_i - \tilde{y}_1) = \sum_{i=1}^{n}\mathbb{E}(k_i)\left(y_i - \frac{\sum_{i=1}^{n} \mathbb{E}(k_i)y_i}{\sum_{i=1}^{n} \mathbb{E}(k_i)}\right) = 0,$$
+
+hence 
+\begin{eqnarray*}
+\ln(q(\mu_1)) & = & -\frac{\sum_{i=1}^{n}\mathbb{E}(k_i) (\tilde{y}_1-\mu_{1})^2}{2} + c.
+\end{eqnarray*}
+
+
+Recognizing the kernel of a Gaussian distribution, we can see that $q(\mu_1) \sim \mathcal{N} (\bar{\mu}_{1} = \tilde{y}_1, \lambda_{1} = (\sum_{i=1}^{n}\mathbb{E}(k_i)^{-1}).$
+Similarly, $q(\mu_2) \sim \mathcal{N} (\bar{\mu}_{2} = \tilde{y}_2, \lambda_{2} = \sum_{i=1}^{n}\mathbb{E}(1-k_i)^{-1}))$ with
+$$\tilde{y_2} = \frac{\sum_{i=1}^{n} \mathbb{E}(1-k_i)y_i}{\sum_{i=1}^{n} \mathbb{E}(1-k_i)}.$$
+
+Through independence, all $q(k_i)$ have the same form,
+
+\begin{eqnarray*}
+\ln(q(k_i)) & = & \mathbb{E}_{\mu_1, \mu_2, \pi} \left[ k_{i} \frac{-(y_i-\mu_1)^2}{2} + (1-k_{i}) \frac{-(y_i-\mu_2)^2}{2} + k_i \ln(\pi) + (1-k_i) \ln(1-\pi) + c \right]\\
+& = & k_i\frac{\mathbb{E}_{\mu_1} -(y_i-\mu_1)^2}{2}  + (1-k_i) \frac{\mathbb{E}_{\mu_2} -(y_i-\mu_2)^2}{2}  + k_i \mathbb{E}_\pi \ln(\pi) + (1-k_i) \mathbb{E}_\pi \ln(1-\pi) + c \\
+& = & k_i \frac{2\tilde{\pi}_1-((y_i - \bar{\mu}_1)^2 + \lambda_1)}{2} + (1-k_i) \frac{2\tilde{\pi}_2-((y_i - \bar{\mu}_2)^2 + \lambda_2)}{2} + c\\
+q(k_i) & \propto & \exp \left\{\frac{2\tilde{\pi}_1-((y_i - \bar{\mu}_1)^2 + \lambda_1)}{2} \right\}^{k_i} \exp \left\{\frac{2\tilde{\pi}_2-((y_i - \bar{\mu}_2)^2 + \lambda_2)}{2} \right\}^{1-k_i}
+\end{eqnarray*}
+
+The quantity $\tilde{\pi}_1 = \mathbb{E}_\pi \ln(\pi) = \psi(\alpha)-\psi(\alpha+\beta)$, and $\tilde{\pi}_2 = \mathbb{E}_\pi \ln(1-\pi) = \psi(\beta)-\psi(\alpha+\beta)$, where $\psi(\cdot)$ is the digamma function (Archambeau and Verleysen 2007).
+
+Each $k_i$ has a Bernoulli distribution with parameters $p_i = \exp \left\{\frac{2\tilde{\pi}_1-((y_i - \bar{\mu}_1)^2 + \lambda_1)}{2} \right\}, \mbox{ and } q_i = \exp \left\{\frac{2\tilde{\pi}_2-((y_i - \bar{\mu}_2)^2 + \lambda_2)}{2} \right\}.$
+
+This gives us the update rules for the Variational Bayes iterations:
+
+\begin{eqnarray*}
+\alpha & = & \sum_{i=1}^{n} \frac{p_i}{p_i+q_i} + 1 \\
+\beta & = & \sum_{i=1}^{n} \frac{q_i}{p_i+q_i} + 1 \\
+\bar{\mu}_1 & = &  \frac{\sum_{i=1}^{n} y_i p_i /(p_i+q_i)}{\sum_{i=1}^{n} p_i /(p_i+q_i)} \\
+\lambda_1 & = & \left(\sum_{i=1}^{n} \frac{p_i}{p_i+q_i}\right)^{-1} \\
+\bar{\mu}_2 & = &  \frac{\sum_{i=1}^{n} y_i q_i /(p_i+q_i)}{\sum_{i=1}^{n} q_i /(p_i+q_i)} \\
+\lambda_2 & = & \left(\sum_{i=1}^{n} \frac{q_i}{p_i+q_i}\right)^{-1} \\
+p_i & = & \exp \left\{\frac{2(\psi(\alpha)-\psi(\alpha+\beta))-((y_i - \bar{\mu}_1)^2 + \lambda_1)}{2} \right\} \\
+q_i & = & \exp \left\{\frac{2(\psi(\beta)-\psi(\alpha+\beta))-((y_i - \bar{\mu}_2)^2 + \lambda_2)}{2} \right\}
+\end{eqnarray*}
+
+<<vbayes, echo=FALSE>>=
+library(ggplot2)
+#True Values
+set.seed(12)
+mu1 <- 3
+mu2 <- 6
+pi <- 0.6
+T <- 250
+y1 <- rnorm(T*pi, mu1, 1)
+y2 <- rnorm(T*(1-pi), mu2, 1)
+y <- c(y1, y2)
+
+#Setup
+bmu1 <- vector(length=100)
+bmu2 <- bmu1
+l1 <- bmu1
+l2 <- bmu1
+a <- bmu1
+b <- bmu1
+p <- matrix(0, nrow=100, ncol=T)
+q <- p
+
+#Initial values
+p0 <- runif(T)
+q0 <- runif(T)
+
+#Loop
+a[1] = sum(p0/(p0+q0))+1
+b[1] = sum(q0/(p0+q0))+1
+bmu1[1] = sum(y*p0/(p0+q0))/sum(p0/(p0+q0))
+l1[1] = sum(p0/(p0+q0))^(-1)
+bmu2[1] = sum(y*q0/(p0+q0))/sum(q0/(p0+q0))
+l2[1] = sum(q0/(p0+q0))^(-1)
+for(j in 1:T){
+  p[1,j] = exp((2*(digamma(a[1])-digamma(a[1]+b[1]))-((y[j]-bmu1[1])^2+l1[1]))/2)
+  q[1,j] = exp((2*(digamma(b[1])-digamma(a[1]+b[1]))-((y[j]-bmu2[1])^2+l2[1]))/2)
+}
+for(i in 2:100) {
+  a[i] = sum(p[(i-1),]/(p[(i-1),]+q[(i-1),]))+1
+  b[i] = sum(q[(i-1),]/(p[(i-1),]+q[(i-1),]))+1
+  bmu1[i] = sum(y*p[(i-1),]/(p[(i-1),]+q[(i-1),]))/sum(p[(i-1),]/(p[(i-1),]+q[(i-1),]))
+  l1[i] = sum(p[(i-1),]/(p[(i-1),]+q[(i-1),]))^(-1)
+  bmu2[i] = sum(y*q[(i-1),]/(p[(i-1),]+q[(i-1),]))/sum(q[(i-1),]/(p[(i-1),]+q[(i-1),]))
+  l2[i] = sum(q[(i-1),]/(p[(i-1),]+q[(i-1),]))^(-1)
+  for(j in 1:T){
+    p[i,j] = exp((2*(digamma(a[i])-digamma(a[i]+b[i]))-((y[j]-bmu1[i])^2+l1[i]))/2)
+    q[i,j] = exp((2*(digamma(b[i])-digamma(a[i]+b[i]))-((y[j]-bmu2[i])^2+l2[i]))/2)
+  }
+}
+supmu1 <- seq(2, 4, 0.01)
+denmu1 <- dnorm(supmu1, mean=bmu1[100], sd=sqrt(l1[100]))
+supmu2 <- seq(5, 7, 0.01)
+denmu2 <- dnorm(supmu2, mean=bmu2[100], sd=sqrt(l2[100]))
+suppi <- seq(0, 1, 0.01)
+denpi <- dbeta(suppi, a[100], b[100])
+qdist <- data.frame(support = c(supmu1, supmu2, suppi), density = c(denmu1, denmu2, denpi), parameter = c(rep("Mu 1", 201), rep("Mu 2", 201), rep("Pi", 101)))
+truev <- data.frame(true = c(mu1, mu2, pi), parameter=c("Mu 1", "Mu 2", "Pi"))
+ggplot() + geom_line(data=qdist, aes(x=support, y = density)) + geom_vline(data=truev, aes(xintercept=true), colour="red") +
+  facet_wrap(~parameter, scales="free") + theme(axis.ticks.y=element_blank(), axis.text.y=element_blank()) + theme_bw()
+@
+250 draws were simulated with parameters $\mu_1 = 3, \mu_2 = 6, \pi=0.6$ and th e variational algorithm was ran. After manually correcting mislabeling, $y_i$ was allocated to distribution 1 if $p_i > q_i$ and to distribution 2 if $p_i < q_i$, resulting in the successful classification of 235/250 draws. A more trivial decision rule to allocate $y_i$ to distribution 1 if $y_i < \bar{y}$ and to distribution 2 if $y_i > \bar{y}$ successfully classified 234/250 draws.
+
+<<vbayes2, echo=FALSE>>=
+library(ggplot2)
+#True Values
+set.seed(141242)
+mu1 <- 5.5
+mu2 <- 6
+pi <- 0.6
+T <- 250
+y1 <- rnorm(T*pi, mu1, 1)
+y2 <- rnorm(T*(1-pi), mu2, 1)
+y <- c(y1, y2)
+
+#Setup
+bmu1 <- vector(length=100)
+bmu2 <- bmu1
+l1 <- bmu1
+l2 <- bmu1
+a <- bmu1
+b <- bmu1
+p <- matrix(0, nrow=100, ncol=T)
+q <- p
+
+#Initial values
+p0 <- runif(T)
+q0 <- runif(T)
+
+#Loop
+a[1] = sum(p0/(p0+q0))+1
+b[1] = sum(q0/(p0+q0))+1
+bmu1[1] = sum(y*p0/(p0+q0))/sum(p0/(p0+q0))
+l1[1] = sum(p0/(p0+q0))^(-1)
+bmu2[1] = sum(y*q0/(p0+q0))/sum(q0/(p0+q0))
+l2[1] = sum(q0/(p0+q0))^(-1)
+for(j in 1:T){
+  p[1,j] = exp((2*(digamma(a[1])-digamma(a[1]+b[1]))-((y[j]-bmu1[1])^2+l1[1]))/2)
+  q[1,j] = exp((2*(digamma(b[1])-digamma(a[1]+b[1]))-((y[j]-bmu2[1])^2+l2[1]))/2)
+}
+for(i in 2:100) {
+  a[i] = sum(p[(i-1),]/(p[(i-1),]+q[(i-1),]))+1
+  b[i] = sum(q[(i-1),]/(p[(i-1),]+q[(i-1),]))+1
+  bmu1[i] = sum(y*p[(i-1),]/(p[(i-1),]+q[(i-1),]))/sum(p[(i-1),]/(p[(i-1),]+q[(i-1),]))
+  l1[i] = sum(p[(i-1),]/(p[(i-1),]+q[(i-1),]))^(-1)
+  bmu2[i] = sum(y*q[(i-1),]/(p[(i-1),]+q[(i-1),]))/sum(q[(i-1),]/(p[(i-1),]+q[(i-1),]))
+  l2[i] = sum(q[(i-1),]/(p[(i-1),]+q[(i-1),]))^(-1)
+  for(j in 1:T){
+    p[i,j] = exp((2*(digamma(a[i])-digamma(a[i]+b[i]))-((y[j]-bmu1[i])^2+l1[i]))/2)
+    q[i,j] = exp((2*(digamma(b[i])-digamma(a[i]+b[i]))-((y[j]-bmu2[i])^2+l2[i]))/2)
+  }
+}
+supmu1 <- seq(5, 7, 0.01)
+denmu1 <- dnorm(supmu1, mean=bmu1[100], sd=sqrt(l1[100]))
+supmu2 <- seq(5, 7, 0.01)
+denmu2 <- dnorm(supmu2, mean=bmu2[100], sd=sqrt(l2[100]))
+suppi <- seq(0, 1, 0.01)
+denpi <- dbeta(suppi, a[100], b[100])
+qdist <- data.frame(support = c(supmu1, supmu2, suppi), density = c(denmu1, denmu2, denpi), parameter = c(rep("Mu 1", 201), rep("Mu 2", 201), rep("Pi", 101)))
+truev <- data.frame(true = c(mu1, mu2, pi), parameter=c("Mu 1", "Mu 2", "Pi"))
+ggplot() + geom_line(data=qdist, aes(x=support, y = density)) + geom_vline(data=truev, aes(xintercept=true), colour="red") +
+  facet_wrap(~parameter, scales="free") + theme(axis.ticks.y=element_blank(), axis.text.y=element_blank()) + theme_bw()
+@
+250 draws were simulated with parameters $\mu_1 = 5.5, \mu_2 = 6, \pi=0.6$ to try and force an overlap in the data. $y_i$ was allocated to distribution 1 if $p_i > q_i$ and to distribution 2 if $p_i < q_i$, resulting in the successful classification of 158/250 draws. The trivial decision rule had identical classifications.
+
+\end{document}
