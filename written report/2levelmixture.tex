@@ -1,53 +1,4 @@
-\documentclass[12pt]{article}\usepackage[]{graphicx}\usepackage[]{color}
-%% maxwidth is the original width if it is less than linewidth
-%% otherwise use linewidth (to make sure the graphics do not exceed the margin)
-\makeatletter
-\def\maxwidth{ %
-  \ifdim\Gin@nat@width>\linewidth
-    \linewidth
-  \else
-    \Gin@nat@width
-  \fi
-}
-\makeatother
-
-\definecolor{fgcolor}{rgb}{0.345, 0.345, 0.345}
-\newcommand{\hlnum}[1]{\textcolor[rgb]{0.686,0.059,0.569}{#1}}%
-\newcommand{\hlstr}[1]{\textcolor[rgb]{0.192,0.494,0.8}{#1}}%
-\newcommand{\hlcom}[1]{\textcolor[rgb]{0.678,0.584,0.686}{\textit{#1}}}%
-\newcommand{\hlopt}[1]{\textcolor[rgb]{0,0,0}{#1}}%
-\newcommand{\hlstd}[1]{\textcolor[rgb]{0.345,0.345,0.345}{#1}}%
-\newcommand{\hlkwa}[1]{\textcolor[rgb]{0.161,0.373,0.58}{\textbf{#1}}}%
-\newcommand{\hlkwb}[1]{\textcolor[rgb]{0.69,0.353,0.396}{#1}}%
-\newcommand{\hlkwc}[1]{\textcolor[rgb]{0.333,0.667,0.333}{#1}}%
-\newcommand{\hlkwd}[1]{\textcolor[rgb]{0.737,0.353,0.396}{\textbf{#1}}}%
-
-\usepackage{framed}
-\makeatletter
-\newenvironment{kframe}{%
- \def\at@end@of@kframe{}%
- \ifinner\ifhmode%
-  \def\at@end@of@kframe{\end{minipage}}%
-  \begin{minipage}{\columnwidth}%
- \fi\fi%
- \def\FrameCommand##1{\hskip\@totalleftmargin \hskip-\fboxsep
- \colorbox{shadecolor}{##1}\hskip-\fboxsep
-     % There is no \\@totalrightmargin, so:
-     \hskip-\linewidth \hskip-\@totalleftmargin \hskip\columnwidth}%
- \MakeFramed {\advance\hsize-\width
-   \@totalleftmargin\z@ \linewidth\hsize
-   \@setminipage}}%
- {\par\unskip\endMakeFramed%
- \at@end@of@kframe}
-\makeatother
-
-\definecolor{shadecolor}{rgb}{.97, .97, .97}
-\definecolor{messagecolor}{rgb}{0, 0, 0}
-\definecolor{warningcolor}{rgb}{1, 0, 1}
-\definecolor{errorcolor}{rgb}{1, 0, 0}
-\newenvironment{knitrout}{}{} % an empty environment to be redefined in TeX
-
-\usepackage{alltt}
+\documentclass[12pt]{article}
 \usepackage{natbib}
 \usepackage{color}
 \usepackage[dvipsnames,svgnames*]{xcolor}
@@ -66,8 +17,10 @@
 
 \graphicspath{{images/}}
 \DeclareGraphicsRule{.tif}{png}{.png}{`convert #1 `dirname #1`/`basename #1 .tif`.png}
-\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+
+\usepackage{Sweave}
 \begin{document}
+\input{2levelmixture-concordance}
 
 
 \section{Variational Bayes - Normal Mixture Model}
@@ -147,36 +100,25 @@ Through independence, all $q(k_i)$ have the same form,
 q(k_i) & \propto & \exp \left\{\frac{2\tilde{\pi}_1-((y_i - \bar{\mu}_1)^2 + \lambda_1)}{2} \right\}^{k_i} \exp \left\{\frac{2\tilde{\pi}_2-((y_i - \bar{\mu}_2)^2 + \lambda_2)}{2} \right\}^{1-k_i}
 \end{eqnarray*}
 
-The quantity $\tilde{\pi}_1 = \mathbb{E}_\pi \ln(\pi) = \psi(\alpha)-\psi(\alpha+\beta)$, and $\tilde{\pi}_2 = \mathbb{E}_\pi \ln(1-\pi) = \psi(\beta)-\psi(\alpha+\beta)$, where $\psi(\cdot)$ is the digamma function (Archambeau and Verleysen 2007). We also expanded the quadratic term and substitued in $(y_i^2 - \bar{\mu}_j)^2 + \lambda_j$ for $\mathbb{E} (y_i-\mu_j)^2$.
-
+The quantity $\tilde{\pi}_1 = \mathbb{E}_\pi \ln(\pi) = \psi(\alpha)-\psi(\alpha+\beta)$, and $\tilde{\pi}_2 = \mathbb{E}_\pi \ln(1-\pi) = \psi(\beta)-\psi(\alpha+\beta)$, where $\psi(\cdot)$ is the digamma function (Archambeau and Verleysen 2007).
 
 Each $k_i$ has a Bernoulli distribution with parameters $p_i = \exp \left\{\frac{2\tilde{\pi}_1-((y_i - \bar{\mu}_1)^2 + \lambda_1)}{2} \right\}, \mbox{ and } q_i = \exp \left\{\frac{2\tilde{\pi}_2-((y_i - \bar{\mu}_2)^2 + \lambda_2)}{2} \right\}.$
 
 This gives us the update rules for the Variational Bayes iterations:
 
 \begin{eqnarray*}
-a & = & \sum_{i=1}^{n} \frac{p_i}{p_i+q_i} + 1 \\
-b & = & \sum_{i=1}^{n} \frac{q_i}{p_i+q_i} + 1 \\
+\alpha & = & \sum_{i=1}^{n} \frac{p_i}{p_i+q_i} + 1 \\
+\beta & = & \sum_{i=1}^{n} \frac{q_i}{p_i+q_i} + 1 \\
 \bar{\mu}_1 & = &  \frac{\sum_{i=1}^{n} y_i p_i /(p_i+q_i)}{\sum_{i=1}^{n} p_i /(p_i+q_i)} \\
 \lambda_1 & = & \left(\sum_{i=1}^{n} \frac{p_i}{p_i+q_i}\right)^{-1} \\
 \bar{\mu}_2 & = &  \frac{\sum_{i=1}^{n} y_i q_i /(p_i+q_i)}{\sum_{i=1}^{n} q_i /(p_i+q_i)} \\
 \lambda_2 & = & \left(\sum_{i=1}^{n} \frac{q_i}{p_i+q_i}\right)^{-1} \\
-p_i & = & \exp \left\{\frac{2(\psi(a)-\psi(a+b))-((y_i - \bar{\mu}_1)^2 + \lambda_1)}{2} \right\} \\
-q_i & = & \exp \left\{\frac{2(\psi(b)-\psi(a+b))-((y_i - \bar{\mu}_2)^2 + \lambda_2)}{2} \right\}
+p_i & = & \exp \left\{\frac{2(\psi(\alpha)-\psi(\alpha+\beta))-((y_i - \bar{\mu}_1)^2 + \lambda_1)}{2} \right\} \\
+q_i & = & \exp \left\{\frac{2(\psi(\beta)-\psi(\alpha+\beta))-((y_i - \bar{\mu}_2)^2 + \lambda_2)}{2} \right\}
 \end{eqnarray*}
 
-\begin{knitrout}
-\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}
-\includegraphics[width=\maxwidth]{figure/vbayes-1} 
-
-\end{knitrout}
 250 draws were simulated with parameters $\mu_1 = 3, \mu_2 = 6, \pi=0.6$ and th e variational algorithm was ran. After manually correcting mislabeling, $y_i$ was allocated to distribution 1 if $p_i > q_i$ and to distribution 2 if $p_i < q_i$, resulting in the successful classification of 235/250 draws. A more trivial decision rule to allocate $y_i$ to distribution 1 if $y_i < \bar{y}$ and to distribution 2 if $y_i > \bar{y}$ successfully classified 234/250 draws.
 
-\begin{knitrout}
-\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}
-\includegraphics[width=\maxwidth]{figure/vbayes2-1} 
-
-\end{knitrout}
 250 draws were simulated with parameters $\mu_1 = 5.5, \mu_2 = 6, \pi=0.6$ to try and force an overlap in the data. $y_i$ was allocated to distribution 1 if $p_i > q_i$ and to distribution 2 if $p_i < q_i$, resulting in the successful classification of 158/250 draws. The trivial decision rule had identical classifications.
 
 \end{document}

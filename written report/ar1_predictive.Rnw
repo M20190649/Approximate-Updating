@@ -156,7 +156,7 @@ library(tidyr)
 library(ggplot2)
 library(dplyr)
 library(RcppArmadillo)
-sourceCpp("AR1c.cpp")
+#sourceCpp("AR1c.cpp")
 library(truncnorm)
 library(flexmix)
 

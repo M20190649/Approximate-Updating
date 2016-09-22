@@ -5,7 +5,7 @@ library(gridExtra)
 library(reshape)
 
 T = 100    #Length of y
-N = 50000   #MCMC draws
+N = 5000   #MCMC draws
 
 #True parameters
 sigma2 <- 2
@@ -23,10 +23,16 @@ mubar = 0
 psi = 10
 sigbar = 0
 gamma = 10
-p1 = 5
-p2 = 5
+p1 = 1
+p2 = 1
 a = 1
 b = 1
+
+
+x = seq(-0.99, 0.99, 0.03)
+sbeta <- function(x, p1, p2) {
+  ((1+x)/2)^(p1-1)*((1-x)/2)^(p2-1)
+}
 
 #constant
 shape = T/2 + a
@@ -56,10 +62,10 @@ for(i in 2:N){
   theta[i,1] = rnorm(1, muhat, sqrt(sigsqmu))
   
   #phi conditional
-  phihat = sum((y[2:T]-theta[i, 1])*(y[1:(T-1)]-theta[i,1]))/sum((y[1:(T-1)]-theta[i,1])^2)   #from the Catherine's notes for ETC4541, pg 84
-  vphi = theta[(i-1),3]/sum((y[1:(T-1)]-theta[i,1])^2)    #acceptance rate for this candidate ~75%, trying random walk instead
-  phidraw = rnorm(1, phihat, sqrt(vphi))
-  #phidraw = rnorm(1, theta[(i-1),2], 0.4)               #random walk MH candidate draw to tune acceptance ratios to ~25%
+  #phihat = sum((y[2:T]-theta[i, 1])*(y[1:(T-1)]-theta[i,1]))/sum((y[1:(T-1)]-theta[i,1])^2)   #from the Catherine's notes for ETC4541, pg 84
+  #vphi = theta[(i-1),3]/sum((y[1:(T-1)]-theta[i,1])^2)    #acceptance rate for this candidate ~75%, trying random walk instead
+  #phidraw = rnorm(1, phihat, sqrt(vphi))
+  phidraw = rnorm(1, theta[(i-1),2], 0.18)               #random walk MH candidate draw to tune acceptance ratios to ~25%
   
   #phi MH step
   if(phidraw > -1 & phidraw < 1) {                       #within stationary conditions
@@ -99,11 +105,78 @@ MCMCmp = ggplot(data=thin, aes(x=Mu, y = Phi)) + geom_point()
 MCMCms = ggplot(data=thin, aes(x=Mu, y = Sigma2)) + geom_point() + labs(y = "Log Sigma Squared")
 MCMCps = ggplot(data=thin, aes(x=Phi, y = Sigma2)) + geom_point() + labs(y = "Log Sigma Squared")
 
+#Bayesian Essentials MCMC#
+
+p = 1
+Psi = matrix(0, ncol = p, nrow = p+1)
+Psi[1,1] = 1
+Psi[2,1] = -0.5
+Rho = Psi[1:2, 1]
+
+loglike = function(x, mu, Rho, sig2) {
+  T = length(x)
+  x = x - mu
+  loglike = 0
+  for(i in 2:T) {
+    loglike = loglike - (t(Rho)%*%x[i:(i-1)])^2
+  }
+  loglike = (loglike/(2*sig2)-(T/2)*log(sig2))
+  return(loglike)
+}
+
+theta.be = matrix(0, nrow = N, ncol = 3)
+theta.be[1, ] = c(2, 0.2, 1)
+accept = c(0, 0, 0)
+
+for(i in 2:N){
+  phi.candidate = runif(1, 0, 1)
+  alpha = min(1, exp(loglike(y, theta.be[(i-1), 1], c(1, -phi.candidate), theta.be[(i-1), 3]^2)) /
+                exp(loglike(y, theta.be[(i-1), 1], c(1, -theta.be[(i-1), 2]), theta.be[(i-1), 3]^2)))
+  u = runif(1)
+  if(u < alpha) {
+    theta.be[i, 2] = phi.candidate
+    accept[2] = accept[2] + 1
+  } else {
+    theta.be[i, 2] = theta.be[(i-1), 2]
+  }
+  mu.candidate = rnorm(1, theta.be[(i-1), 1], 0.5)
+  alpha = min(1, exp(loglike(y, mu.candidate, c(1, -theta.be[i, 2]), theta.be[(i-1), 3]^2)) /
+                exp(loglike(y, theta.be[(i-1), 1],  c(1, -theta.be[i, 2]), theta.be[(i-1), 3]^2)))
+  u = runif(1)
+  if(u < alpha) {
+    theta.be[i, 1] = mu.candidate
+    accept[1] = accept[1] + 1
+  } else {
+    theta.be[i, 1] = theta.be[(i-1), 1]
+  }
+  
+  sig.candidate = runif(1, 0.5, 2.5)
+  alpha = min(1, exp(loglike(y, theta.be[i, 1],  c(1, -theta.be[i, 2]), sig.candidate^2)) /
+                exp(loglike(y, theta.be[i, 1],  c(1, -theta.be[i, 2]), theta.be[(i-1), 3]^2)))
+  u = runif(1)
+  if(u < alpha) {
+    theta.be[i, 3] = sig.candidate
+    accept[3] = accept[3] + 1
+  } else {
+    theta.be[i, 3] = theta.be[(i-1), 3]
+  }
+}
+accept
+effectiveSize(theta.be)
+theta.be = theta.be[seq(1001, 5000, 10),]
+effectiveSize(theta.be)
+theta.be[,3] = theta.be[,3]^2
+colnames(theta.be) = c("Mu", "Phi", "Sigma2")
+ggpairs(theta.be)
+ggpairs(thin)
+
+
 ### Black Box VI
 library(mvtnorm)
 
 #Starting components
 
+#no longer needed
 simul = function(n, lambda, L) {
   out = matrix(-5, ncol = 3, nrow = n)
   for(i in 1:n){
@@ -128,6 +201,7 @@ logq = function(theta, lambda, Sigma) {
   dmvnorm(theta, lambda, Sigma, log = TRUE)
 }
 
+#no longer needed
 MVNderiv = function(theta, lambda, Sigma, param) {
   h = 0.000001
   theta2 = theta
@@ -182,26 +256,28 @@ jakobderiv = function(theta, L, lambda, param) {
   }
 }
 
+#no longer needed
 part2 = function(y, theta, lambda, Sigma) {
   logjoint(y, theta[1], theta[2], theta[3]) - logq(theta, lambda, Sigma)
 }
 
+#number of iterations
+M = 1000
 #VB iteration storage
-lambda = matrix(0, nrow = 100, ncol = 3)
+lambda = matrix(0, nrow = M, ncol = 3)
 #variances = matrix(0, nrow = 100, ncol = 3)
 #covariances = matrix(0, nrow = 100, ncol = 3)
 i.lambda = c(mean(y), cor(y[2:T], y[1:(T-1)]), log(var(y)))
 #i.Sigma = diag(c(0.15, 0.15, 0.15))
-Lp = matrix(0, nrow = 100, ncol = 6)
+Lp = matrix(0, nrow = M, ncol = 6)
 i.L = diag(0.4, 3)
 
-p = 0.01/(1:100)
-pl = 0.001/(1:100)
+p = 0.01/(1:M)
+#pl = 0.001/(1:M)
 
 #First iteration: Draw simulations
-s = 100
-#theta = simul(s, i.lambda, i.L)
-theta = rmvnorm(s, i.lambda, i.L %*% t(i.L))
+s = 10
+theta = simul(s, i.lambda, i.L)
 #First iteration: Calculate partial derivatives
 partials = matrix(0, nrow = s, ncol = 9)
 
@@ -223,7 +299,7 @@ Lp[1, ] = c(0.4, 0.4, 0.4, 0, 0, 0)+ p[1]*steps[4:9]
 
 
 #Repeat iterations
-for(k in 2:100) {
+for(k in 2:M) {
   
   L = diag(Lp[(k-1), 1:3])
   L[lower.tri(L)] = Lp[(k-1), 4:6]
@@ -247,29 +323,29 @@ for(k in 2:100) {
   Lp[k, ] = Lp[(k-1), ] + p[k]*steps[4:9]
 }
 
-Lf = diag(Lp[100, 1:3])
-Lf[lower.tri(Lf)] = Lp[100, 4:6]
+Lf = diag(Lp[M, 1:3])
+Lf[lower.tri(Lf)] = Lp[M, 4:6]
 Sigma = Lf %*% t(Lf)
 
 #noise in the draws
-VBdraws = rmvnorm(2000, lambda[100,], Sigma)
+VBdraws = rmvnorm(2000, lambda[M,], Sigma)
 VBdraws[,3] = exp(VBdraws[,3])
 ggpairs(VBdraws, lower = list(continuous = "density"))
 
 #univariate densities
-xm = seq(0.7, 3, length.out=1000)
-mdens = dnorm(xm, lambda[100, 1], sqrt(Sigma[1, 1]))
+xm = seq(0.5, 4, length.out=1000)
+mdens = dnorm(xm, lambda[M, 1], sqrt(Sigma[1, 1]))
 mudat = data.frame(cbind(xm, mdens))
 muplot = ggplot(mudat, aes(x=xm, y=mdens)) + geom_line() + labs(x="Mu", y=NULL)
 
-xp = seq(-0.2, 0.9, length.out=1000)
-pdens = dnorm(xp, lambda[100, 2], sqrt(Sigma[2, 2]))
+xp = seq(0.2, 1, length.out=1000)
+pdens = dnorm(xp, lambda[M, 2], sqrt(Sigma[2, 2]))
 phidat = data.frame(cbind(xp, pdens))
 phiplot = ggplot(phidat, aes(x=xp, y=pdens)) + geom_line() + labs(x="Phi", y=NULL)
 
-xs = seq(-0.2, 1.2, length.out = 1000)
-sdens = dnorm(xs, lambda[100, 3], sqrt(Sigma[3, 3]))
-sigdat = data.frame(cbind(xs, pdens))
+xs = seq(0, 2, length.out = 1000)
+sdens = dnorm(xs, lambda[M, 3], sqrt(Sigma[3, 3]))
+sigdat = data.frame(cbind(xs, sdens))
 sigplot = ggplot(sigdat, aes(x=xs, y=sdens)) + geom_line() + labs(x="Log Sigma Squared", y=NULL)
 
 #bivariate densities
@@ -280,7 +356,7 @@ z = matrix(0, length(x1), length(x2))
 for (i in 1:length(x1)) {
   a = x1
   b = x2[i]
-  z[,i] = dmvnorm(cbind(a,b), lambda[100, 1:2], Sigma[1:2, 1:2])
+  z[,i] = dmvnorm(cbind(a,b), lambda[M, 1:2], Sigma[1:2, 1:2])
 }
 colnames(z) = x1
 rownames(z) = x2
@@ -293,7 +369,7 @@ muphi <- ggplot(dat.mp, aes(x=Mu, y=Phi, z = value)) + geom_contour()
 for (i in 1:length(x1)) {
   a = x1
   b = x2[i]
-  z[,i] = dmvnorm(cbind(a,b), lambda[100, -2], Sigma[-2, -2])
+  z[,i] = dmvnorm(cbind(a,b), lambda[M, -2], Sigma[-2, -2])
 }
 colnames(z) = x1
 rownames(z) = x2
@@ -306,7 +382,7 @@ musig <- ggplot(dat.ms, aes(x=Mu, y=Ln_Sigma2, z = value)) + geom_contour() + la
 for (i in 1:length(x1)) {
   a = x1
   b = x2[i]
-  z[,i] = dmvnorm(cbind(a,b), lambda[100, -1], Sigma[-1, -1])
+  z[,i] = dmvnorm(cbind(a,b), lambda[M, -1], Sigma[-1, -1])
 }
 colnames(z) = x1
 rownames(z) = x2
@@ -317,3 +393,4 @@ phisig <- ggplot(dat.ps, aes(x=Phi, y=Ln_Sigma2, z = value)) + geom_contour() + 
 
 grid.arrange(muplot, phiplot, sigplot, muphi, musig, phisig, ncol = 3)
 grid.arrange(MCMCmu, MCMCphi, MCMCsig, MCMCmp, MCMCms, MCMCps, ncol = 3)
+

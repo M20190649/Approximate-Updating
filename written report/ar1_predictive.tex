@@ -21,6 +21,8 @@
 \begin{document}
 \input{ar1_predictive-concordance}
 
+Note: Code uses a stretched beta, latex math still uses regular beta.
+
 We have $T$ observations from an AR(1) model:
 
 $$y_{t} = \mu + \psi y_{t-1}+ \epsilon_{t},$$
@@ -148,17 +150,3 @@ b & = & \frac{1}{2} \Bigg[\sum^{T}_{t=2}\left(y_t^2-2y_t(\bar{\mu}+\hat{\psi}y_{
 
 An AR(1) model was simulated with $T=100, \mu = 3, \psi = 0.5, \sigma^2 = 1, p1 = 2$ and $p2 = 3$. The algorithm ran for 500 iterations and converged after approximately 200. The algorithm took 0.204 seconds to run in R and resulted in a $\mathcal{N}(3.06, 0.96)$ distribution for $q(Y_{T+1})$.
 
-
-
-A Metropolis Hastings MCMC scheme was set up using a random walk candidate distribution for $\psi$ to draw from $p(\mu | y_{1:T}), p(\sigma^2 | y_{1:T})$ and $p(\psi | y_{1:T})$. These draws were then sampled to find the distribution of $p(y_{T+1} | y_{1:T})$.
-The chain had 1000 burn in draws followed by 50000 kept draws and took 6.736 seconds to complete the chain and forecast distribution.
-
-\begin{figure}[hb]
-\centering
-\includegraphics{ar1_predictive-plots}
-\caption{Variational approximation for $q(y_{T+1}|y_{1:T})$ (blue) and the MCMC density for $p(y_{T+1}|y_{1:T})$ (red). 
-The KL Divergence from q to p is 0.015, and from p to q is 0.018.}
-\label{densities}
-\end{figure}
-
-\end{document}
