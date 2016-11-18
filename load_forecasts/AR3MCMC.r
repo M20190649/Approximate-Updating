@@ -51,6 +51,7 @@ MCMC = MCMC_load(Y, X, 25000)
 posterior.statistics = function(x){
   l95 = quantile(x, probs = 0.025)
   mean = mean(x)
+  median = median(x)
   u95 = quantile(x, probs = 0.975)
   return(c(l95, mean, u95))
 }
@@ -67,7 +68,7 @@ ggplot(MCMC.l, aes(iter, draw)) + geom_line() + facet_wrap(~parameter, scales = 
 
 effectiveSize(MCMCdf)
 posterior = apply(MCMCdf[,1:19], 2, posterior.statistics)
-row.names(posterior) = c("Lower 95", "Mean", "Upper 95")
+row.names(posterior) = c("Lower 95", "Mean", "Median", "Upper 95")
 posterior
 posmean = posterior[2,]
 xbetahat = colSums(t(X) * posmean[1:15])
