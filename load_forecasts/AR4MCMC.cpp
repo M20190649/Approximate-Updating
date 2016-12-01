@@ -28,7 +28,7 @@ double rowprodsum(vec a, rowvec b){
 
 
 // [[Rcpp::export]]
-mat MCMC_load4(vec y, mat x, int rep, int burn = 0, int thin = 1) {
+mat MCMC_load4(vec y, mat x, int rep,  vec lags, int burn = 0, int thin = 1) {
   int dimx = x.n_cols;
   int T = y.n_elem;
   
@@ -50,7 +50,6 @@ mat MCMC_load4(vec y, mat x, int rep, int burn = 0, int thin = 1) {
   // Preliminary Data Calculations
   
   //Yt lags * Yt lags
-  vec lags = {0, 1, 48, 336, 17520}; //lags used in calculations
   vec sumyy(14, fill::zeros); //rows: yt yt -1 - yt yt-2 - yt yt-48 - ... - yt-336 yt-336
   for(int i = 17856; i < T; ++i){ //iterate over time
     for(int k = 1; k < 5; ++k){ //y t - all lags

@@ -11,7 +11,7 @@ sourceCpp("AR4MCMC.cpp")
 
 #Data
 
-loaddata = select(read_csv("fulldata.csv"), SETTLEMENTDATE, TOTALDEMAND, Date, Period, Day, Temp)
+loaddata = select(read_csv("fulldata.csv"), SETTLEMENTDATE, TOTALDEMAND, Date, Period, Day, Temp, LagTemp)
 loaddata$SETTLEMENTDATE = ymd_hms(loaddata$SETTLEMENTDATE, tz = "AEST")
 
 GFriday = c("2011-04-22", "2012-04-06", "2013-03-29", "2014-04-18")
@@ -36,15 +36,14 @@ loaddata = mutate(loaddata, Christmas = ifelse(substr(Date, 6, 10) == "12-25", 1
                   Easter = ifelse(substr(Date, 1, 10) %in% EasterS, 1, 0), GoodFriday = ifelse(substr(Date, 1, 10)%in% GFriday, 1, 0), 
                   OtherHoliday = ifelse(substr(Date, 1, 10) %in% c(EasterM, Ausday, Labour, Anzac, Queens, MelCup, xmasshutdown), 1, 0))
 
-loaddata = mutate(loaddata, AbsTemp = abs(Temp - 20))
+loaddata = mutate(loaddata, AbsTemp = abs(Temp - 19), lagAbsTemp = abs(LagTemp - 19))
 
-
-X = model.matrix(TOTALDEMAND ~ Day + Christmas + Boxingday + NYE + NYD + Easter + GoodFriday + OtherHoliday + AbsTemp, data = loaddata)
+X = model.matrix(TOTALDEMAND ~ Day + Christmas + Boxingday + NYE + NYD + Easter + GoodFriday + OtherHoliday + lagAbsTemp, data = loaddata)
 Y = loaddata$TOTALDEMAND
 
 #MCMC Algorithm
 
-MCMC = MCMC_load(Y, X, 25000)
+MCMC = MCMC_load(Y, X, 5000)
 #MCMC = MCMC_load4(Y, X, 5000)
 
 #Diagnostics
@@ -53,10 +52,10 @@ posterior.statistics = function(x){
   mean = mean(x)
   median = median(x)
   u95 = quantile(x, probs = 0.975)
-  return(c(l95, mean, u95))
+  return(c(l95, mean, median, u95))
 }
 
-keep = seq(5001, 25000, 40)
+keep = seq(1001, 5000, 1)
 MCMCdf = as.data.frame(MCMC[keep,])
 colnames(MCMCdf) = c(colnames(X), "Phi1", "Phi48", "Phi336", "Sigmasq")
 MCMCdf$iter = keep
@@ -71,7 +70,7 @@ posterior = apply(MCMCdf[,1:19], 2, posterior.statistics)
 row.names(posterior) = c("Lower 95", "Mean", "Median", "Upper 95")
 posterior
 posmean = posterior[2,]
-xbetahat = colSums(t(X) * posmean[1:15])
+xbetahat = colSums(t(X) * posmean[1:16])
 demeaned = Y - xbetahat
 qplot(loaddata$SETTLEMENTDATE, demeaned, geom = "line")
 
@@ -86,8 +85,14 @@ qplot(loaddata$SETTLEMENTDATE, yhat, geom = "line")
 ypred = vector(length = length(Y))
 ypred[1:336] = Y[1:336]
 for(i in 337:length(Y)){
-  ypred[i] = xbetahat[i] + posmean[16]*(Y[i-1] - xbetahat[i-1]) + posmean[17]*(Y[i-48] - xbetahat[i-48]) + posmean[18]*(Y[i-336] - xbetahat[i-336]) 
+  ypred[i] = xbetahat[i] + posmean[17]*(Y[i-1] - xbetahat[i-1]) + posmean[18]*(Y[i-48] - xbetahat[i-48]) + posmean[19]*(Y[i-336] - xbetahat[i-336]) 
 }
-qplot(loaddata$SETTLEMENTDATE, Y-ypred, geom = "line")
+qplot(loaddata$SETTLEMENTDATE[-(1:1000)], (Y-ypred)[-(1:1000)], geom = "line")
 mean(abs(Y-ypred))
 
+grid = expand.grid(seq(0.01, 0.99, length.out = 10), seq(0.01, 0.99, length.out = 10), seq(0.01, 0.99, length.out = 10))
+check = vector(length = 1000)
+for(i in 1:1000){
+  D = m_alpha(c(grid[i, 1], grid[i, 2], grid[i, 3]), Y)
+  check[i] = any(abs(eigen(D)$values) > 1)
+}

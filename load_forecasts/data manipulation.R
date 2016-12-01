@@ -10,6 +10,7 @@ library(gridExtra)
 temps = read_csv("data/temp_86071.csv")
 temps$Date = as.Date(temps$Date, origin = "1899-12-30")
 tempsubset = filter(temps, Date > "2010-12-31" & Date < "2015-01-01")
+ltemp = temps[which(temps$Date > "2010-12-31" & temps$Date < "2015-01-01")-1,]
 month = c("01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12")
 year = 2011:2014
 elecdata = NULL
@@ -25,7 +26,7 @@ period[period == 0] = 48
 elecdata$Period = as.factor(period)
 elecdata$Day = wday(elecdata$Date, label = TRUE)
 elecdata$Temp = tempsubset$Temp
-
+elecdata$LagTemp = ltemp$Temp
 write.csv(elecdata, "fulldata.csv", row.names = FALSE)
 
 #Temperature vs Load
@@ -44,3 +45,6 @@ ggplot(halfhourly, aes(as.numeric(Period), load)) + geom_line()
 p1 = ggplot(daily, aes(Date, load)) + geom_line()
 p2 = ggplot(daily, aes(Date, maxtemp)) + geom_line()
 grid.arrange(p1, p2, ncol = 1)
+
+
+
