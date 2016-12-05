@@ -63,11 +63,20 @@ for(i in (1:dim)[-newstates]){
 
 rep = 10000
 
-grid = expand.grid(seq(0.1, 0.9, 0.1), seq(0.1, 0.9, 0.1))
-grid$dens = apply(grid, 1, alpha_xt, y = y, Trans = Trans, x = x, lags = lags, initial = initial, sigmasq = sigmasq)
+resolution = 10
+support = seq(0.05, 0.95, length.out = resolution)
+grid = expand.grid(support, support)
+grid$dens = apply(grid, 1, density_only, y = y, Trans = Trans, x = x, lags = lags)
+
 ggplot(grid) + geom_tile(aes(Var1, Var2, fill = dens))
 grid[which.max(grid$dens),]
 
+densitymatrix = matrix(grid$dens, resolution)
+rownames(densitymatrix) = support
+colnames(densitymatrix) = support
+
+#Doesnt do what I want
+CDF = t(apply(apply(densitymatrix, 2, cumsum), 1, cumsum))
 
 
 #Progress:

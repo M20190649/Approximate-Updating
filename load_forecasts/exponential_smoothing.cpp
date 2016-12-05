@@ -54,7 +54,7 @@ alpha_details alpha_marginal(vec y, vec alpha, mat Trans, vec x, vec lags){
   double ssquared;
   ssquared = ((y_tilde - x_tilde * beta0hat).t() * (y_tilde - x_tilde * beta0hat) / (T - size))[0];
   double density;
-  density - pow(det(xtxinv), 0.5) * ssquared * (-(T - size)/2);
+  density = pow(det(xtxinv), 0.5) * ssquared * (-(T - size)/2);
   
   //Returning results
   alpha_details results;
@@ -121,4 +121,50 @@ mat general_exp_sm_MCMC(vec y, int rep, vec x, mat Trans, vec lags){
   }
   return draws;
 }
+
+// [[Rcpp::export]]
+double density_only(vec y, vec alpha, mat Trans, vec x, vec lags){
+  int size = lags.n_elem; //Number of parameters in alpha
+  int T = y.n_elem; //Length of time series
+  int dim = sum(lags) - size + 1; //Sum of lags is dimension of Trans/D/states
+  mat x_tilde(T, dim, fill::zeros); //X_tilde_t vector for t = 1.. T
+  vec y_tilde(T);  //Y_tilde_t scalar for t = 1...T
+  mat b_bar(dim, T ); //b predictions
+  vec alpha_full(dim, fill::zeros); //entire parameter vector including zeroes for b_t = T b_t-1 + alpha_full*et
+  vec csum_lags(size, fill::zeros); //cumulative sum of lags, starting at 0, omitting last term
+  //cumsum is to indicate which elements of alpha_full are nonzero, should have indices for lt and first value of each seasonal effect
+  //In comparision x typically had lt and last element of each seasonal effect (in old parameterisation)
+  
+  //Create D matrix
+  for(int i = 0; i < size; ++i){
+    if(i > 0) { //first term is already set to 0
+      csum_lags[i] = csum_lags[i-1] + lags[i-1]; 
+    }
+    alpha_full[csum_lags[i]] = alpha[i]; //nonzero element of alpha_full at cumsum values (-1 for count starting at 0)
+  }
+  mat D(dim, dim); //D matrix
+  D = Trans - alpha_full * x.t();
+  
+  //Calculate tilde data
+  x_tilde.row(0) = x.t(); //x_tilde_1
+  b_bar.col(0) = alpha_full * y[0]; //b_bar_1
+  y_tilde[0] = y[0]; //y_tilde_1
+  for(int t = 1; t < T; ++t){ //Loop for other values, recursion in paper
+    b_bar.col(t) = D * b_bar.col(t-1) + alpha_full * y[t];
+    x_tilde.row(t) = x_tilde.row(t-1) * D; 
+    y_tilde[t] = (y[t] - x.t() * b_bar.col(t-1))[0]; 
+  }
+  
+  //Final computations
+  mat xtxinv(dim, dim);
+  xtxinv = (x_tilde.t() * x_tilde).i();
+  vec beta0hat(dim);
+  beta0hat = xtxinv * x_tilde.t() * y;
+  double ssquared;
+  ssquared = ((y_tilde - x_tilde * beta0hat).t() * (y_tilde - x_tilde * beta0hat) / (T - size))[0];
+  double density;
+  density = pow(det(xtxinv), 0.5) * ssquared * (-(T - size)/2);
+  return density;
+}
+
 
