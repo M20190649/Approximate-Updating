@@ -14,6 +14,120 @@ struct alpha_details {
   vec beta0hat; //OLS estimator 
 };
 
+//Inverse CDF method to draw from alpha marginal distribution. Approach marginalises out one variable, draws via inverse CDF, then conditions on that draw to draw second via inverse CDF
+//Inputs: Precalculated marginal density for first parameter, support vector density is calculated over, bivariate density matrix
+vec draw_alpha(vec XCDF, vec support, cube densityarray){
+  vec out(2);
+  double u = randu<vec>(1)[0];
+  //I want to find the index of the first component of XCDF that is greater than u
+  bool flag = FALSE;
+  int i = 0;
+  while(!flag){      
+    flag = XCDF[i] > u;
+    if(!flag){
+      i += 1;
+    }
+  }
+  out[0] = support[i];
+  //Choose the column of the bivariate density that matches the first draw as the conditional density
+  mat densitymat = densityarray.slice(1);
+  vec conditionaly = densitymat.col(i);
+  double normalisation = sum(conditionaly);
+  conditionaly = conditionaly / normalisation;
+  //Calculate the conditional CDF as a cumulative sum
+  int N = support.n_elem;
+  vec YCDF(N);
+  YCDF[0] = conditionaly[0];
+  for(int j = 1; j < N; ++j){
+    YCDF[j] = YCDF[j-1] + conditionaly[j];
+  }
+  //Draw from the CDF via the same method used for X
+  double v = randu<vec>(1)[0];
+  flag = FALSE;
+  i = 0;
+  while(!flag){
+    flag = YCDF[i] > v;
+    if(!flag){
+      i += 1;
+    }
+  }
+  out[1] = support[i];
+  return out;
+}
+
+//Three dimensional version of above. Input XCDF, draw, condition to make p(yz|x), marginalise into p(y | x), draw, condition to make p(z|yx), draw.
+vec draw_alpha_3D(vec XCDF, vec support, cube densityarray){
+  vec out(3);
+  int N = support.n_elem;
+  double u = randu<vec>(1)[0];
+  //I want to find the index of the first component of XCDF that is greater than u
+  bool flag = FALSE;
+  int i = 0;
+  while(!flag){      
+    flag = XCDF[i] > u;
+    if(!flag){
+      i += 1;
+    }
+  }
+  out[0] = support[i];
+  //Condition on this value to make p(yz|x)
+  mat densitymat = densityarray.slice(i);
+  double nsum = 0;
+  for(int k = 0; k < N; ++k){
+    for(int j = 0; j < N; ++j){
+      nsum += densitymat(k, j);
+    }
+  }
+  densitymat = densitymat / nsum;
+  //Marginalise over z to make p(y | x)
+  vec ycond(N, fill::zeros);
+  for(int k = 0; k < N; ++k){
+    for(int j = 0; j < N; ++j){
+      ycond[k] += densitymat(k, j);
+    }
+  }
+  //Create the CDF as a cumulative sum
+  vec YCDF(N);
+  YCDF[0] = ycond[0];
+  for(int j = 1; j < N; ++j){
+    YCDF[j] = YCDF[j-1] + ycond[j];
+  }
+  //Draw via inverse CDF
+  double v = randu<vec>(1)[0];
+  flag = FALSE;
+  i = 0;
+  while(!flag){
+    flag = YCDF[i] > v;
+    if(!flag){
+      i += 1;
+    }
+  }
+  out[1] = support[i];
+  //Condition on this to create p(z | xy)
+  vec zcond = densitymat.row(i);
+  nsum = sum(zcond);
+  zcond = zcond / nsum;
+  //Calculate the conditional CDF 
+  vec ZCDF(N);
+  ZCDF[0] = zcond[0];
+  for(int j = 1; j < N; ++j){
+    ZCDF[j] = ZCDF[j-1] + zcond[j];
+  }
+  //Draw from the CDF
+  double w = randu<vec>(1)[0];
+  flag = FALSE;
+  i = 0;
+  while(!flag){
+    flag = ZCDF[i] > w;
+    if(!flag){
+      i += 1;
+    }
+  }
+  out[2] = support[i];
+  return out;
+}
+
+
 alpha_details alpha_marginal(vec y, vec alpha, mat Trans, vec x, vec lags){
   int size = lags.n_elem; //Number of parameters in alpha
   int T = y.n_elem; //Length of time series
@@ -54,7 +168,7 @@ alpha_details alpha_marginal(vec y, vec alpha, mat Trans, vec x, vec lags){
   double ssquared;
   ssquared = ((y_tilde - x_tilde * beta0hat).t() * (y_tilde - x_tilde * beta0hat) / (T - size))[0];
   double density;
-  density = pow(det(xtxinv), 0.5) * ssquared * (-(T - size)/2);
+  density = pow(det(xtxinv), 0.5) * pow(ssquared, (-(T - size)/2));
   
   //Returning results
   alpha_details results;
@@ -67,7 +181,7 @@ alpha_details alpha_marginal(vec y, vec alpha, mat Trans, vec x, vec lags){
 
 
 // [[Rcpp::export]]
-mat general_exp_sm_MCMC(vec y, int rep, vec x, mat Trans, vec lags){
+mat general_exp_sm_MCMC(vec y, int rep, vec x, mat Trans, vec lags, vec XCDF, vec support, cube densityarray){
   //Inputs are data, MCMC draws, x vector, T matrix, and lag structure, eg. lags = (1, 48, 336) for level, daily and weekly seasonals
   int T = y.n_elem; //Length of time series
   int size = lags.n_elem; //Number of seasonal effects plus one for level
@@ -91,8 +205,13 @@ mat general_exp_sm_MCMC(vec y, int rep, vec x, mat Trans, vec lags){
   //Main loop
   for(int r = 0; r < rep; ++r){
 
-    //Draw from alpha_marginal somehow.
-    //Will probably have to calculate density over a grid and either find CDF or accept/reject?
+    //Alpha drawn from its marginal provided in paper
+    if(size == 2){
+      alpha = draw_alpha(XCDF, support, densityarray);
+    } else if(size == 3){
+      alpha = draw_alpha_3D(XCDF, support, densityarray); 
+    }
+   
     alpha_result = alpha_marginal(y, alpha, Trans, x, lags);
     
     //Sigmasquared from Inverse Gamma Density
@@ -163,7 +282,7 @@ double density_only(vec y, vec alpha, mat Trans, vec x, vec lags){
   double ssquared;
   ssquared = ((y_tilde - x_tilde * beta0hat).t() * (y_tilde - x_tilde * beta0hat) / (T - size))[0];
   double density;
-  density = pow(det(xtxinv), 0.5) * ssquared * (-(T - size)/2);
+  density = pow(det(xtxinv), 0.5) * pow(ssquared, (-(T - size)/2));
   return density;
 }
 

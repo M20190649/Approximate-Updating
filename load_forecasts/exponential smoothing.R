@@ -63,20 +63,54 @@ for(i in (1:dim)[-newstates]){
 
 rep = 10000
 
-resolution = 10
-support = seq(0.05, 0.95, length.out = resolution)
+
+biunif = function(x) {x[1]*x[2]}
+
+resolution = 1000
+support = seq(0, 1, length.out = resolution)
 grid = expand.grid(support, support)
 grid$dens = apply(grid, 1, density_only, y = y, Trans = Trans, x = x, lags = lags)
+grid$dens = grid$dens / sum(grid$dens)
 
-ggplot(grid) + geom_tile(aes(Var1, Var2, fill = dens))
+#ggplot(grid) + geom_tile(aes(Var1, Var2, fill = dens))
 grid[which.max(grid$dens),]
 
 densitymatrix = matrix(grid$dens, resolution)
+marginalx = colSums(densitymatrix)
+XCDF = cumsum(marginalx)
+
+
+draws = replicate(10000, drawing())
+draws = t(draws)
+
 rownames(densitymatrix) = support
 colnames(densitymatrix) = support
 
-#Doesnt do what I want
-CDF = t(apply(apply(densitymatrix, 2, cumsum), 1, cumsum))
+
+
+
+x_tilde = matrix(0, T, dim)
+y_tilde = rep(0, T)
+b_bar = matrix(0, dim, T)
+alpha_full = rep(0, dim)
+csum_lags = c(1, 2)
+alpha_full[csum_lags] = alpha
+D = Trans - alpha_full %*% t(x)
+x_tilde[1,] = t(x)
+b_bar[,1] = alpha_full * y[1]
+y_tilde[1] = y[1]
+for(t in 2:T){
+  b_bar[,t] = D %*% b_bar[,t-1] + alpha_full * y[t]
+  x_tilde[t,] = x_tilde[t-1,] %*% D 
+  y_tilde[t] = y[t] - t(x) %*% b_bar[,t-1] 
+}
+xtxinv = solve(t(x_tilde) %*% x_tilde)
+beta0hat = xtxinv %*% t(x_tilde) %*% y
+ssquared = (t(y_tilde - x_tilde %*% beta0hat) %*% (y_tilde - x_tilde %*% beta0hat)) / (T - size)
+log(sqrt(det(xtxinv)))   -(T - size)/2 * log(ssquared)
+
+
+
 
 
 #Progress:
@@ -85,9 +119,10 @@ CDF = t(apply(apply(densitymatrix, 2, cumsum), 1, cumsum))
 #Discover problem with XTX being singular
 #Reparameterise seasonal effects to have equivalent to XTX that is not singluar
 #Fix old code to work with new parameterisation
+#Wrote inverse CDF sampler for two and three dimensional alpha
 
 #To do:
-#Figure out best way to draw alpha from marginal (probably add extra version of calculation code that doesn't have the structure - just return density)
+#Handle extremely small densities
 #Run and see what happens
 #Hope to fit marginals to easy to use densities
 #Figure out copula structure and fit
