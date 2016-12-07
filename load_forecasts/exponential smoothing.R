@@ -35,7 +35,7 @@ sim_exp_smoothing = function(params, lags, initial, T, sigmasq){
 alpha = c(0.3, 0.5)
 lags = c(1, 7)
 initial = c(0, 1, 2, 6, 1, 1, -3)
-T = 10000
+T = 250
 sigmasq = 1
 exp_data = sim_exp_smoothing(alpha, lags, initial, T, sigmasq)
 ggplot() + geom_line(aes(1:T, exp_data$y), colour = "red") + 
@@ -61,18 +61,20 @@ for(i in (1:dim)[-newstates]){
 }
 
 
-rep = 10000
+rep = 5000
+test = MCMC_exp_smoothing(y, rep, x, Trans, lags, 0.05)
 
 
 biunif = function(x) {x[1]*x[2]}
 
-resolution = 1000
+resolution = 11
 support = seq(0, 1, length.out = resolution)
 grid = expand.grid(support, support)
-grid$dens = apply(grid, 1, density_only, y = y, Trans = Trans, x = x, lags = lags)
+grid$dens = apply(grid, 1, cond_density_only, y = y, Trans = Trans, x = x, lags = lags, sigmasq = sigmasq, initial = initial)
 grid$dens = grid$dens / sum(grid$dens)
+grid$expdens = exp(grid$dens)
 
-#ggplot(grid) + geom_tile(aes(Var1, Var2, fill = dens))
+ggplot(grid) + geom_tile(aes(Var1, Var2, fill = expdens))
 grid[which.max(grid$dens),]
 
 densitymatrix = matrix(grid$dens, resolution)
@@ -122,7 +124,7 @@ log(sqrt(det(xtxinv)))   -(T - size)/2 * log(ssquared)
 #Wrote inverse CDF sampler for two and three dimensional alpha
 
 #To do:
-#Handle extremely small densities
+#Handle extremely small densities - via conditional and MH is not working - gets stuck very easily
 #Run and see what happens
 #Hope to fit marginals to easy to use densities
 #Figure out copula structure and fit
