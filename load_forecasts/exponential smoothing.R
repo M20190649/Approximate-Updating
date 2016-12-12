@@ -1,4 +1,5 @@
 library(ggplot2)
+library(gridExtra)
 sim_exp_smoothing = function(params, lags, initial, T, sigmasq){
   m = length(params)
   dim = sum(lags) - m + 1
@@ -60,60 +61,36 @@ for(i in (1:dim)[-newstates]){
   Trans[i, i-1] = 1
 }
 
+resolution = 500
+xsup = seq(0.2, 0.45, length.out = resolution)
+ysup = seq(0.4, 0.65, length.out = resolution)
+grid = expand.grid(xsup, ysup)
+grid$dens = apply(grid, 1, density_only, y = y, Trans = Trans, x = x, lags = lags)
+grid$dens[grid$dens == "NaN"] = 0
+grid$dens = grid$dens / sum(grid$dens*(xsup[2]-xsup[1])*(ysup[2]-ysup[1]))
 
-rep = 5000
-test = MCMC_exp_smoothing(y, rep, x, Trans, lags, 0.05)
-
-
-biunif = function(x) {x[1]*x[2]}
-
-resolution = 11
-support = seq(0, 1, length.out = resolution)
-grid = expand.grid(support, support)
-grid$dens = apply(grid, 1, cond_density_only, y = y, Trans = Trans, x = x, lags = lags, sigmasq = sigmasq, initial = initial)
-grid$dens = grid$dens / sum(grid$dens)
-grid$expdens = exp(grid$dens)
-
-ggplot(grid) + geom_tile(aes(Var1, Var2, fill = expdens))
+densityplot = ggplot(grid) + geom_tile(aes(Var1, Var2, fill = dens))
+densityplot
 grid[which.max(grid$dens),]
 
-densitymatrix = matrix(grid$dens, resolution)
+densitymatrix = matrix(grid$dens, resolution, byrow = TRUE)
+rownames(densitymatrix) = ysup
+colnames(densitymatrix) = xsup
 marginalx = colSums(densitymatrix)
 XCDF = cumsum(marginalx)
 
+densarray = array(0, dim = c(500, 500, 1))
+densarray[,,1] = densitymatrix
+testdraws = replicate(10000, draw_alpha(XCDF, xsup, ysup, densarray))
+draws = as.data.frame(matrix(testdraws, ncol = 2, byrow = TRUE))
+drawsplot = ggplot(draws, aes(V1, V2)) + geom_density2d()
+grid.arrange(densityplot, drawsplot, ncol = 2)
 
-draws = replicate(10000, drawing())
-draws = t(draws)
-
-rownames(densitymatrix) = support
-colnames(densitymatrix) = support
-
-
-
-
-x_tilde = matrix(0, T, dim)
-y_tilde = rep(0, T)
-b_bar = matrix(0, dim, T)
-alpha_full = rep(0, dim)
-csum_lags = c(1, 2)
-alpha_full[csum_lags] = alpha
-D = Trans - alpha_full %*% t(x)
-x_tilde[1,] = t(x)
-b_bar[,1] = alpha_full * y[1]
-y_tilde[1] = y[1]
-for(t in 2:T){
-  b_bar[,t] = D %*% b_bar[,t-1] + alpha_full * y[t]
-  x_tilde[t,] = x_tilde[t-1,] %*% D 
-  y_tilde[t] = y[t] - t(x) %*% b_bar[,t-1] 
-}
-xtxinv = solve(t(x_tilde) %*% x_tilde)
-beta0hat = xtxinv %*% t(x_tilde) %*% y
-ssquared = (t(y_tilde - x_tilde %*% beta0hat) %*% (y_tilde - x_tilde %*% beta0hat)) / (T - size)
-log(sqrt(det(xtxinv)))   -(T - size)/2 * log(ssquared)
-
-
-
-
+draws = data.frame()
+store = MC_exp_smoothing(y, 100, x, Trans, lags, XCDF, xsup, ysup, densarray, 1:10)
+draws = rbind(draws, store)
+colnames(draws) = c("Alpha", "Delta", "SigmaSq", "In1", "In2", "In3", "In4", "In5", "In6", "In7")
+apply(draws, 2, mean)
 
 #Progress:
 #Fix problem in eigenvalue of D matrix (coding error)
@@ -122,9 +99,10 @@ log(sqrt(det(xtxinv)))   -(T - size)/2 * log(ssquared)
 #Reparameterise seasonal effects to have equivalent to XTX that is not singluar
 #Fix old code to work with new parameterisation
 #Wrote inverse CDF sampler for two and three dimensional alpha
+#Fixed bug leading to very small densities
+#Calculate CDFs
 
 #To do:
-#Handle extremely small densities - via conditional and MH is not working - gets stuck very easily
 #Run and see what happens
 #Hope to fit marginals to easy to use densities
 #Figure out copula structure and fit
