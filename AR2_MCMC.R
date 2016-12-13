@@ -14,7 +14,7 @@ library(copula)
 sourceCpp("AR2.cpp")
 
 
-T = 1000    #Length of y
+T = 100    #Length of y
 N = 120000   #MCMC draws
 
 #True parameters
@@ -383,9 +383,10 @@ i.a = mu^2/v + 2
 i.b = mu*(mu^2/v + 1)
 
 LB2 = vector(length=M)
+var = vector(length = M)
 i.lambda = c(mean(thin[,1]), mean(thin[,2]), i.L[1,1], i.L[2,1], i.L[2,2], i.a, i.b)
 #i.lambda = c(0,0,0.1,0,0.1,3,3)
-s = 1
+s = 5
 #p = 0.01/(1:M)
 #p2 = 0.0001/(1:M)
 #first iteration
@@ -396,6 +397,7 @@ for(i in 1:s){
     partials3[i, j] = allderiv(theta[i,], i.lambda, y, j)
   }
 }
+var[1] = var(partials3[,1])
 steps3 = colMeans(partials3)
 G_1 = steps3 %*% t(steps3)
 Gt = G_1
@@ -418,6 +420,7 @@ while(abs(diff) > 0.001) {
       partials3[i, j] = allderiv(theta[i,], lambda3[k-1,], y, j)
     }
   }
+  var[k] = var(partials3[,1])
   steps3 = colMeans(partials3)
   Gt = Gt + steps3 %*% t(steps3)
   p_t = 0.1* diag(Gt^(-1/2))

@@ -1,5 +1,6 @@
 library(ggplot2)
 library(gridExtra)
+library(tidyr)
 sim_exp_smoothing = function(params, lags, initial, T, sigmasq){
   m = length(params)
   dim = sum(lags) - m + 1
@@ -15,33 +16,33 @@ sim_exp_smoothing = function(params, lags, initial, T, sigmasq){
   states = matrix(0, ncol = T+1, nrow = dim)
   states[,1] = initial
   y = vector(length = T+1)
-  newstates = c(1, 1+cumsum(lags))[-(m+1)]
+  newstates = c(1, 2+cumsum(lags-1))
   for(t in 2:(T+1)){
-    y[t] = rnorm(1, 0, sqrt(sigmasq)) + states[1, t-1] - sum(states[(1:sum(lags))[-cumsum(lags)],t-1])
-    states[1, t] = (1-params[1])*states[1, t-1] + params[1]*(y[t] + sum(states[(1:sum(lags))[-cumsum(lags)],t-1])) 
-    
+    y[t] = rnorm(1, 0, sqrt(sigmasq)) + states[1, t-1] - sum(states[(2:dim),t-1])
+    states[1, t] = (1-params[1])*states[1, t-1] + params[1]*(y[t] + sum(states[(2:dim)[-cumsum(lags)],t-1]))
     
     for(j in 2:m){
-      states[newstates[j], t] = -sum(states[(cumsum(lags)[j-1]+1):(cumsum(lags)[j]-1),t-1]) +
-                                       params[j]*(y[t] - states[1, t-1] + sum(states[(1:sum(lags))[-cumsum(lags)], t-1]))
+      states[newstates[j], t] = -sum(states[newstates[j]:(newstates[j+1]-1),t-1]) +
+                                       params[j]*(y[t] - states[1, t-1] + sum(states[2:dim, t-1]))
     }
     for(j in (1:(sum(lags)-m+1))[-newstates]){
       states[j, t] = states[j-1, t-1]
     }
   }
-  out = list(y = y[2:(T+1)], states = states[newstates,2:(T+1)])
+  out = list(y = y[2:(T+1)], states = states[newstates[-(m+1)],2:(T+1)])
   return(out)
 }
 
+set.seed(1420)
 alpha = c(0.3, 0.5)
 lags = c(1, 7)
-initial = c(0, 1, 2, 6, 1, 1, -3)
-T = 250
+initial = c(0, -1, 2, 6, 3, 0, -2)
+T = 150
 sigmasq = 1
 exp_data = sim_exp_smoothing(alpha, lags, initial, T, sigmasq)
-ggplot() + geom_line(aes(1:T, exp_data$y), colour = "red") + 
-  geom_line(aes(1:T, exp_data$states[1,]), colour = "black") + geom_line(aes(1:T, exp_data$states[2, ]), colour = "blue")
-
+exp_data_l = gather(data.frame(y = exp_data$y, t(exp_data$states), t = 1:T), variable, value, -t)
+ggplot(exp_data_l, aes(t, value, colour = variable)) + geom_line()
+write.csv(exp_data$y, "simy", row.names=FALSE)
 ##MCMC Setup
 m = length(lags)
 dim = sum(lags) - m +1
@@ -61,25 +62,26 @@ for(i in (1:dim)[-newstates]){
   Trans[i, i-1] = 1
 }
 
-resolution = 500
-xsup = seq(0.2, 0.45, length.out = resolution)
-ysup = seq(0.4, 0.65, length.out = resolution)
+resolution = 1000
+xsup = seq(0.15, 0.45, length.out = resolution)
+ysup = seq(0.4, 0.7, length.out = resolution)
+#zsup = seq(0.1, 0.9, length.out = resolution)
 grid = expand.grid(xsup, ysup)
 grid$dens = apply(grid, 1, density_only, y = y, Trans = Trans, x = x, lags = lags)
 grid$dens[grid$dens == "NaN"] = 0
-grid$dens = grid$dens / sum(grid$dens*(xsup[2]-xsup[1])*(ysup[2]-ysup[1]))
+grid$dens_norm = grid$dens / sum(grid$dens)
 
-densityplot = ggplot(grid) + geom_tile(aes(Var1, Var2, fill = dens))
+densityplot = ggplot(grid) + geom_tile(aes(Var1, Var2, fill = dens_norm))
 densityplot
-grid[which.max(grid$dens),]
+grid[which.max(grid$dens_norm),]
 
-densitymatrix = matrix(grid$dens, resolution, byrow = TRUE)
+densitymatrix = matrix(grid$dens_norm, resolution, byrow = TRUE)
 rownames(densitymatrix) = ysup
 colnames(densitymatrix) = xsup
 marginalx = colSums(densitymatrix)
 XCDF = cumsum(marginalx)
 
-densarray = array(0, dim = c(500, 500, 1))
+densarray = array(0, dim = c(resolution, resolution, 1))
 densarray[,,1] = densitymatrix
 testdraws = replicate(10000, draw_alpha(XCDF, xsup, ysup, densarray))
 draws = as.data.frame(matrix(testdraws, ncol = 2, byrow = TRUE))
@@ -87,10 +89,12 @@ drawsplot = ggplot(draws, aes(V1, V2)) + geom_density2d()
 grid.arrange(densityplot, drawsplot, ncol = 2)
 
 draws = data.frame()
-store = MC_exp_smoothing(y, 100, x, Trans, lags, XCDF, xsup, ysup, densarray, 1:10)
+store = MC_exp_smoothing(y, 5000, x, Trans, lags, XCDF, xsup, ysup, densarray, 1:10)
 draws = rbind(draws, store)
 colnames(draws) = c("Alpha", "Delta", "SigmaSq", "In1", "In2", "In3", "In4", "In5", "In6", "In7")
 apply(draws, 2, mean)
+
+#write.csv(draws, "exp_sm_MCMC.csv", row.names = FALSE)
 
 #Progress:
 #Fix problem in eigenvalue of D matrix (coding error)
@@ -103,8 +107,7 @@ apply(draws, 2, mean)
 #Calculate CDFs
 
 #To do:
-#Run and see what happens
-#Hope to fit marginals to easy to use densities
+#Fit marginal densities
 #Figure out copula structure and fit
 #Write Variational Bayes algorithm (and hope distribution allows reparameterisation)
 
