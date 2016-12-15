@@ -39,7 +39,7 @@ ggplot(daily, aes(Date, load)) + geom_line()
 
 #Half-hourly Load vs Time
 halfhourly = ungroup(summarise(group_by(elecdata, Period), load = mean(TOTALDEMAND)))
-ggplot(halfhourly, aes(as.numeric(Period), load)) + geom_line()
+ggplot(halfhourly, aes(as.numeric(Period), load)) + geom_line() + labs(x = "Half Hour Periods")
 
 #Load vs Temp
 p1 = ggplot(daily, aes(Date, load)) + geom_line()
