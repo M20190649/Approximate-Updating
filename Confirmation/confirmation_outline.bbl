@@ -1,0 +1,23 @@
+\begin{thebibliography}{5}
+\newcommand{\enquote}[1]{``#1''}
+\expandafter\ifx\csname natexlab\endcsname\relax\def\natexlab#1{#1}\fi
+
+\bibitem[{Amari(1985)}]{Amari1985}
+Amari, S. (1985), \textit{Differential-geometrical methods in statistics},
+  Springer-Verlag.
+
+\bibitem[{Bishop(2006)}]{Bishop2006}
+Bishop, C. (2006), \textit{Pattern Recognition and Machine Learning}, Springer.
+
+\bibitem[{Kullback and Leibler(1951)}]{Kullback1951}
+Kullback, S. and Leibler, R.~A. (1951), \enquote{On Information and
+  Sufficiency,} \textit{The Annals of Mathematical Statistics}, 22, 79--86.
+
+\bibitem[{Minka(2001)}]{Minka2001}
+Minka, T. (2001), \enquote{Expectation Propagation for Approximate Bayesian
+  Inference,} pp. 362--369.
+
+\bibitem[{Minka(2004)}]{Minka2004}
+--- (2004), \enquote{Power EP,} Tech. rep., Microsoft Research, Cambridge.
+
+\end{thebibliography}

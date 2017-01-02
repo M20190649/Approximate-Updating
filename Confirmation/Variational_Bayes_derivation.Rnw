@@ -1,0 +1,109 @@
+\documentclass[12pt]{article}
+\usepackage{natbib}
+\usepackage{color}
+\usepackage[dvipsnames,svgnames*]{xcolor}
+\usepackage{array}
+\usepackage[colorlinks=TRUE, linkcolor=blue]{hyperref}
+\usepackage[font=small,skip=5pt]{caption}
+\usepackage[aboveskip=2pt]{subcaption}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amsfonts}
+\usepackage{url}
+\usepackage{ulem}
+\usepackage{afterpage}
+\usepackage{bbm}
+
+\graphicspath{{images/}}
+\DeclareGraphicsRule{.tif}{png}{.png}{`convert #1 `dirname #1`/`basename #1 .tif`.png}
+
+\begin{document}
+
+\title{Derivation of Variational Bayes}
+
+\section{The Evidence Lower Bound}
+
+We are interested in finding the distribution $q(\theta)$ that best approximates the true posterior $p(\theta|y)$, with the best approximation taken as the $q(\theta)$ that minimises the Kullback-Leibler divergence with the posterior, defined as
+
+$$KL[q(\theta)|p(\theta|y)] = \int q(\theta) \ln \left( \frac{q(\theta)}{p(\theta|y)}\right) d\theta.$$
+
+Beginning with the unknown constant $p(y)$, we have that
+
+\begin{eqnarray}
+\ln(p(y)) & = & \int_{\theta} q(\theta) \ln(p(y)) d\theta \nonumber \\
+& = & \int_{\theta} q(\theta) \ln  \left( \frac{p(y, \theta)}{p(\theta | y)} \right) d\theta \nonumber \\
+& = & \int_{\theta} q(\theta) \ln  \left( \frac{p(y, \theta)}{p(\theta | y)} \frac{q(\theta)}{q(\theta)}\right) d\theta \nonumber \\
+& = & \int_{\theta} q(\theta) \ln  \left( \frac{q(\theta)}{p(\theta | y)}\right) + \ln \left( \frac{p(y, \theta)}{q(\theta)} \right) d\theta \nonumber \\
+& = & \int_{\theta} q(\theta) \ln  \left( \frac{q(\theta)}{p(\theta | y)}\right) d\theta + \int_{\theta} q(\theta) \ln \left( \frac{p(y, \theta)}{q(\theta)} \right) d\theta \nonumber \\
+& = & KL [q(\theta) || p(\theta | y)] + F(q, y) \nonumber
+\end{eqnarray}
+
+where 
+\begin{eqnarray*}
+F(q, y) & = & \int_{\theta} q(\theta) \ln \left( \frac{p(y, \theta)}{q(\theta)} \right) d\theta \\
+& = &  \int_{\theta} q(\theta) \ln (p(y, \theta)) d\theta -  \int_{\theta} q(\theta) \ln (q(\theta)) d\theta.
+\end{eqnarray*}
+
+As $\ln(p(y))$ is constant, the distribution $q(\theta)$ that minimises the KL divergence can be found by maximising $F(q, y)$, which is called the Evidence Lower Bound (ELBO, or $\mathcal{L}(q, y)$) in the machine learning literature. We are yet to make any assumptions about the distribution of $q(\theta)$.
+
+\section{The Mean Field Assumption}
+The mean-field assumption is that $q(\theta)$ can be factorised as $q(\theta) = \prod_{i} q_{i}(\theta_{i})$, where each $i$ may be a scalar or vector.
+The mean-field derivations follows, assuming that $q(\theta) = q_{1}(\theta_{1}) q_{2}(\theta_{2})$. 
+
+\begin{eqnarray}
+F(q, y) & = &\int_{\theta} q_{1}q_{2} \ln (p(y, \theta)) d\theta - \int_{\theta} q_{1}q_{2} \ln (q_{1}q_{2}) d\theta \nonumber \\
+& = & \int_{\theta} q_{1}q_{2} ( \ln (p(y, \theta)) - \ln(q_{1})) d\theta - \int_{\theta} q_{1}q_{2} \ln (q_{2}) d\theta \\
+& = & \int_{\theta_{1}} q_{1} \left( \int_{\theta_{2}} q_{2} \ln (p(y, \theta )) d\theta_{2}- \ln(q_{1}) \right) d\theta_{1} - \int_{\theta_{1}} q_{1} \int_{\theta_{2}} q_{2} \ln(q_{2}) d\theta_{2} d\theta_{1} \nonumber \\
+& = & \int_{\theta_{1}} q_{1} \ln \left( \frac{\exp(  \mathbb{E}_{q_2} [\ln(p(y,\theta))])}{q_{1}} \right) d\theta_{1} + c \\
+& = & -KL (q_{1} || \exp( \mathbb{E}_{q_2} [\ln(p(y,\theta))])) + c \nonumber
+\end{eqnarray}
+
+(1) uses the fact that
+$$ \int_{\theta_{2}} q_{2} \ln(q_{1}) d\theta_{2} = \ln(q_{1}),$$
+
+and (2) uses the fact that
+$$ \int_{\theta_{1}} q_{1} \int_{\theta_{2}} q_{2} \ln(q_{2}) d\theta_{2} d\theta_{1} = \mathbb{E}_{q_1}\left[  \int_{\theta_{2}} q_{2} \ln(q_{2}) d\theta_{2}\right] =  \int_{\theta_{2}} q_{2} \ln(q_{2}) d\theta_{2}, $$
+
+a constant term with respect to $q_{1}$.
+
+Maximisation with respect to $q_{1}$ is simple due to the KL divergence term, as we can minimise 
+$$KL (q_{1} || \exp(E_{q_{2}} (\ln(p(y,\theta)))))$$
+by setting 
+$$q_{1} \propto \exp(E_{q_{2}} (\ln(p(y,\theta))))$$
+
+for every $i$ in $\theta$.
+
+\section{Copula Variational Bayes}
+
+If we attach a copula function to our approximation, so that $q(\theta) = q_1(\theta_1) q_2(\theta_2) c(Q_1(\theta_1), Q_2(\theta_2)$, we get the Evidence Lower Bound of
+\begin{eqnarray*}
+F(q, y) & = & \int_{\theta} q_{1}q_{2}c(Q_1, Q_2) \ln (p(y, \theta)) d\theta - \int_{\theta} q_{1}q_{2}c(Q_1, Q_2) \ln (q_{1}q_{2}c(Q_1, Q_2)) d\theta \\
+& = & \int_{\theta_1} q_{1}c(Q_1, Q_2) \left( \int_{\theta_2} q_{2}\ln (p(y, \theta))d\theta_2 - \ln(q_{1}) \right) d\theta_1 - \int_{\theta} q_{1}q_{2}c(Q_1, Q_2) \ln (q_{2}c(Q_1, Q_2)) d\theta \\
+& = & \int_{\theta_{1}} q_{1}c(Q_1, Q_2) \ln \left( \frac{\exp(  \mathbb{E}_{q_2} [\ln(p(y,\theta))])}{q_{1}} \right) d\theta_{1} + f(q_{1}, q_{2}).
+\end{eqnarray*}
+
+This derivation runs into two problems: the first term is no longer a KL divergence, and the second term is no longer constant with respect to $q_{1}$.
+If, between the first and second lines we moved $q_{1}q_{2}c(Q_1, Q_2) \ln(q_{1}c(Q_1, Q_2))$ from the second term to the first, instead of $q_{1}q_{2}c(Q_1, Q_2) \ln(q_{1})$ we could attempt to the match the denominator with the $ q_{1}c(Q_1, Q_2)$ term and make something in the form of a KL divergence.
+
+We would have had
+\begin{eqnarray*}
+F(q, y) & = & \int_{\theta_1} q_{1}c(Q_1, Q_2) \left( \int_{\theta_2} q_{2}\ln (p(y, \theta))d\theta_2 - \int_{\theta_{2}} q_{2} \ln(q_{1}c(Q_1, Q_2)) d\theta_{2}\right) d\theta_1 \\
+& - & \int_{\theta} q_{1}q_{2}c(Q_1, Q_2) \ln (q_{2}) d\theta
+\end{eqnarray*}
+and still would not get the KL divergence term as the result used in (1) would no longer hold as
+$$ \int_{\theta_{2}} q_{2} \ln(q_{1}c(Q_1, Q_2)) d\theta_{2} \neq \ln(q_{1}c(Q_1, Q_2)).$$
+
+Even if we could do this, the second term would be
+\begin{eqnarray*}
+\int_{\theta} q_{1}q_{2}c(Q_1, Q_2) \ln (q_{2}) d\theta & = &  \int_{\theta_1} q_{1} \int_{\theta_2} q_{2}c(Q_1, Q_2) \ln (q_{2}) d\theta_2 d\theta_1 \\
+& = & \mathbb{E}_{q_1} \left [\int_{\theta_2} q_{2}c(Q_1, Q_2) \ln (q_{2}) d\theta_2 \right]
+\end{eqnarray*}
+which is not constant with respect to $q_{1}$.
+
+Clearly the mean field approach to the derivation can not be directly adapted.
+
+
+
+
+\end{document}

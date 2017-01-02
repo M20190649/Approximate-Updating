@@ -1,0 +1,52 @@
+\documentclass{article}
+
+\begin{document}
+
+\tableofcontents
+
+\section{Bayesian Inference}
+\subsection{Bayes Rule}
+-General Intro to Bayesian Methodology
+-Denominator as an integral
+-Often no analytical solutions
+\subsection{Exact Bayesian Computation}
+-Numerical Integration
+-Importance Sampling
+-MCMC
+\subsection{Variational Bayes}
+-KL Divergence as a transformation to distribution space
+-VB Derivation
+\subsection{The Mean Field Assumption}
+-Mean Field Derivation
+-Gives optimal family of approximating distributions
+-Lots of analytical work
+-Very Fast
+\subsection{Stochastic Gradient Ascent}
+-SGA Derivation
+-Step Size
+-Flexibility 
+-Little analytical work
+-Needs a pre-defined approximating distribution family
+\subsection{Variance Reduction Techniques}
+-Rao Blackwellisation
+-Control Variates
+-Reparameterisation
+\subsection{AR2 model example}
+
+
+\section{Electricity Load Forecasts}
+\subsection{Motivation}
+-Real data has five minute updates
+-Density is of interest due to rare price spikes, so more interested in the chance load is above a certain point
+-Slow convergence of MCMC / Bad scaling to large dimensional models and datasets
+\subsection{Exponential Smoothing}
+-Bayesian Version
+-Difficulty with smoothing parameters in large models
+-Infer model structure from MCMC draws where possible
+\subsection{Variational Bayes Implementation}
+-Posterior Distributions should not change much as more data is observed, so we can keep approximating distribution family constant
+-But we might want a model that does change to make updates worthwhile - Markov Switching mechanism to be added?
+\subsection{Forecasting}
+-Compare to MCMC when possible
+
+\end{document}

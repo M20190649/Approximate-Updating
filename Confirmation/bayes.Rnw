@@ -1,0 +1,74 @@
+\documentclass{article}
+\usepackage{natbib}
+\usepackage{color}
+\usepackage[dvipsnames,svgnames*]{xcolor}
+\usepackage{array}
+\usepackage[colorlinks=TRUE, linkcolor=blue]{hyperref}
+\usepackage[font=small,skip=5pt]{caption}
+\usepackage[aboveskip=2pt]{subcaption}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage[]{algorithm2e}
+\usepackage{amsthm}
+\usepackage{amsfonts}
+\usepackage{url}
+\usepackage{ulem}
+\usepackage{afterpage}
+\usepackage{bbm}
+\numberwithin{equation}{section}
+
+\begin{document}
+
+\section{Bayesian Inference}
+
+\subsection{Bayes' Rule}
+
+In Bayesian statistics, we are interested in making inferences about an unknown parameter $\theta$ using what is known as the posterior distribution, $p(\theta | y)$, where $y$ is our observed data. Bayes' rule provides a form for this distribution, 
+
+\begin{equation}
+\label{BR1}
+p(\theta | y) = \frac{p(y | \theta) p(\theta)}{p(y)},
+\end{equation}
+
+which shows that the posterior can be found by taking the product of the likelihood, $p(y | \theta)$ and the prior distribution, $p(\theta)$, and normalising with a constant $p(y)$. In practice $p(y)$ is unknown and can be found from 
+
+\begin{equation}
+\label{BR2}
+p(y) = \int_\theta p(y | \theta) p(\theta) d \theta.
+\end{equation}
+
+Finding the value of $p(y)$ is often the most difficult part of working with Bayesian statistics. In some simple models, this integration can be solved analytically, but for most models of interest it is intractable and we can only work with the un-normalised version
+
+\begin{equation}
+\label{BR3}
+p(\theta | y)^* = p(y | \theta) p(\theta).
+\end{equation}
+
+This work will concern itself with two of the methods used in the case where (\ref{BR2}) is intractable, exact methods such as MCMC, which will be discussed later in this section as well as an approximation method known as Variational Bayes which appears in section two.
+
+\subsection{Exact Bayesian Computation}
+
+\textbf{1. Numerical Integration}\newline
+
+It might be tempting to numerically approximate (\ref{BR2}) by evaluting the integrand over a grid and applying methods such as the Trapezoid Rule or Adaptive Quadrature. These may be suitable for integration in a low dimension, but if we have a grid with $G$ points in one dimension, then a two dimensional integration requires $G^2$ points, and a three dimensional integration requires $G^3$ points. In general, the computational time increases exponentially with the dimension of $\theta$ in numerical integration. In almost all cases of interest, $\theta$ is a high-dimensional vector which makes numerical integration prohibitively expensive. This is known as the curse of dimensionality, where the difficulty of the problem increases quickly with the dimension of $\theta$ and requires us to use more sophisticated methods.\newline
+
+\textbf{2. Importance Sampling} \newline
+
+Candidate Density
+Accept Reject
+Good candidate is hard but useful
+VB as a candidate \newline
+
+\textbf{3. Gibbs Sampling}\newline
+
+Breaks down into simple problems
+Becomes linear instead of exponential
+Exact sampling \newline
+
+\textbf{4. Metropolis Hastings within Gibbs}\newline
+
+Gibbs only works exactly on some problems
+Approximation within Gibbs
+Also can benefit from VB
+
+\end{document}

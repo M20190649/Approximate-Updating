@@ -1,0 +1,51 @@
+This is BibTeX, Version 0.99d (TeX Live 2015/dev/Debian)
+Capacity: max_strings=35307, hash_size=35307, hash_prime=30011
+The top-level auxiliary file: confirmation_outline.aux
+The style file: asa.bst
+Database file #1: references.bib
+A bad cross reference---entry "Minka2001"
+refers to entry "UAI01", which doesn't exist
+Warning--I didn't find a database entry for "UAI01"
+Warning--empty booktitle in Minka2001
+You've used 5 entries,
+            2777 wiz_defined-function locations,
+            660 strings with 5159 characters,
+and the built_in function-call counts, 1942 in all, are:
+= -- 172
+> -- 60
+< -- 6
++ -- 23
+- -- 18
+* -- 141
+:= -- 350
+add.period$ -- 8
+call.type$ -- 5
+change.case$ -- 27
+chr.to.int$ -- 5
+cite$ -- 6
+duplicate$ -- 101
+empty$ -- 169
+format.name$ -- 27
+if$ -- 393
+int.to.chr$ -- 1
+int.to.str$ -- 1
+missing$ -- 6
+newline$ -- 20
+num.names$ -- 20
+pop$ -- 35
+preamble$ -- 1
+purify$ -- 26
+quote$ -- 0
+skip$ -- 82
+stack$ -- 0
+substring$ -- 101
+swap$ -- 23
+text.length$ -- 1
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 39
+warning$ -- 1
+while$ -- 18
+width$ -- 0
+write$ -- 56
+(There was 1 error message)
