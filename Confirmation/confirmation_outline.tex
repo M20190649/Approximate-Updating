@@ -124,7 +124,7 @@ p(\mu) &\propto 1 \nonumber \\
 p(\sigma^2) &\propto \sigma^{-2} \nonumber
 \end{align}
 
-add something for $\rho$ to enforce stationarity - maybe switch to an AR(1) or ARMA(1,1).
+could make $\rho$ a constant or add a uniform unit circle prior to polynomial roots to enforce stationarity - or maybe switch to an AR(1) or ARMA(1,1).
 
 Describe conditional distributions, possible MH step, result in forecast distribution for $y_{T+1}$
 
@@ -161,32 +161,19 @@ Mean Field Variational Bayes (MFVB) has origins in the physics literature \citep
 q(\theta|\lambda) = \prod_i q_i(\theta_i | \lambda_i).
 \end{equation}
 
-This assumption is known as the Mean Field assumption and is has been widely used as it greatly simplifies maximisation of the ELBO (\citealp{Jordan1999}; \citealp{Bishop2006}). Each component $\theta_i$ may be a scalar or a vector, and $\lambda_i$ is the component of the $\lambda$ vector that parameterises the relevant factor $q_i(\theta_i |\lambda_i)$. From here, we will use the shorthand notation that $q_i = q_i(\theta_i|\lambda_i)$ and $q_{\setminus i} = \prod_{j\neq i}q_j$. Maximising the ELBO with respect to $q_i$ is analytically involved but computationally simple, as (\ref{ELBO}) can be expressed as a function of $q_i$ only and then maximised with respect to each $q_i$ individually.
-
-\begin{align}
-\mathcal{L}(q_i) &= \int_{\theta} q_i q_{\setminus i} \ln (p(y, \theta)) d\theta - \int_{\theta} q_{i}q_{\setminus i} \ln (q_{i}q_{\setminus i}) d\theta \nonumber \\
-&= \int_{\theta_i}\int_{\theta_{\setminus i}} q_{i}q_{\setminus i} ( \ln (p(y, \theta)) - \ln(q_{i})) d\theta_i d\theta_{\setminus i} - \int_{\theta_i}\int_{\theta_{\setminus i}} q_{i}q_{\setminus i} \ln (q_{\setminus i}) d\theta_i d\theta_{\setminus i}  \nonumber \\
-&= \int_{\theta_{i}} q_{i} \left( \int_{\theta_{\setminus i}} q_{\setminus i} \ln (p(y, \theta )) d\theta_{\setminus i} - \ln(q_i) \right) d\theta_i \nonumber \\
-&- \int_{\theta_{\setminus i}} q_{\setminus i} \ln(q_{\setminus i}) d\theta_{\setminus i} \label{mf2}\\
-&= \int_{\theta_{1}} q_{i} \ln \left( \frac{\exp(  \mathbb{E}_{q_{\setminus i}} [\ln(p(y,\theta))])}{q_i} \right) d\theta_i + c \nonumber \\
-&= -KL (q_i || \exp( \mathbb{E}_{q_{\setminus i}} [\ln(p(y,\theta))])) + c \label{mf2.2}
-\end{align}
-
-as the rightmost component of (\ref{mf2}) is constant with respect to $q_i$.
-
-We can see that by holding $q_{\setminus_i}$ fixed, we can maximise the ELBO with respect to $q_i$ by minimising the KL Divergence between $q_i$ and $\exp( \mathbb{E}_{q_{\setminus i}} [\ln(p(y,\theta))])$ in (\ref{mf2.2}). This is easily done by setting
+This assumption is known as the Mean Field assumption and is has been widely used as it greatly simplifies maximisation of the ELBO (\citealp{Jordan1999}; \citealp{Bishop2006}). Each component $\theta_i$ may be a scalar or a vector, and $\lambda_i$ is the component of the $\lambda$ vector that parameterises the relevant factor $q_i(\theta_i |\lambda_i)$. From here, we will use the shorthand notation that $q_i = q_i(\theta_i|\lambda_i)$ and $q_{\setminus i} = \prod_{j\neq i}q_j$. Maximising the ELBO with respect to $q_i$ is analytically involved but computationally simple, as (\ref{ELBO}) can be expressed as a function of $q_i$ only and then maximised with respect to each $q_i$ individually. \citet{Attias1999} shows that 
 
 \begin{equation}
-\label{mf3}
-q(\theta_i | \lambda_i) \propto\exp( \mathbb{E}_{q_{\setminus i}} [\ln(p(y,\theta))]).
+\label{mf2}
+q(\theta_i | \lambda_i) \propto\exp( \mathbb{E}_{q_{\setminus i}} [\ln(p(y,\theta))])
 \end{equation}
 
-If the likelihood and prior for $\theta_i$ form an exponential family conjugate pair, then this maximisation proceeds by keeping the distributional family constant and simply updating the parameters $\lambda_i$. Otherwise, we can find the optimal distributional family for any $q_i$ by taking the log-joint density and then ignoring any term that doesn't depend on $\theta_i$. Next, take the expectation of any remaining $\theta_{j \neq i}$ and then match to the kernel of a known distribution. If it does not match a known distribution, we may need to make a further approximation $\tilde{q_i(\theta_i|\lambda_i)}$ which has a recognizable distribution. One method as used in \citet{Friston2006} uses a Laplace approximation to and substitute in a Gaussian distribution for an otherwise unrecognizable $q_i(\theta_i | \lambda_i)$. 
+and maximisation can proceed by matching (\ref{mf2}) to a known distribution. In the case that the likelihood and prior for $\theta_i$ form an exponential family conjugate pair, then the distributional family can be kept constant and all that is required is an update the parameters $\lambda_i$. If it does not match a known distribution, we may need to make a further approximation $\tilde{q_i(\theta_i|\lambda_i)}$ which has a recognizable distribution. One method as used in \citet{Friston2006} uses a Laplace approximation to and substitute in a Gaussian distribution for an otherwise unrecognizable $q_i(\theta_i | \lambda_i)$. 
 
-These steps are almost the same as those used to find a conditional distribution $p(\theta_i | \theta_{j \neq i}, y)$, with dependence on other parameters replaced by their expectations. Hence, the optimal approximating family for $\theta_i$, $q(\theta_i | \lambda_i)$, will come from the same distributional family as the conditional distribution $p(\theta_i | \theta_{j \neq i}, y)$, if it exists in a recognisable form such as the exponential family. Hence deriving the updating algorithm for MFVB takes about the same analytical effort as finding the conditionals for a Gibbs MCMC scheme, and the secondary Laplace approximation will occur in parameters where a Metropolis-Hastings-within-Gibbs step must be used.
+Matching distributions in this way is a very similar method to finding the posterior conditional distribution, $p(\theta_i | y, \theta_{\setminus i}$ in a Gibbs MCMC scheme, with dependence on other parameters replaced by their expectations. Hence, the optimal approximating family for $\theta_i$, $q(\theta_i | \lambda_i)$, will come from the same distributional family as the conditional distribution $p(\theta_i | \theta_{j \neq i}, y)$, if it exists in a recognisable form such as the exponential family. The secondary Laplace approximation is analogous to a Metropolis-Hastings-within-Gibbs step in MCMC, as a way to handle unrecognisable distributions.
 \vspace{5mm}
 
-Given these optimal distributional families, each $\lambda_i$ can be found as a function of the data and $\lambda_{j \neq i}$. This dependence requires an algorithm that continuously iterates between each $\lambda_i$ and sets it to its maximising value until $\mathcal{L}(q(\theta | \lambda), y)$ converges with some pre-defined threshold. This is known as a coordinate ascent algorithm and follows below using $k$ as the dimension of $\lambda$.
+Given these optimal distributional families, a mean field updating equation for each $\lambda_i$ can be found as a function of the data and other $\lambda_{j \neq i}$. This dependence requires an algorithm that continuously iterates between each $\lambda_i$ and sets it to its maximising value until $\mathcal{L}(q(\theta | \lambda), y)$ converges within some pre-defined threshold. This is known as a coordinate ascent algorithm and follows below, where $k$ as the dimension of $\lambda$.
 
 \vspace{2mm}
 
@@ -207,7 +194,6 @@ Given these optimal distributional families, each $\lambda_i$ can be found as a 
 \end{algorithm}
 
 \subsubsection{Stochastic Variational Bayes}
-\emph{Note the change to subsubsection}
 
 In many cases, the posterior is too complex to be captured for a factorising approximation to be reasonabl as we desire our distribution $q(\theta | \lambda)$ to capture dependence between parameters. In this case, the easy maximisation in MFVB is unavailable, and we must resort to what is called Stochastic Variational Bayes (SVB) using a gradient ascent algorithm developed by \citet{Paisley2012} and \citet{Ranganash2014}.
 
@@ -215,10 +201,10 @@ To maximise the function $\mathcal{L}(q(\theta | \lambda), y)$ we can take the d
 
 \begin{equation}
 \label{SGA1}
-\lambda^{(m)} = \lambda^{(m-1)} + \rho^{(m)} \nabla_{\lambda} \mathcal{L}(q(\theta | \lambda^{(m-1)}), y),
+\lambda^{(m+1)} = \lambda^{(m)} + \rho^{(m)} \nabla_{\lambda} \mathcal{L}(q(\theta | \lambda^{(m)}), y),
 \end{equation}
 
-where $\nabla_{\lambda}\mathcal{L}(q(\theta | \lambda^{(m-1)}), y)$ is the vector of partial derivatives of $\mathcal{L}(q(\theta | \lambda^{(m-1)}), y)$ with respect to each element of $\lambda$. This update requires initial values $\lambda^{(0)}$ and some sequence $\rho^{(m)}$. If $\rho^{(m)}$ is chosen to satisfy the following conditions, it is a Robbins-Monro sequence and the algorithm is guaranteed to converge to a local maximum.
+where $\nabla_{\lambda}\mathcal{L}(q(\theta | \lambda^{(m)}), y)$ is the vector of partial derivatives of $\mathcal{L}(q(\theta | \lambda^{(m)}), y)$ with respect to each element of $\lambda$. This update requires initial values $\lambda^{(0)}$ and some learning rate sequence $\rho^{(m)}$. If $\rho^{(m)}$ is chosen to satisfy the following conditions, it is a Robbins-Monro sequence and the algorithm is guaranteed to converge to a local maximum.
 
 \begin{align}
 \lim_{m \xrightarrow[]{} \infty} \rho^{(m)} &= 0 \nonumber \\
@@ -228,48 +214,36 @@ where $\nabla_{\lambda}\mathcal{L}(q(\theta | \lambda^{(m-1)}), y)$ is the vecto
 
 Whilst a global maximum is desired, the ELBO can have a problem specific shape that makes finding the global maximum extremely difficult, as we do not know how many stationary points exist. The dimension of the ELBO is the dimension of the $\lambda$ vector, which is often much greater than the dimension of the parameters $\theta$ so a grid search is suspect to the curse of dimensionality. To alleiviate this problem, we can start the algorithm at a range of initial values choose the converged value with the highest value of the ELBO. 
 
-SVB does not provide the family of the the optimal approximating distribution, unlike under the mean field assumption. To run SVB we may need to try many approximating distributions and then choose the $q(\theta | \lambda)$ that has the highest ELBO, and hence lowest KL divergence to the true posterior. We must restrict the approximation to distributions that satisfy the condition that the order of differentation of the ELBO with respect to $\lambda$ and integration with respect to $\theta$ are interchangable. In this case, we can calculate derivatives of the ELBO.
-
-\begin{align}
-\nabla_{\lambda} \mathcal{L}(q(\theta | \lambda), y) &=  \nabla_{\lambda} \int_{\theta} q(\theta | \lambda) \left( \ln (p(y, \theta)) - \ln(q(\theta | \lambda)) \right) d\theta \nonumber \\
-&=   \int_{\theta} \nabla_{\lambda}[  q(\theta | \lambda) \left( \ln (p(y, \theta)) - \ln(q(\theta | \lambda)) \right)] d\theta \label{SGA2} \\
-&=  \int_{\theta}  q(\theta | \lambda) \nabla_{\lambda}[( \ln (p(y, \theta)) - \ln(q(\theta | \lambda))] d\theta \nonumber \\ 
-&+ \int_{\theta} \nabla_{\lambda} [q(\theta | \lambda)] \left( \ln (p(y, \theta)) - \ln(q(\theta | \lambda)) \right) d\theta \label{SGA3}
-\end{align}
-
-Note that the first integral on the right hand side of (\ref{SGA3}) equals 0 as
+SVB does not provide the family of the the optimal approximating distribution, unlike under the mean field assumption. To run SVB we may need to try many approximating distributions and then choose the $q(\theta | \lambda)$ that has the highest ELBO, and hence lowest KL divergence to the true posterior. We must restrict the approximation to distributions that satisfy the condition that the order of differentation of the ELBO with respect to $\lambda$ and integration with respect to $\theta$ are interchangable. In this case \citet{Ranganath2014} shows that a Monte Carlo estimate of the derivative of the ELBO can be taken by
 
 \begin{equation}
-\int_{\theta}  q(\theta | \lambda) \nabla_{\lambda}[( \ln (p(y, \theta))] d\theta = 0
+\label{SGA2}
+\nabla_{\lambda}\mathcal{L}(q(\theta | \lambda^{(m)}) \approx \frac{1}{S}\sum_{s=1}^{S} \nabla_{\lambda} [\ln(q(\theta_s | \lambda^{(m)}))] (\ln (p(y, \theta_s)) - \ln(q(\theta_s | \lambda^{(m)})))
 \end{equation}
 
-and
+where $s = 1, \dots, S$ indicates simulations from $q(\theta | \lambda^{(m)})$.
 
-\begin{align}
-\int_{\theta} - q(\theta | \lambda) \nabla_{\lambda}[ \ln(q(\theta | \lambda))] d\theta &= - \int_{\theta} \frac{\nabla_{\lambda}q(\theta | \lambda)}{q(\theta | \lambda)} q(\theta | \lambda) d\theta \nonumber \\
-&=  -  \nabla_{\lambda}\int_{\theta} q(\theta | \lambda) d\theta \nonumber \\
-&=  0 \nonumber
-\end{align}
+As the distribution $q(\theta | \lambda)$ is specified by the user, the main restriction on the use of SVB is that the log-joint density $\ln(p(y, \theta))$ is able to be evaluated.
 
-Then we continue from (\ref{SGA3}) with 
+\citet{Duchi2011} introduces the AdaGrad algorithm which can be implemented within SVB to control $\rho^{(m)}$. AdaGrad allows each $\lambda_i$ to have an independent $\rho^{(m)}_i$ that is inversely proportional to the gradient. 
 
-\begin{align}
-\nabla_{\lambda} \mathcal{L}(q(\theta | \lambda), y) &=  \int_{\theta} \nabla_{\lambda} [q(\theta | \lambda)] \left( \ln (p(y, \theta)) - \ln(q(\theta | \lambda)) \right) d\theta \nonumber \\
-&=   \int_{\theta} q(\theta | \lambda)  \nabla_{\lambda} [\ln(q(\theta | \lambda))]\left( \ln (p(y, \theta)) - \ln(q(\theta | \lambda)) \right)d\theta \nonumber \\
-&= E_q \left(  \nabla_{\lambda} [\ln(q(\theta | \lambda))]\left( \ln (p(y, \theta)) - \ln(q(\theta | \lambda)) \right) \right). \label{SGA4}
-\end{align}
-
-We can compute a Monte-Carlo estimate of (\ref{SGA4}) by 
+Let 
 
 \begin{equation}
-\label{SGA5}
-\nabla_{\lambda}\mathcal{L}(q(\theta | \lambda)) \approx \frac{1}{S}\sum_{s=1}^{S} \nabla_{\lambda} [\ln(q(\theta_s | \lambda))] (\ln (p(y, \theta_s)) - \ln(q(\theta_s | \lambda)))
+\label{SGA3}
+G_i^{(m)} = \sum_{j = 1}^{m} \left(\nabla_{\lambda_i}\mathcal{L}(q(\theta | \lambda^{(m)})\right)^2,
 \end{equation}
 
-where $\theta_s$, $s = 1, \dots S$, are simulated from the most recent iteration of  $q(\theta | \lambda)$.
+then each component's learning rate is defined as
 
-As the distribution $q(\theta | \lambda)$ is specified by the user, the main restriction on the use of SVB is that the log-joint density $\ln(p(y, \theta))$ is able to be evaluated. Running an SVB algorithm involves very little analytical effort unlike MFVB, most of the difficulty is calculating the score function of the approximating distribution,
-$\nabla_{\lambda} [\ln(q(\theta_s | \lambda))]$. But as this is part of the approximation and not the true model the code to run this could potentially be re-used in many different models. 
+\begin{equation}
+\label{SGA4}
+\rho^{(m)}_i = \eta \left(G_i^{(m)}\right)^{-1/2}
+\end{equation}
+
+for some tuning parameter $\eta$.
+
+The resulting Stochastic Gradient Ascent algorithm proceeds below.
 
 \begin{algorithm}[H]
  \SetKwInOut{Input}{Input}
@@ -277,18 +251,25 @@ $\nabla_{\lambda} [\ln(q(\theta_s | \lambda))]$. But as this is part of the appr
  \KwResult{Variational Approximation}
  Initialise $\lambda$\;
  \While{Not converged}{
-  Simulate $\theta^s$ for $s = 1, \dots S$ from $q(\theta|\lambda^{(m-1)})$\;
+  Simulate $\theta^s$ for $s = 1, \dots S$ from $q(\theta|\lambda^{(m)})$\;
   \For{$i =  1$ \KwTo $k$}{
-      Calculate $\nabla_{\lambda_i} =  1/S\sum_{s=1}^{S} \nabla_{\lambda_i}[\log(q(\theta^s|\lambda^{(m-1)})](\log(p(\theta^s, y)) - \log(q(\theta^s |\lambda^{(m-1)})))$\;
+      Calculate $\nabla_{\lambda_i} =  1/S\sum_{s=1}^{S} \nabla_{\lambda_i}[\log(q(\theta^s|\lambda^{(m)})](\log(p(\theta^s, y)) - \log(q(\theta^s |\lambda^{(m)})))$\;
+      Update $G_i^{(m)} = G_i^{(m-1)} + \left(\nabla_{\lambda_i}\mathcal{L}(q(\theta | \lambda^{(m)})\right)^2$\;
+      Calculate $\rho^{(m)}_i =  \left(G_i^{(m)}\right)^{-1/2}$\;
      }
-  Set $\lambda^{(m)} = \lambda^{(m-1)} + \rho^{(m)}  \nabla_{\lambda}$\;
+  Set $\lambda^{(m+1)} = \lambda^{(m)} + \rho^{(m)}  \nabla_{\lambda}$\;
   Set $m = m + 1$\;
  }
- \caption{Gradient Ascent for SVB}
+ \caption{Stochastic Gradient Ascent for SVB}
   \label{alg:algorithm2}
 \end{algorithm}
 
-\subsection{Variance Reduction Techniques} \emph{This is general stuff, not just for VB, so can be a subsection}
+\subsection{Variance Reduction Techniques}
+
+For many models the estimator in (\ref{SGA2}) has a large variance, so a more efficient estimator will allow a lower value of $S$ and hence reduced computation time.
+\subsubsection{Rao Blackwellisation}
+
+\citet{Ranganath2014} considers the use of Rao Blackwellisation \citep{Casella1996}
 -Rao Blackwellisation
 -Control Variates
 -Reparameterisation
