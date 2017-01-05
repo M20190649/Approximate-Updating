@@ -73,9 +73,9 @@
 \tableofcontents
 \section{Introduction} 
 
-For many time-series applications a point forecast of the mean of the next observation in a series, $y_{T+1}$, can be easily obtained with frequentist methods, conditioning on the forecaster's observed series, $y_{1:T}$. Often the forecast is supplemented with a prediction interval backed by asymptotic theory, however there is a growing demand in the literature for density forecasts (find citations, probably Hyndman) which are typically much harder to obtain. 
+For many time-series applications a point forecast of the mean of the next observation in a series, $y_{T+1}$, can be easily obtained with frequentist methods, conditioning on the forecaster's observed series, $y_{1:T}$. Often the forecast is supplemented with a prediction interval backed by asymptotic theory, however there is a growing demand in the literature for density forecasts which are typically much harder to obtain, see \citet{Gneiting2014} for a review.
 
-As a contrast to frequentism, the Bayesian methodology implicitly provides the entire probability density for variables of interest, in this case $p(y_{T+1} | y_{1:T})$. However the Bayesian approach requires solving integrals of the form 
+As a contrast to frequentism, the Bayesian methodology has been used extensively in forecasting \citep{Geweke2006} and is of interest as the entire probability density for $p(y_{T+1} | y_{1:T})$ is provided implicitly. However the Bayesian approach requires solving integrals of the form 
 
 \begin{equation}
 \label{forecastintegral}
@@ -393,24 +393,25 @@ As the use of SVB does not provide an optimal approximating distribution like in
 
 As fitting a distribution to a sample from the posterior by MLE is equivalent to minimising the reverse of the KL dependence, we use the best fitting set of marginal distributions augmented by a vine copula by AIC (or BIC or something else?) and make the assumption that the family $q(\theta | \lambda)$ that minimises the reverse KL, and is optimal in EP, is the same family that is optimal for VB.
 
-\begin{list}
+\begin{itemize}
 \item State optimal families
 \item Fit via SVB
 \item Compare forecast accuracy to MCMC 
-\item Maybe use a lot of one step ahead forecasts with continuous VB updates compared to MCMC results with no parameter updates (but still bringing in new data so it's using one step ahead).
-\end{list}
+\item Maybe use a lot of one step ahead forecasts with continuous VB updates compared to MCMC results with no parameter updates 
+\end{itemize}
 
 \section{Electricity Load Forecasts}
 \subsection{Motivation}
-\begin{list}
+\begin{itemize}
 \item Describe and plot Data
 \item Real data has five minute updates
 \item Density is of interest due to rare price spikes - show price data/supply curve etc to demonstrate
-\end{list}
+\item Some general background on load forecasting somewhere here
+\end{itemize}
 
 \subsection{Exponential Smoothing}
 
-\citet{Taylor2003} explores the seasonal properties of electricity demand and introduces a double seasonal Holt-Winters exponential smoothing model with daily and weekly effects described by (\ref{ds-hw1})-(\ref{ds-hw4}), and later verifies that this approach is superior to other common time-series models for very short-term load forecasting \citep{Taylor2008}.
+\citet{Taylor2003} explores the seasonal properties of electricity demand and introduces a double seasonal Holt-Winters exponential smoothing model with daily and weekly effects described by (\ref{ds-hw1})-(\ref{ds-hw4}), and in \citet{Taylor2008} verifies that this approach is superior to other common time-series models for very short-term load forecasting \citep{Taylor2008}.
 
 \begin{align}
 y_t &= l_{t-1} + d_{t-m_1} + w_{t-m_2} + e_t \label{ds-hw1} \\
@@ -419,7 +420,7 @@ d_t &= \delta (y_t - l_{t-1} - w_{t-m_2}) + (1 - \delta)d_{t-m_1} \label{ds-hw3}
 w_t &= \omega (y_t - l_{t-1} - d_{t-m_1}) + (1 - \omega)w_{t-m_2} \label{ds-hw4}
 \end{align}
 
-with $\alpha, \delta, \omega \in (0, 1)$. This can be rewritten as a single source of error state-space model \citep{Snyder1985}
+where $m_1$ and $m_2$ are the lengths of the daily and weekly cycle, restricting the smoothing parameters $\alpha, \delta, \omega$ to lie in $(0, 1)$. This can be rewritten as a single source of error state-space model \citep{Snyder1985},
 
 \begin{align}
 y_t &= l_{t-1} + d_{t-m_1} + w_{t-m_2} + e_t \label{ds-hw-ssoe1} \\
@@ -428,7 +429,7 @@ d_t &= d_{t-m_1} + \delta e_t \label{ds-hw-ssoe3} \\
 w_t &= w_{t-m_2} + \omega e_t \label{ds-hw-ssoe4}. 
 \end{align}
 
-\citet{Forbes2000} describes a Bayesian method to sample the posterior distribution of the variance, smoothing parameters and initial states for $l_t, d_t$ and $w_t$ when $e_t \sim \mathcal{N}(0, \sigma^2)$. This method involves inverting a matrix that is singular using the parameterisation described by (\ref{ds-hw-ssoe1}) - (\ref{ds-hw-ssoe4}) so we reparameterise using (\ref{ds-hw-rp1}) - (\ref{ds-hw-rp4}) to avoid this problem.
+\citet{Forbes2000} describes a Bayesian method to sample the posterior distribution  when $e_t \sim \mathcal{N}(0, \sigma^2)$. This method involves inverting a matrix that is singular using the parameterisation described by (\ref{ds-hw-ssoe1}) - (\ref{ds-hw-ssoe4}) so we reparameterise the seasonality using (\ref{ds-hw-rp1}) - (\ref{ds-hw-rp4}) to avoid this problem.
 
 \begin{align}
 y_t &= l_{t-1} - \sum_{i = 1}^{m_1 - 1}d_{t-i} - \sum_{i = 1}^{m_2 - 1}w_{t-i} + e_t \label{ds-hw-rp1} \\
@@ -447,23 +448,29 @@ p(\theta | y_{1:T}) \propto \left| \widetilde{X}' \widetilde{X} \right|^{-1/2} \
 
 where $\widetilde{X}$ and $\tilde{s}$ are functions of $\theta$ and $y$. The problems with using this method in our model are two-fold: repeating numerical integrion each time a new data point is observed for a three dimensional distribution is computationally difficult, and the $T$ in the exponent makes most evalutions of $p(\theta | y_{1:T})$ computationally zero when $T$ is large.
 
-\begin{list}
+\begin{itemize}
 \item Derive some MCMC algorithm using $\theta$ conditional
 \item Infer model structure from draws if we can run this
 \item Or pick as flexible as possible distribution for marginals (normal mixture?) and figure out some vine structure to run VB without MCMC
-\end{list}
+\end{itemize}
 
 \subsection{Variational Bayes Implementation}
-\begin{list}
+\begin{itemize}
 \item Posterior Distributions hopefully do not change much as more data is observed, so we can keep approximating distribution family constant
 \item But we might want a model that does change to make updates worthwhile
 \item Ideal model has constant distributional family with changing parameter values
 \item Maybe via Markov Switching mechanism to be added as probability of being in a certain state should change.
-\end{list}
+\end{itemize}
 \subsection{Forecasting}
-compare to MCMC when possible
+
+\begin{itemize}
+\item Compare to MCMC when possible
+\end{itemize}
 
 \section{Timeline}
+\begin{itemize}
+\item Put something here eventually
+\end{itemize}
 
 \bibliographystyle{asa}
 \bibliography{references}
