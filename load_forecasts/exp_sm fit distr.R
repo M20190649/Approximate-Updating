@@ -18,7 +18,7 @@ calc_moments = function(x){
 }
 
 moments = apply(draws, 2, calc_moments)
-rownames(moments) = c("Mean", "Variance", "Skewness", "Kurtosis")
+rownames(moments) = c("Mean", "Variance")
 moments
 #Use IG for sigmasq and Gaussian for initial states - same as conditionals
 #IG method of moment parameters here
