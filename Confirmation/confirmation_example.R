@@ -2,6 +2,7 @@ library(ggplot2)
 library(mvtnorm)
 library(GGally)
 library(dplyr)
+library(gridExtra)
 library(tidyr)
 library(pscl)
 library(Rcpp)
@@ -133,13 +134,11 @@ lambda = estim[,which.min(estim[9,])]
 LVB = matrix(c(lambda[3:4], 0, lambda[5]), 2)
 Sigma = LVB %*% t(LVB)
 
-p1dens = mutate(data.frame(support = seq(-1, 1, 0.01)), density = dnorm(support, lambda[1], Sigma[1,1]), param = "Phi 1")
-p2dens = mutate(data.frame(support = seq(-1, 1, 0.01)), density = dnorm(support, lambda[2], Sigma[2,2]), param = "Phi 2")
-sig2dens = mutate(data.frame(support = seq(0.01, 10, 0.05)), density = densigamma(support, lambda[6], lambda[7]), param = "Sigma Squared")
+p1dens = mutate(data.frame(support = seq(-1, 1, 0.01)), density = dnorm(support, lambda[1], sqrt(Sigma[1,1])))
+p2dens = mutate(data.frame(support = seq(-1, 1, 0.01)), density = dnorm(support, lambda[2], sqrt(Sigma[2,2])))
+sig2dens = mutate(data.frame(support = seq(0.01, 10, 0.05)), density = densigamma(support, lambda[6], lambda[7]))
 
-univariates = rbind(p1dens, p2dens, sig2dens)
 colnames(theta) = c("Phi1", "Phi2", "SigmaSquared")
-unitheta = gather(theta, param, draw)
 
 plot1 = ggplot() + geom_histogram(data = theta, aes(Phi1, y = ..density..)) + 
   geom_line(data = p1dens, aes(support, density)) 
@@ -151,9 +150,9 @@ plot3 = ggplot() + geom_histogram(data = theta, aes(SigmaSquared, y = ..density.
 p1p2 = expand.grid(sup1 = seq(-1, 1, length.out = 100), sup2 = seq(-1, 1, length.out = 100))
 p1p2$density = apply(p1p2, 1, dmvnorm, mean = lambda[1:2], sigma = Sigma) 
 p1s2 = expand.grid(sup1 = seq(-1, 1, length.out = 100), sup2 = seq(0.01, 5, length.out = 100))
-p1s2$density = apply(p1s2, 1, function(x) dnorm(x[1], lambda[1], Sigma[1:1])*densigamma(x[2], lambda[6], lambda[7]))
+p1s2$density = apply(p1s2, 1, function(x) dnorm(x[1], lambda[1], sqrt(Sigma[1,1]))*densigamma(x[2], lambda[6], lambda[7]))
 p2s2 = expand.grid(sup1 = seq(-1, 1, length.out = 100), sup2 = seq(0.01, 5, length.out = 100))
-p2s2$density = apply(p2s2, 1, function(x) dnorm(x[1], lambda[2], Sigma[2:2])*densigamma(x[2], lambda[6], lambda[7]))
+p2s2$density = apply(p2s2, 1, function(x) dnorm(x[1], lambda[2], sqrt(Sigma[2,2]))*densigamma(x[2], lambda[6], lambda[7]))
 
 plot4 = ggplot() + geom_point(data=theta, aes(Phi1, Phi2)) + 
   geom_contour(data=p1p2, aes(sup1, sup2, z = density))
@@ -162,4 +161,4 @@ plot5 = ggplot() + geom_point(data=theta, aes(Phi1, SigmaSquared)) +
 plot6 = ggplot() + geom_point(data=theta, aes(Phi2, SigmaSquared)) + 
   geom_contour(data=p2s2, aes(sup1, sup2, z = density))
 
-ggplot() + geom_point(data= bitheta, aes(a, b)) + geom_contour(data = bivariates, aes(sup1, sup2, z = density)) + facet_wrap(~param, ncol = 3, scale = "free")
+grid.arrange(plot1, plot2, plot3, plot4, plot5, plot6, ncol = 3)
