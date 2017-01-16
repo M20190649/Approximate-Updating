@@ -126,9 +126,40 @@ i.a = mu^2/v + 2
 i.b = mu*(mu^2/v + 1)
 initial = c(mean(theta[50001:10000, 1]), mean(theta[50001:10000, 2]), L[1,1], L[2,1], L[2,2], i.a, i.b)
 set.seed(11)
-estim = SGA(y, initial, 1, 0.001, 5000, 0.25)
-estim
-rho = sign(estim[3])*estim[4]/sqrt(estim[4]^2+estim[5]^2)
 
-VBVine = Vine
-VBVine$par[3,1] = rho
+estim = replicate(10, SGA(y, initial, 1, 0.001, 5000, 0.25))
+lambda = estim[,which.min(estim[9,])]
+
+LVB = matrix(c(lambda[3:4], 0, lambda[5]), 2)
+Sigma = LVB %*% t(LVB)
+
+p1dens = mutate(data.frame(support = seq(-1, 1, 0.01)), density = dnorm(support, lambda[1], Sigma[1,1]), param = "Phi 1")
+p2dens = mutate(data.frame(support = seq(-1, 1, 0.01)), density = dnorm(support, lambda[2], Sigma[2,2]), param = "Phi 2")
+sig2dens = mutate(data.frame(support = seq(0.01, 10, 0.05)), density = densigamma(support, lambda[6], lambda[7]), param = "Sigma Squared")
+
+univariates = rbind(p1dens, p2dens, sig2dens)
+colnames(theta) = c("Phi1", "Phi2", "SigmaSquared")
+unitheta = gather(theta, param, draw)
+
+plot1 = ggplot() + geom_histogram(data = theta, aes(Phi1, y = ..density..)) + 
+  geom_line(data = p1dens, aes(support, density)) 
+plot2 = ggplot() + geom_histogram(data = theta, aes(Phi2, y = ..density..)) + 
+  geom_line(data = p2dens, aes(support, density)) 
+plot3 = ggplot() + geom_histogram(data = theta, aes(SigmaSquared, y = ..density..)) + 
+  geom_line(data = sig2dens, aes(support, density)) 
+
+p1p2 = expand.grid(sup1 = seq(-1, 1, length.out = 100), sup2 = seq(-1, 1, length.out = 100))
+p1p2$density = apply(p1p2, 1, dmvnorm, mean = lambda[1:2], sigma = Sigma) 
+p1s2 = expand.grid(sup1 = seq(-1, 1, length.out = 100), sup2 = seq(0.01, 5, length.out = 100))
+p1s2$density = apply(p1s2, 1, function(x) dnorm(x[1], lambda[1], Sigma[1:1])*densigamma(x[2], lambda[6], lambda[7]))
+p2s2 = expand.grid(sup1 = seq(-1, 1, length.out = 100), sup2 = seq(0.01, 5, length.out = 100))
+p2s2$density = apply(p2s2, 1, function(x) dnorm(x[1], lambda[2], Sigma[2:2])*densigamma(x[2], lambda[6], lambda[7]))
+
+plot4 = ggplot() + geom_point(data=theta, aes(Phi1, Phi2)) + 
+  geom_contour(data=p1p2, aes(sup1, sup2, z = density))
+plot5 = ggplot() + geom_point(data=theta, aes(Phi1, SigmaSquared)) + 
+  geom_contour(data=p1s2, aes(sup1, sup2, z = density))
+plot6 = ggplot() + geom_point(data=theta, aes(Phi2, SigmaSquared)) + 
+  geom_contour(data=p2s2, aes(sup1, sup2, z = density))
+
+ggplot() + geom_point(data= bitheta, aes(a, b)) + geom_contour(data = bivariates, aes(sup1, sup2, z = density)) + facet_wrap(~param, ncol = 3, scale = "free")
