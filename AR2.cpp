@@ -165,16 +165,16 @@ double allderivc(rowvec epsilon, vec lambda, vec y, double param){
 //need a large n to be a consistent enough estimator to work with our low threshold
 // [[Rcpp::export]]
 double ELBOc(vec lambda, vec y, int n = 1000) {
-  mat epsilon = simc(n);
-  vec theta(3); //transformed variables
-  double out = 0; //output
-  for(int i = 0; i < n ; ++i){ //for each i, simulate a trio of variables, transform, calculate logjoint - logq, then average over n
+  mat epsilon = simc(n); //to transform to theta
+  vec theta(3); //store transformed variables
+  vec out(n); //output
+  for(int i = 0; i < n ; ++i){ //for each i, transform a row of epsilon to theta, calculate logjoint - logq, then average over n
     theta[0] = lambda[2]*epsilon(i,0) + lambda[0]; //this is mu + L * epsilon 
     theta[1] = lambda[3]*epsilon(i,0) + lambda[4]*epsilon(i,1) + lambda[1];
     theta[2] = qigammac(epsilon(i,2), lambda[5], lambda[6]); //inverse transform
-    out += (logjointc(y, theta[0], theta[1], theta[2]) - logqc(theta, lambda)); //calculate by summing terms/n 
+    out[i] = (logjointc(y, theta[0], theta[1], theta[2]) - logqc(theta, lambda)); //calculate by summing terms/n 
   }
-  return out/n;
+  return mean(out);
 }
 
 
@@ -218,6 +218,20 @@ vec SGA(vec y, vec lambda, int s, double threshold, int M, double eta){
   } //end of while loop
   
   vec out = {lambda[0], lambda[1], lambda[2], lambda[3], lambda[4], lambda[5], lambda[6], k, LBnew}; //output final set of parameters, number of iterations and maximised LB
+  return out;
+}
+
+// [[Rcpp::export]]
+vec ELBOtest(vec lambda, vec y, int n = 100) {
+  mat epsilon = simc(n);
+  vec theta(3); //transformed variables
+  vec out(n); //output
+  for(int i = 0; i < n ; ++i){ //for each i, simulate a trio of variables, transform, calculate logjoint - logq, then average over n
+    theta[0] = lambda[2]*epsilon(i,0) + lambda[0]; //this is mu + L * epsilon 
+    theta[1] = lambda[3]*epsilon(i,0) + lambda[4]*epsilon(i,1) + lambda[1];
+    theta[2] = qigammac(epsilon(i,2), lambda[5], lambda[6]); //inverse transform
+    out[i] =  (logjointc(y, theta[0], theta[1], theta[2]) - logqc(theta, lambda)); //calculate by summing terms/n 
+  }
   return out;
 }
 
