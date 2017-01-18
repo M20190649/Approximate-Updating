@@ -184,11 +184,12 @@ double ELBOc(vec lambda, vec y, int n = 1000) {
 //M = maximum number of iterations, 10,000 seems to work, adjust with lower thresholds, 
 //eta = stepsize tuning parameter, 0.1 works fine, don't want to restrict movement too much
 // [[Rcpp::export]]
-vec SGA(vec y, vec lambda, int s, double threshold, int M, double eta){
+vec SGA(vec y, vec lambda, int s, double threshold, int M, double eta1, double eta2){
   //initial setup
   vec partials(7); //store partial derivatives
   vec Gt = zeros<vec>(7); //for the adagrad step size calculation 
   vec pt(7); //final step size
+  vec etavec = {eta1, eta1, eta1, eta1, eta1, eta2, eta2};
   double k = 0; //counts iterations
   double LBold; //old lambdas ELBO value
   double LBnew = ELBOc(lambda, y); //new lambdas ELBO value
@@ -208,7 +209,7 @@ vec SGA(vec y, vec lambda, int s, double threshold, int M, double eta){
     }
     for(int j = 0; j < 7; ++j){
       Gt[j] += pow(partials[j],2); //Each GT is the sum of the squared partial diffs. 
-      pt[j] = eta * pow(Gt[j], -0.5); //transform to get pt value
+      pt[j] = etavec[j] * pow(Gt[j], -0.5); //transform to get pt value
       lambda[j] += pt[j] * partials[j];  //new lambda is old + stepsize * partial diff
     }
     LBold = LBnew; //last lowerbound (ELBO) is saved as old
@@ -221,17 +222,4 @@ vec SGA(vec y, vec lambda, int s, double threshold, int M, double eta){
   return out;
 }
 
-// [[Rcpp::export]]
-vec ELBOtest(vec lambda, vec y, int n = 100) {
-  mat epsilon = simc(n);
-  vec theta(3); //transformed variables
-  vec out(n); //output
-  for(int i = 0; i < n ; ++i){ //for each i, simulate a trio of variables, transform, calculate logjoint - logq, then average over n
-    theta[0] = lambda[2]*epsilon(i,0) + lambda[0]; //this is mu + L * epsilon 
-    theta[1] = lambda[3]*epsilon(i,0) + lambda[4]*epsilon(i,1) + lambda[1];
-    theta[2] = qigammac(epsilon(i,2), lambda[5], lambda[6]); //inverse transform
-    out[i] =  (logjointc(y, theta[0], theta[1], theta[2]) - logqc(theta, lambda)); //calculate by summing terms/n 
-  }
-  return out;
-}
 
