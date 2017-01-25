@@ -4,15 +4,14 @@
 
 #include <RcppArmadillo.h>
 #include <math.h>
-#include <boost/math/distributions/inverse_gamma.hpp>
+#include <boost/math/distributions/gamma.hpp>
 using namespace Rcpp;
 using namespace arma;
 using namespace std;
-using boost::math::inverse_gamma;
 using namespace boost::math;
 
 //arma = bulk of vectors/matrices used (R package = "RcppArmadillo")
-//boost = has IG quantile function (R package = "BH")
+//boost = has gamma quantile function (R package = "BH")
 
 //Pi needed for gaussian density calculation
 #define my_PI 3.14159265358979324
@@ -22,8 +21,8 @@ using namespace boost::math;
 //Takes the Inv.Gamma inverse cdf transform of a uniform(0,1) random variable
 // [[Rcpp::export]]
 double qigammac(double x, double alpha, double beta){
-  inverse_gamma IG(alpha, beta); //creates an IG object from BH
-  double out = quantile(IG, x); //quantile function is the inv. CDF
+  boost::math::gamma_distribution<> G(alpha, 1/beta); //creates an IG object from BH
+  double out = 1/quantile(G, 1-x); //quantile function is the inv. CDF
   return out;
 }
 
@@ -173,19 +172,20 @@ double allderivc(vec lambda, vec y, double param){
   
   double h = 0.000001; //set to what you want, lower is better
   vec lambda2 = lambda; //x+h in f(x+h)
-  lambda2[param] = lambda2[param] + h; //Works for either sigmasq parameter without if functions
+  double sigmasq2;
+  lambda2[param] += h; //Works for either sigmasq parameter without if functions
   if(param == 5 | param == 6){
-    double sigmasq2;
     sigmasq2 = qigammac(epsilon[2], lambda2[5], lambda2[6]); //f in f(x+h)
     double dSigmasqDLambda = (sigmasq2 - theta[2])/h; //(f(x+h)-f(x))/h
     deriv1 = dSigmasqDLambda *  sigderiv(y, theta[0], theta[1], theta[2]);
   }
   
-  vec theta2(3);
-  theta2[0] = lambda2[2]*epsilon[0] + lambda2[0]; 
-  theta2[1] = lambda2[3]*epsilon[0] + lambda2[4]*epsilon[1] + lambda2[1];
-  theta2[2] = qigammac(epsilon[2], lambda2[5], lambda2[6]);
-  double deriv2 = (logqc(theta2[0], theta2[1], theta2[2], lambda2)-logqc(theta[0], theta[1], theta[2], lambda))/h;
+  double deriv2 = 0; // d/dx log q = 0 for x = mu1, mu2, sig12
+  if(param == 2 | param == 4){
+    deriv2 = -1/lambda[param];
+  } else if(param == 5 | param == 6){
+    double deriv2 = (logqc(theta[0], theta[1], sigmasq2, lambda2)-logqc(theta[0], theta[1], theta[2], lambda))/h;
+  }
   return deriv1 - deriv2;
 }
 
@@ -216,7 +216,7 @@ vec SGA(vec y, vec lambda, int s, double threshold, int M, double eta1, double e
   vec partials(7); //store partial derivatives
   vec Gt = zeros<vec>(7); //for the adagrad step size calculation 
   vec pt(7); //final step size
-  vec etavec = {eta1, eta1, eta2, eta2, eta2, eta3, eta3};
+  vec etavec = {eta1, eta1, eta2, eta2, eta2, 0, eta3};
   double k = 0; //counts iterations
   double LBold; //old lambdas ELBO value
   double LBnew = ELBOc(lambda, y); //new lambdas ELBO value

@@ -56,7 +56,7 @@ ELBOr = function(lambda, y, n = 1000){
   out = rep(0, n)
   for(i in 1:n){
     a = logjointc(y, theta[i, 1], theta[i, 2], theta[i, 3])
-    b = - logqc(theta[i, ], lambda)
+    b = - logqc(theta[i, 1], theta[i, 2], theta[i, 3], lambda)
     out[i] = a + b
   }
   return(mean(out))
@@ -95,14 +95,14 @@ allderivr = function(lambda, y, param){
   theta2[1] = lambda2[3]*epsilon[1] + lambda2[1]
   theta2[2] = lambda2[4]*epsilon[1] + lambda2[5]*epsilon[2] + lambda2[2]
   theta2[3] = qigamma(epsilon[3], lambda2[6], lambda2[7])
-  deriv2 = (logqc(theta2, lambda2)-logqc(theta, lambda))/h
+  deriv2 = (logqc(theta2[1], theta2[2], theta2[3], lambda2)-logqc(theta[1], theta[2], theta[3], lambda))/h
   return(deriv1 - deriv2)
 }
 
 
-SGAr = function(y, lambda, s, threshold, M, eta1, eta2){
+SGAr = function(y, lambda, s, threshold, M, eta1, eta2, eta3){
   Gt = rep(0, 7)
-  eta = c(rep(eta1, 5), rep(eta2, 2))
+  eta = c(rep(eta1, 2), rep(eta2, 3), rep(eta3, 2))
   k = 0
   LBnew = ELBOr(lambda, y)
   diff = threshold + 1
