@@ -14,10 +14,10 @@ source("conf_functions.R")
 sourceCpp("../AR2.cpp")
 
 set.seed(21)
-phi1 = 0.75
+phi1 = 0.79
 phi2 = 0.2
 sigma2 = 1
-T = 150
+T = 30
 J = 150 #for forecasting
 y = vector(length = T+J)
 
@@ -32,16 +32,16 @@ for(t in 3:(T+J)){
 
 ##MCMC
 rep = 500000
-#T = 250
+#T = 30
 igShape = T/2
 
 theta = matrix(0, ncol = 3, nrow = rep)
 sig2 = 1
 phi = c(0.6, 0.1)
 
-tune1 = 0.25
+tune1 = 0.16
 accept1 = 0
-tune2 = 0.25
+tune2 = 0.16
 accept2 = 0
 set.seed(3)
 
@@ -101,11 +101,11 @@ row.names(stats) = c("l95", "mean", "median", "u95")
 colnames(stats) = c("Phi1", "Phi2", "SigmaSquared")
 stats
 colnames(theta) = c("Phi1", "Phi2", "SigmaSquared")
-#theta %>% as.data.frame() %>% cbind(rep = 1:rep) %>% gather(parameter, draw, -rep) %>% 
-#  ggplot() + geom_line(aes(rep, draw)) + facet_wrap(~parameter, scales = "free")
+theta %>% as.data.frame() %>% cbind(rep = 1:rep) %>% gather(parameter, draw, -rep) %>% 
+  ggplot() + geom_line(aes(rep, draw)) + facet_wrap(~parameter, scales = "free")
 
 
-thetaKeep = data.frame(theta[seq(5001, 500000, 300),])
+thetaKeep = data.frame(theta[seq(10001, 500000, 1550),])
 effectiveSize(thetaKeep)
 ggpairs(thetaKeep)
 cov(thetaKeep)
