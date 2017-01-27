@@ -9,6 +9,7 @@ using namespace Rcpp;
 using namespace arma;
 using namespace std;
 using namespace boost::math;
+//namespaces have yet to clash so I'll be a bit lazy and declare them all here
 
 //arma = bulk of vectors/matrices used (R package = "RcppArmadillo")
 //boost = has gamma quantile function (R package = "BH")
@@ -18,15 +19,18 @@ using namespace boost::math;
 
 //Only the SGA function needs to be called in R. Everything else is called from SGA.
 
-//Takes the Inv.Gamma inverse cdf transform of a uniform(0,1) random variable
+//Takes the Inv.Gamma inverse cdf transform of a uniform(0,1) random variable. Doing this directly via an IG object in Boost broke for some values 
+//of alpha and beta, but doing it via a transform of a gamma seems to be more stable
 // [[Rcpp::export]]
-double qigammac(double x, double alpha, double beta){
-  boost::math::gamma_distribution<> G(alpha, 1/beta); //creates an IG object from BH
-  double out = 1/quantile(G, 1-x); //quantile function is the inv. CDF
+double qigammac(double x, double alpha, double beta){ 
+  boost::math::gamma_distribution<> G(alpha, 1/beta); //creates the gamma object associated with the IG. Does need the explicit boost::math
+  double out = 1/quantile(G, 1-x); //quantile function is the inv. CDF, transform to make it for IG
   return out;
 }
 
-//Simulates n many trios of two N(0,1) and one U(0,1) variables
+//Simulates n many trios of two N(0,1) and one U(0,1) variables, allowing transformation from epsilon to theta
+//Will force the epsilon to be from the stationary triangle even if transformation is not requested.
+//Because of the while loop ensure that lambda[0] and lambda[1] are inside the stationary triangle or this will take a long time with n ~ 1000
 // [[Rcpp::export]]
 mat simc(int n, vec lambda, bool transform){
   mat eps(n, 3);
@@ -34,26 +38,26 @@ mat simc(int n, vec lambda, bool transform){
   bool flag;
   for(int i = 0; i < n; i++) {
     flag = FALSE;
-    while(!flag) {
+    while(!flag) { //repeat until draws are from a stationary region
       eps(i, 0) = randn<vec>(1)[0];
       eps(i, 1) = randn<vec>(1)[0];
       eps(i, 2) = randu<vec>(1)[0]; //uniform
       theta(i, 0) = lambda[0] + lambda[2]*eps(i, 0);
       theta(i, 1) = lambda[1] + lambda[3]*eps(i, 0) + lambda[4]*eps(i, 1);
       theta(i, 2) = qigammac(eps(i, 2), lambda[5], lambda[6]);
-      if(theta(i, 1) > -1 & theta(i, 1) < 1 + theta(i, 0) & theta(i, 1) < 1 - theta(i, 0)){
+      if(theta(i, 1) > -1 & theta(i, 1) < 1 + theta(i, 0) & theta(i, 1) < 1 - theta(i, 0)){ //AR2 stationary condition
         flag = TRUE;
       }
     }
   }
-  if(transform){
+  if(transform){ //theta directly is convenient for the ELBO calculation
     return theta;
   } else {
-    return eps;
+    return eps; //We need to work with epsilon for the derivatives, but still needs stationary theta!
   }
 }
 
-//Returns the log density of a bivariate normal distribution
+//Returns the log density of a bivariate normal distribution, pretty unexciting
 // [[Rcpp::export]]
 double logbvnc(vec x, vec mu, mat Sigma){ 
   double rho = Sigma(0, 1) / pow(Sigma(0,0) * Sigma(1,1), 0.5); //calculates correlation from Sigma matrix
@@ -63,16 +67,16 @@ double logbvnc(vec x, vec mu, mat Sigma){
   return out;
 }
 
-//Evaluates the log joint density. Assume Jeffrey's Prior
+//Evaluates the log joint density. Assume Jeffrey's Prior. Some fun stuff going for y[1:2] likelihood
 // [[Rcpp::export]]
 double logjointc(vec y, double phi1, double phi2, double sig2){
   int T = y.size();
-  double loglike = -T*log(sig2)/2; //loglikelihood first term, includes 1/sig^2 prior
+  double loglike = -T*log(sig2)/2; //loglikelihood first term, includes 1/sig^2 prior. As the y product is from t = 3:T, the prior gives us sigma^-T.
   for(int i = 2; i < T; i++){
     loglike -=  pow(y[i] - phi1*y[i-1] - phi2*y[i-2], 2)/(2*sig2); //the sum of y - mean(y) from t = 3 to T = L(theta | y_{3:T})
   }  
   double gamma0 = sig2 * (1 - phi2) / ((1+phi2) * (pow(1-phi2, 2) - pow(phi1, 2))); //Create the variance matrix for the initial states: Sigma = (gamma0, gamma1 //gamma1, gamma0)
-  double gamma1 = sig2 * phi1 / ((1+phi2) * (pow(1-phi2, 2) - pow(phi1, 2)));
+  double gamma1 = sig2 * phi1 / ((1+phi2) * (pow(1-phi2, 2) - pow(phi1, 2))); //These are just the autocovariance function for k = 0, k = 1
   mat Sigma(2, 2);
   Sigma(0, 0) = Sigma(1, 1) = gamma0;
   Sigma(1, 0) = Sigma(0, 1) = gamma1;
@@ -81,7 +85,7 @@ double logjointc(vec y, double phi1, double phi2, double sig2){
   return loglike;
 } 
 
-//Returns the density of an inverse gamma distribution (IG(shape, scale) = 1/gamma(shape, rate))
+//Returns the density of an inverse gamma distribution (IG(shape, scale) = 1/gamma(shape, rate)). Just taken straight from the pdf
 // [[Rcpp::export]]
 double logdigammac(double x, double alpha, double beta){
   double cons = alpha*log(beta) - log(tgamma(alpha)); //constant, tgamma is the cpp gamma function
@@ -89,14 +93,14 @@ double logdigammac(double x, double alpha, double beta){
   return cons + kernel;
 }
 
-//Evaluates the log of the entire q distribution
+//Evaluates the log of BVN(phi)*IG(sigma2)
 // [[Rcpp::export]]
 double logqc(double phi1, double phi2, double sig2, vec lambda){
-  mat L(2,2); //steps to create lower triangle from parameter vector 
+  mat L(2,2); //steps to create lower triangle of the variance matrix from the parameter vector 
   L(0, 0) = lambda[2];
   L(1, 0) = lambda[3];
   L(1, 1) = lambda[4];
-  mat Sigma = L * L.t(); //Variance matrix
+  mat Sigma = L * L.t(); //BVN Variance matrix
   vec x1 = {phi1, phi2}; //The part of theta that comes from the BVN distribution
   vec mu = {lambda[0], lambda[1]}; //Mean vector of the BVN
   double bvn = logbvnc(x1, mu, Sigma); //calculate log bvn density
@@ -105,21 +109,21 @@ double logqc(double phi1, double phi2, double sig2, vec lambda){
 }
 
 // Takes the derivative of the log joint density with respect to either phi1 or phi2 (denoted by whichphi)
+// Check notes for the formula, derivative is a sum of three distinct parts
 // [[Rcpp::export]]
 double phideriv(vec y, double phi1, double phi2, double sigmasq, int whichphi){
   int T = y.size();
-  double part1;
+  double part1; 
   double part2;
   double part3 = 0;
   if(whichphi == 1){
-    part1 = -2*phi1 / (pow(phi1, 2) - pow(1-phi2, 2)); //log variance determinant
-    //part2 = initial states inside exponent
-    part2 =  y[0]*y[1]*(phi2 + 1) / sigmasq;
+    part1 = -2*phi1 / (pow(phi1, 2) - pow(1-phi2, 2)); //log variance determinant is a function of phi1 and phi2
+    part2 =  y[0]*y[1]*(phi2 + 1) / sigmasq;  //inside the exponent for t = 1:2
   } else {
     part1 = -1 / (phi1 + phi2 -1) + 1 / (phi1 - phi2 +1) - 2 / (phi2 + 1);
     part2 = (pow(y[1], 2) * phi2 + y[0]*y[1]*phi1 + pow(y[2], 2)*phi2) / sigmasq;
   }
-  for(int t = 2; t < T; ++t){ //derivative of sum y_3:T
+  for(int t = 2; t < T; ++t){ //derivative of main loglikelihood for t = 3:T
     if(whichphi == 1) {
       part3 -= phi1*pow(y[t-1], 2) - y[t]*y[t-1] + phi2*y[t-1]*y[t-2];
     } else {
@@ -135,10 +139,10 @@ double phideriv(vec y, double phi1, double phi2, double sigmasq, int whichphi){
 // [[Rcpp::export]]
 double sigderiv(vec y, double phi1, double phi2, double sigmasq){
   double T = y.size();
-  double part1 = -(T + 2)/(2*sigmasq); //components divided by sigma squared (originally out front of distribution)
+  double part1 = -(T + 2)/(2*sigmasq); //components divided by sigma squared - comes from a * log(sig^2) 
   double rho0 = (1 - phi2) / ((1+phi2) * (pow(1-phi2, 2) - pow(phi1, 2)));
   double rho1 = phi1 / ((1+phi2) * (pow(1-phi2, 2) - pow(phi1, 2)));
-  double part2 = (rho0 * (pow(y[0], 2) + pow(y[1], 2)) - 2 * rho1 * y[0] * y[1])  / (pow(rho0, 2) - pow(rho1, 2));
+  double part2 = (rho0 * (pow(y[0], 2) + pow(y[1], 2)) - 2 * rho1 * y[0] * y[1])  / (pow(rho0, 2) - pow(rho1, 2)); //part originally inside the exponent
   for(int t = 2; t < T; ++t){
     part2 += pow(y[t] - phi1*y[t-1] - phi2*y[t-2], 2);
   }
@@ -168,7 +172,7 @@ double allderivc(vec lambda, vec y, double param){
   } else if(param == 4) {
     deriv1 = epsilon[1] * phideriv(y, theta[0], theta[1], theta[2], 2);
   }
-  //dsigmasq/dlambda is unknown as qigamma is complex. Do this part numerically but the d(log(p(theta, y)))/dsigmasq analytically.
+  //dsigmasq/dlambda is unknown as qigamma is a complex transform. Do this part numerically but the d(log(p(theta, y)))/dsigmasq analytically.
   
   double h = 0.000001; //set to what you want, lower is better
   vec lambda2 = lambda; //x+h in f(x+h)
@@ -181,9 +185,9 @@ double allderivc(vec lambda, vec y, double param){
   }
   
   double deriv2 = 0; // d/dx log q = 0 for x = mu1, mu2, sig12
-  if(param == 2 | param == 4){
+  if(param == 2 | param == 4){ //d/dx logq = 1/L[11] or 1/L[22] for x = L[11] or L[22] respectively 
     deriv2 = -1/lambda[param];
-  } else if(param == 5 | param == 6){
+  } else if(param == 5 | param == 6){ //again the invere gamma transform (probably) doesn't have an analytical form
     double deriv2 = (logqc(theta[0], theta[1], sigmasq2, lambda2)-logqc(theta[0], theta[1], theta[2], lambda))/h;
   }
   return deriv1 - deriv2;
