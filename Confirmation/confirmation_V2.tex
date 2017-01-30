@@ -60,15 +60,15 @@
 \tableofcontents
 \section{Introduction} 
 
-For many time-series applications a point forecast of the mean of the next observation in a series, $y_{T+1}$, can be easily obtained with frequentist methods, conditioning on the forecaster's observed series, $y_{1:T}$. Often the forecast is supplemented with a prediction interval backed by asymptotic theory, however there is a growing demand in the literature for density forecasts which are typically much harder to obtain, see \citet{Gneiting2014} for a review.
+Electricity prices have been subject to an extensive forecasting literature, as detailed in \citet{Weron2014}, and can be extremely volatile. For the 2012-2015 period in Victoria, the mean price was X/KWH but on X occaisions the price spiked upwards several orders of magnitude to upwards of $1,000/KWH, reaching as high as $10,000/KWH on X date. For this reason market participants are increasingly interested in a predictive density forecast, as the probability that the price will rise above a particular threshold in the next time period is more important than the mean value. To calculate a suitably accurate predictive density the Bayesian methodology is to be adopted in this thesis, as it can average over parameter and model uncertainty that is often ignored in frequentist methods. See \citet{Geweke2006} for a review on Bayesian forecasting and \citet{Gneiting2014} for density forecasting in general. 
 
-As a contrast to frequentism, the Bayesian methodology has been used extensively in forecasting \citep{Geweke2006} and is it can capture the error components from parameter estimation and modelling error. However calculation of the Bayesian posterior distribution, $p(\theta | y)$ requires solving complex integrals that often do not have an analytical solution, in addition, if the the dimension of the parameter vector $\theta$ is large then numerical integration will be computationally infeasible. 
+Bayesian methods are computationally complex as they require integration over the set of unknown parameters, which must be large in a model that can capture the strong seasonal patterns in short term electricity load \citep{Taylor2003}, which is the main driver for electricity price and the focus of this work. To avoid this problem there are a range of techniques available to obtain the predictive distribution which do not involve integration, notably Markov Chain Monte Carlo (MCMC) methods. While MCMC has very strong convergence properties, computation is slow for even moderately complex models, which is problematic as Electricity demand in Victoria operates on a five minute interval. The predictive density for the next period's electricity load may not be available before it is observed.
 
-To address this problem a wide range of techniques are available, such as Markov Chain Monte Carlo (MCMC) and Variational Bayes (VB). The forecasters decision of technique to use is a compromise to implicit trade-off: MCMC captures the posterior distribution accurately but is compuationaly intensive, while other methods such as VB tend to be faster but are inaccurate. One time series of interest, electricity demand data, operates on five minute interval in Victoria, too short for MCMC to be a feasible option in a moderately complex model. The focus of this research is in time series that operate in real-time, where the observation of each data point requires the model parameters to be updated before a density forecast of the next data point can be made. Variational Bayes is used as an alternative computation strategy, and the trade off between the statistical and computational efficiency will be explored using data on the electricity demand of Victoria for the 2012-2015 period.
+Alternatives to MCMC include Variational Bayes (VB) and Expectation Propogation (EP), which aim to substitute the true posterior distribution for a vector of unknown parameters $\theta$, denoted by $p(\theta | y), with some approximate distribution denoted by $q(\theta | \lambda)$. Here $\lambda$ is a set of auxillary parameters associated with the approximation and not the model. For example, if $q(\theta | \lambda)$ is Gaussian $\lambda$ would be the mean and variance that parameterise $q$. Variational Bayes will be explored as an alternative computation strategy to MCMC in the context of short term electricity load forecasting using data from the 2012-2015 period in Victoria. The advantages in computation time for VB will be compared to the loss of statisitcal accuracy associated with the use of an approximation of the posterior instead of the truth. 
 
 \section{Bayesian Inference}
 
-Exact Bayesian inference in the context of forecasting uses the predictive density of $Y_{T+1}$ conditioned on the observed series, $Y_{t}, t = 1, \dots T$, which is denoted by $y_{1:T}$. The first step requires the posterior distribution of the model parameters $\theta$, p(\theta | y), where
+Exact Bayesian inference in the context of forecasting uses the predictive density of $Y_{T+1}$ conditioned on the observed series, $y_{t}, t = 1, \dots T$, which is denoted by $y_{1:T}$. The first step requires the posterior distribution of the model parameters $\theta$, $p(\theta | y)$, where
 
 \begin{equation}
 \label{posterior}
@@ -76,17 +76,17 @@ Exact Bayesian inference in the context of forecasting uses the predictive densi
 \end{equation}
 
 Generally the solution to (\ref{posterior}) is unavailable. This section will offer two alternatives, MCMC and VB.
-MCMC is used to create a sample from $p(\theta | y)$, and any function of interest from $p(\theta | y$ can be found with the relevant function applied to the sample, while VB replaces $p(\theta | y)$ with an approximation $q(\theta | \lambda)$, choosing some family $q$ and approximation parameters $\lambda$.
+MCMC is used to create a sample from $p(\theta | y)$, and any function of interest from $p(\theta | y$ can be found with the relevant function applied to the sample, while VB replaces $p(\theta | y)$ with an approximation $q(\theta | \lambda)$, choosing some family $q$ and auxillary parameters $\lambda$ to minimise the Kullback-Leibler divergence from $q(\theta | \lambda)$ to $p(\theta | y)$.
 
 \subsection{Markov Chain Monte Carlo}
 
-There are many types of MCMC algorithm, the most common being a Gibbs sampler, which iteratively samples from a $p$ dimensional $\theta$ via the conditional distributions
+There are many types of MCMC algorithm, the most common being a Gibbs sampler which iteratively samples from a $k$ dimensional parameter vector $\theta$ via the conditional distributions
 
 \begin{align}
-&p(\theta_1 | \theta_2, \dots, \theta_p, y_{1:T}) \nonumber \\
-&p(\theta_2 | \theta_1, \theta_3, \dots, \theta_p, y_{1:T}) \nonumber \\
+&p(\theta_1 | \theta_2, \dots, \theta_k, y_{1:T}) \nonumber \\
+&p(\theta_2 | \theta_1, \theta_3, \dots, \thetakp, y_{1:T}) \nonumber \\
 &\vdots \nonumber \\
-&p(\theta_p | \theta_1, \dots, \theta_{p-1}, y_{1:T}). \nonumber
+&p(\theta_k | \theta_1, \dots, \theta_{k-1}, y_{1:T}). \nonumber
 \end{align}
 
 With enough iterations, these samples converge in distribution to $p(\theta | y)$ and can be used for inference. The computation time per iteration and number of iterations required for convergence is problem specific but typically increases with model complexity. 
@@ -102,33 +102,40 @@ where $\epsilon_t \sim \mathcal{N}(0, \sigma^2)$. The likelihood of parameters $
 
 \begin{align}
 \label{likelihood}
-L(\theta | y_{1:T}) &= p(y_1 | \theta) p(y_2 | y_1, \theta) \prod_{t=3}^{T}p(y_t | y_{1:t-1}, \theta) \nonumber \\
-&= \frac{1}{(2\pi)^{T/2}\gamma(0)^{1/2}\Gamma{0}^{1/2}\sigma^{(T-2)/2}} \exp \left\{ \frac{-y_1^2}{2 \gamma(0)} \right\} 
-\exp \left\{\frac{-(y_2 - \gamma(1)/\gamma(2)y_1)^2}{2 \Gamma(0)} \right} \exp \left\{ \frac{-\sum_{t=3}^{T}(y_t - \phi_1 y_{t-1} - \phi_2 y_{t-2})^2}{2\sigma^2} \right\}
+L(\theta | y_{1:T}) &= p(y_1, y_2 | \theta) \prod_{t=3}^{T}p(y_t | y_{1:t-1}, \theta) \nonumber \\
+&= \frac{1}{(2\pi)} |\Sigma|^{-1/2} \sigma^{-(T-2)} \exp \left\{ \frac{-1}{2} \left( \textbf{y}' \Sigma^{-1} \textbf{y} \right\} + \frac{1}{\sigma^2} 
+\sum_{t=3}^{T}(y_t - \phi_1 y_{t-1} - \phi_2 y_{t-2})^2 \right) \right\}
 \end{align}
 
-where $\gamma(k)$ is the $k-th$ autocorrelation and $\Gamma(1) = \gamma(0) - \gamma(1)^2 / \gamma(0)$.
+where 
+
+\begin{equation}
+\Sigma = \left[ \begin{array}{cc} \gamma(0) & \gamma(1) \\ \gamma(1), \gamma(0) \end{array} \right],\
+\end{equation}
+
+$\gamma(k)$ is the $k-th$ autocorrelation and $\textbf{y} = (y_1, y_2)'$.
+
+The priors 
 
 \begin{align}
-p(\mu) &\propto 1 \nonumber \\
 p(\sigma^2) &\propto \sigma^{-2} \nonumber \\
-\mbox{Some kind of }&\rho \mbox{ prior}
+p(\rho_1, \rho_2) &\propto \mathbb{I}(\rho_2 > -1)\mathbb{I}(\rho_2 < 1 + \rho_1) \mathbb{I}(\rho_2 < 1 - \rho_1) \nonumber
 \end{align}
 
-as this prior on $\rho_1$ and $\rho_2$ is uniform over the triangle that defines the AR(2) stationary region.
+are used, where $\mathbb{I}$ is the indicator and $p(\rho_1, \rho_2)$ defines the AR(2) stationary region.
 
 Describe conditional distributions, possible MH step, result in forecast distribution for $y_{T+1}$
 
 \subsection{Variational Bayes}
 
-Variational Bayes introduces some approximating distribution $q(\theta | \lambda)$ and aims to choose the family $q$ and set of parameters $\lambda$ so that $q(\theta | \lambda$ is as close as possible to the true posterior $p(\theta | y)$. It does this by minimising the Kullback-Leibler (KL) divergence \citep{Kullback1951} from $q(\theta | \lambda)$ to $p(\theta | y)$. The KL divergence is defined by
+Variational Bayes introduces some approximating distribution $q(\theta | \lambda)$ and aims to choose the family $q$ and set of auxillary parameters $\lambda$ so that $q(\theta | \lambda$ is as close as possible to the true posterior $p(\theta | y)$. It does this by minimising the Kullback-Leibler (KL) divergence \citep{Kullback1951} from $q(\theta | \lambda)$ to $p(\theta | y)$. The KL divergence is defined by
 
 \begin{equation}
 \label{KL-def}
 KL[q(\theta | \lambda)||p(\theta | y)] = \int q(\theta | \lambda) \ln \left( \frac{q(\theta | \lambda)}{p(\theta | y)}\right) d\theta.
 \end{equation}
 
-and is a non-negative, assymetric measure of the difference between $p(\theta | y)$ and $q(\theta | \lambda)$ that will equal zero if and only if $p(\theta | y) = q(\theta | \lambda)$ almost everywhere \citep{Bishop2006}. It has origins in information theory, and can be interpreted as: \textit{`Given that I know $p(\theta | y)$ for some $\theta \in \Theta$, how much extra information is required, on average, to know the value of $q(\theta | \lambda)$?'} There are examples of the literature of approximations with other measures of divergence, such as \citet{Minka2001} introducting Expectation Propogation (EP), which minimises the reverse measure $KL[p(\theta | y)||q(\theta |\lambda)]$, which was extended to Power-EP in \citet{Minka2004}, which aims to minimise the more general $\alpha-\mbox{divergence}$ \citep{Amari1985}. It is shown in \citet{Bishop2006} (note: find original proof) that minimising $KL[p(\theta | y)||q(\theta | \lambda)]$ used in in EP is equivalent to the MLE of $q(\theta | \lambda)$ given a sample of $\theta$. However, we can write $KL[q(\theta | \lambda)||p(\theta | y)]$ as
+and is a non-negative, assymetric measure of the difference between $p(\theta | y)$ and $q(\theta | \lambda)$ that will equal zero if and only if $p(\theta | y) = q(\theta | \lambda)$ almost everywhere \citep{Bishop2006}. $KL[q(\theta | \lambda)||p(\theta | y)]$ can be re-written as
 
 \begin{equation}
 \label{KL-ELBO}
@@ -142,7 +149,7 @@ where $\mathcal{L}(q, y)$ is known as the Evidence Lower BOund (ELBO), defined b
 \mathcal{L}(q, y) = \int_{\theta} q(\theta|\lambda) \ln (p(y, \theta|\lambda)) d\theta -  \int_{\theta} q(\theta|\lambda) \ln (q(\theta|\lambda)) d\theta.
 \end{equation}
 
-From (\ref{ELBO}) it is clear that maximising $\mathcal{L}(q, y)$ with respect to $q$ is equivalent to minimising (\ref{KL-def}). Maximising the ELBO is much more convenient than minimising either form of the KL Divergence, and has lead to Variational Bayes been used much more widely in the literature than alternatives such as EP.
+From (\ref{ELBO}) it is clear that maximising $\mathcal{L}(q, y)$ with respect to $q$ is equivalent to minimising (\ref{KL-def}). Maximising the ELBO is much more convenient than minimising either form of the KL Divergence, and has lead to VB being used much more widely in the literature than alternatives such as EP.
 
 \subsubsection{Mean Field Variational Bayes} 
 
@@ -160,12 +167,39 @@ This technique is widely used as it greatly simplifies maximisation of the ELBO 
 q(\theta_i | \lambda_i) \propto\exp( \mathbb{E}_{q_{\setminus i}} [\ln(p(y,\theta))])
 \end{equation}
 
-and maximisation can proceed by matching (\ref{mf2}) to a known distribution. In the case that the likelihood and prior for $\theta_i$ form an exponential family conjugate pair, then the distributional family can be kept constant and all that is required is an update the parameters $\lambda_i$. If it does not match a known distribution, we may need to make a further approximation $\tilde{q_i(\theta_i|\lambda_i)}$ which has a recognizable distribution. One method as used in \citet{Friston2006} uses a Laplace approximation to and substitute in a Gaussian distribution for an otherwise unrecognizable $q_i(\theta_i | \lambda_i)$. 
+and maximisation can proceed by matching (\ref{mf2}) to a known distribution. In the case that the likelihood and prior for $\theta_i$ form an exponential family conjugate pair, then the distributional family can be kept constant and all that is required is an update the parameters $\lambda_i$.
 
-Matching distributions in this way is a very similar method to finding the posterior conditional distribution, $p(\theta_i | y, \theta_{\setminus i}$ in a Gibbs MCMC scheme, with dependence on other parameters replaced by their expectations. Hence, the optimal approximating family for $\theta_i$, $q(\theta_i | \lambda_i)$, will come from the same distributional family as the conditional distribution $p(\theta_i | \theta_{j \neq i}, y)$, if it exists in a recognisable form such as the exponential family. The secondary Laplace approximation is analogous to a Metropolis-Hastings-within-Gibbs step in MCMC, as a way to handle unrecognisable distributions.
+For illustration, consider data $y_i, i = 1, \dots, n$ generated from a $\mathcal{N}(\mu, \sigma^2)$ distribution where $p(\mu) \sim \mathcal{N}(\gamma, \lambda)$ and $p(\sigma^2) \sim Inv.Gamma(\alpha, \beta)$. It can be shown that
+
+\begin{equation}
+\label{mf3}
+q(\mu) \propto \exp \left\{ \frac{-(n\lambda + \mathbb{E}(\sigma^{-2}))}{2\lambda\mathbb{E}(\sigma^{-2})} \left( \mu - \frac{\mathbb{E}(\sigma^{-2})\gamma + \lambda \sum_{i=1}^{n} y_i}{n \lambda + \mathbb{E}(\sigma^{-2})} \right) \right\}
+\end{equation}
+
+and
+
+\begin{equation}
+\label{mf4}
+q(\sigma^2) \propto \sigma^{-2(n/2 + \alpha + 1) \exp \left\{ \frac{ -1/2(\sum_{i=1}^{n}y_i^2 + \mathbb{E}(\mu^2) - 2 y_i \mathbb{E}(\mu)) - \beta}{\sigma^2} \right\}.
+
+It is evident that $q(\mu | \lambda) \sim \mathcal{N}(\tilde{\gamma}, \tilde{\lambda})$ and $q(\sigma^2 | \lambda) \sim Inv.Gamma( \tilde_{\alpha}, \tilde{\beta})$. The parameters $\lambda = (\tilde{\gamma}, \tilde{\lambda}, \tilde_{\alpha}, \tilde{\beta})'$ can be found by the set of mean field equations,
+
+\begin{align}
+
+\tilde{\gamma} &= \frac{\alpba/\beta \gamma + \lambda \sum_{i=1}^{n} y_i} {n \lambda + \alpha / \beta} \label{mf5} \\ 
+\tilde{\lambda} &= \frac{n \alpha /\beta}{n \lambda + \alpha / \beta} \\
+\tilde{\alpha} &= \frac{n}{2} + \alpha \\
+\tilde{\beta} &= \frac{1}{2} \left(\sum_{i=1}^{n} y_i^2 + n(\tilde{\gamma}^2 + \tilde{\lambda}) - 2 \sum_{i=1}^{n} y_i \tilde{\gamma} \right) + \beta. \label{mf6}
+\end{align}.
+
+As there is a circular dependence in these equations an algorithm that cycles through each auxillary parameter until convergence to some pre-specified threshold is required.
+
+If (\ref{mf2})  does not match a known distribution, we may need to make a further approximation substituting in another $\tilde{q_i(\theta_i|\lambda_i)}. One method as used in \citet{Friston2006} uses a Laplace approximation to and substitute in a Gaussian distribution for these unrecognizable $q_i(\theta_i | \lambda_i)$. 
+
+Matching distributions in this way is a very similar method to finding the posterior conditional distribution, $p(\theta_i | y, \theta_{\setminus i}$ in a Gibbs MCMC scheme, with dependence on other parameters replaced by their expectations. The optimal approximating family for $\theta_i$, $q(\theta_i | \lambda_i)$, will come from the same distributional family as the conditional distribution $p(\theta_i | \theta_{j \neq i}, y)$, if it exists in a recognisable form such as the exponential family. The secondary level of approximations is analogous to the requirement of a Metropolis-Hastings-within-Gibbs step in MCMC to handle unrecognisable distributions.
 \vspace{5mm}
 
-Given these optimal distributional families, a mean field updating equation for each $\lambda_i$ can be found as a function of the data and other $\lambda_{j \neq i}$. This dependence requires an algorithm that continuously iterates between each $\lambda_i$ and sets it to its maximising value until $\mathcal{L}(q(\theta | \lambda), y)$ converges within some pre-defined threshold. This is known as a coordinate ascent algorithm and follows below, where $k$ as the dimension of $\lambda$.
+The required algorithm is known as a coordinate ascent algorithm, and is described below where $\lambda$ is $k$ dimensional.
 
 \vspace{2mm}
 
@@ -173,12 +207,13 @@ Given these optimal distributional families, a mean field updating equation for 
  \SetKwInOut{Input}{Input}
  \Input{Log Joint Density}
  \KwResult{Mean Field Approximation}
- Initialise $\lambda$ randomly\;
- Use (\ref{mf3}) to match each $q(\theta_i|\lambda_i)$ to a tractable distribution\;
+ Use (\ref{mf3}) to match each $q(\theta_i|\lambda_i)$ to a tractable distribution, or substitute a further approximation if neccesary.\;
+ Derive the set of mean field equations such as in (\ref{mf5}) - (\ref{mf6}).\;
+ Initialise $\lambda$ randomly. \;
  \While{Not converged}{
   \For{$i =  1$ \KwTo $k$}{
       Hold $\lambda_{j \neq i}$ fixed\;
-      Update $\lambda_i$ using $y$ and the most recent values of $\lambda_{j \neq i}$\;
+      Update $\lambda_i$ using the relevant mean field equation.
      }
  }
  \caption{Coordinate Ascent for MFVB}
