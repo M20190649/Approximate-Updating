@@ -1,9 +1,9 @@
-\documentclass{article}\usepackage[]{graphicx}\usepackage[]{color}
+\documentclass[12pt,a4paper]{article}%
+\usepackage[]{graphicx}\usepackage[]{color}
 %% maxwidth is the original width if it is less than linewidth
 %% otherwise use linewidth (to make sure the graphics do not exceed the margin)
 
 %2multibyte Version: 5.50.0.2960 CodePage: 1252
-\documentclass[12pt,a4paper]{article}%
 \usepackage{amsfonts}
 \usepackage{amssymb}
 \usepackage[centertags]{amsmath}
@@ -27,7 +27,6 @@
 \providecommand{\U}[1]{\protect\rule{.1in}{.1in}}
 \newtheorem{theorem}{Theorem}
 \newtheorem{acknowledgement}[theorem]{Acknowledgement}
-\newtheorem{algorithm}[theorem]{Algorithm}
 \newtheorem{axiom}[theorem]{Axiom}
 \newtheorem{case}[theorem]{Case}
 \newtheorem{claim}[theorem]{Claim}
@@ -46,12 +45,12 @@
 \newtheorem{remark}[theorem]{Remark}
 \newtheorem{solution}[theorem]{Solution}
 \newtheorem{summary}[theorem]{Summary}
-\newenvironment{proof}[1][Proof]{\textbf{#1.} }{\  \rule{0.5em}{0.5em}}
 \setlength{\topmargin}{0in}
 \setlength{\oddsidemargin}{0.1in}
 \setlength{\evensidemargin}{0.1in}
 \setlength{\textwidth}{6.5in}
 \setlength{\textheight}{8.25in}
+\numberwithin{equation}{section}
 \title{Real Time Variational Density Forecasts}
 \author{Nathaniel Tomasetti, Catherine Forbes and Anastasios Panagiotelis}
 \begin{document}
@@ -64,7 +63,7 @@ Electricity prices have been subject to an extensive forecasting literature, as 
 
 Bayesian methods are computationally complex as they require integration over the set of unknown parameters, which must be large in a model that can capture the strong seasonal patterns in short term electricity load \citep{Taylor2003}, which is the main driver for electricity price and the focus of this work. To avoid this problem there are a range of techniques available to obtain the predictive distribution which do not involve integration, notably Markov Chain Monte Carlo (MCMC) methods. While MCMC has very strong convergence properties, computation is slow for even moderately complex models, which is problematic as Electricity demand in Victoria operates on a five minute interval. The predictive density for the next period's electricity load may not be available before it is observed.
 
-Alternatives to MCMC include Variational Bayes (VB) and Expectation Propogation (EP), which aim to substitute the true posterior distribution for a vector of unknown parameters $\theta$, denoted by $p(\theta | y), with some approximate distribution denoted by $q(\theta | \lambda)$. Here $\lambda$ is a set of auxillary parameters associated with the approximation and not the model. For example, if $q(\theta | \lambda)$ is Gaussian $\lambda$ would be the mean and variance that parameterise $q$. Variational Bayes will be explored as an alternative computation strategy to MCMC in the context of short term electricity load forecasting using data from the 2012-2015 period in Victoria. The advantages in computation time for VB will be compared to the loss of statisitcal accuracy associated with the use of an approximation of the posterior instead of the truth. 
+Alternatives to MCMC include Variational Bayes (VB) and Expectation Propogation (EP), which aim to substitute the true posterior distribution for a vector of unknown parameters $\theta$, denoted by $p(\theta | y)$, with some approximate distribution denoted by $q(\theta | \lambda)$. Here $\lambda$ is a set of auxillary parameters associated with the approximation and not the model. For example, if $q(\theta | \lambda)$ is Gaussian $\lambda$ would be the mean and variance that parameterise $q$. Variational Bayes will be explored as an alternative computation strategy to MCMC in the context of short term electricity load forecasting using data from the 2012-2015 period in Victoria. The advantages in computation time for VB will be compared to the loss of statisitcal accuracy associated with the use of an approximation of the posterior instead of the truth. 
 
 \section{Bayesian Inference}
 
@@ -84,7 +83,7 @@ There are many types of MCMC algorithm, the most common being a Gibbs sampler wh
 
 \begin{align}
 &p(\theta_1 | \theta_2, \dots, \theta_k, y_{1:T}) \nonumber \\
-&p(\theta_2 | \theta_1, \theta_3, \dots, \thetakp, y_{1:T}) \nonumber \\
+&p(\theta_2 | \theta_1, \theta_3, \dots, \theta_k, y_{1:T}) \nonumber \\
 &\vdots \nonumber \\
 &p(\theta_k | \theta_1, \dots, \theta_{k-1}, y_{1:T}). \nonumber
 \end{align}
@@ -103,8 +102,7 @@ where $\epsilon_t \sim \mathcal{N}(0, \sigma^2)$. The likelihood of parameters $
 \begin{align}
 \label{likelihood}
 L(\theta | y_{1:T}) &= p(y_1, y_2 | \theta) \prod_{t=3}^{T}p(y_t | y_{1:t-1}, \theta) \nonumber \\
-&= \frac{1}{(2\pi)} |\Sigma|^{-1/2} \sigma^{-(T-2)} \exp \left\{ \frac{-1}{2} \left( \textbf{y}' \Sigma^{-1} \textbf{y} \right\} + \frac{1}{\sigma^2} 
-\sum_{t=3}^{T}(y_t - \phi_1 y_{t-1} - \phi_2 y_{t-2})^2 \right) \right\}
+&= \frac{1}{(2\pi)} |\Sigma|^{-1/2} \sigma^{-(T-2)} \exp \left\{ \frac{-1}{2} \left( \textbf{y}' \Sigma^{-1} \textbf{y} + \frac{1}{\sigma^2} \sum_{t=3}^{T}(y_t - \phi_1 y_{t-1} - \phi_2 y_{t-2})^2 \right) \right\}
 \end{align}
 
 where 
@@ -124,50 +122,59 @@ p(\rho_1, \rho_2) &\propto \mathbb{I}(\rho_2 > -1)\mathbb{I}(\rho_2 < 1 + \rho_1
 
 are used, where $\mathbb{I}$ is the indicator and $p(\rho_1, \rho_2)$ defines the AR(2) stationary region.
 
-Describe conditional distributions, possible MH step, result in forecast distribution for $y_{T+1}$
+The conditional distribution $p(\sigma^2 | y, \phi_1, \phi_2)$ is Inverse Gamma, while the conditionals for both $\phi$ parameters are intractable and sampled using a Metropolis-Hastings step with truncated normal random walk proposals. The truncation ensures that draws are only taken from the AR(2) stationary region.
+
+Note: Will make the picture later
+\begin{figure}
+\label{MCMC}
+%\includegraphics{MCMC.png}
+\caption{MCMC draws for the AR(2) model with $T = 150, \phi_1 = 0.75, \phi_2 = 0.2$ and $\sigma^2 = 1$. Approximately 24\% of both $\phi$ parameters were accepted by the Metropolis Hastings step, then the first 50,000 draws were discarded and the remainder thinned to 1 in 300 to make dependence between draws negligible.}
+\end{figure}
 
 \subsection{Variational Bayes}
 
-Variational Bayes introduces some approximating distribution $q(\theta | \lambda)$ and aims to choose the family $q$ and set of auxillary parameters $\lambda$ so that $q(\theta | \lambda$ is as close as possible to the true posterior $p(\theta | y)$. It does this by minimising the Kullback-Leibler (KL) divergence \citep{Kullback1951} from $q(\theta | \lambda)$ to $p(\theta | y)$. The KL divergence is defined by
+A faster alternative to MCMC is Variational Bayes, which introduces an approximating distribution $q(\theta | \lambda)$ choosing the functional form $q$ and given auxillary parameters $\lambda$ so that  misimises the Kullback-Leibler (KL) divergence \citep{Kullback1951} from $q(\theta | \lambda)$ the true posterior $p(\theta | y)$. The KL divergence is defined by
 
 \begin{equation}
 \label{KL-def}
 KL[q(\theta | \lambda)||p(\theta | y)] = \int q(\theta | \lambda) \ln \left( \frac{q(\theta | \lambda)}{p(\theta | y)}\right) d\theta.
 \end{equation}
 
-and is a non-negative, assymetric measure of the difference between $p(\theta | y)$ and $q(\theta | \lambda)$ that will equal zero if and only if $p(\theta | y) = q(\theta | \lambda)$ almost everywhere \citep{Bishop2006}. $KL[q(\theta | \lambda)||p(\theta | y)]$ can be re-written as
+The KL divergence is a non-negative, asymetric measure of the discrepancy between $p(\theta | y)$ and $q(\theta | \lambda)$ that will equal zero if and only if $p(\theta | y) = q(\theta | \lambda)$ almost everywhere \citep{Bishop2006}. Note that $KL[q(\theta | \lambda)||p(\theta | y)]$ can be expressed as
 
 \begin{equation}
 \label{KL-ELBO}
-KL[q(\theta | \lambda)||p(\theta | y)] = \ln(y) - \mathcal{L}(q, y)
+KL[q(\theta | \lambda)||p(\theta | y)] = \ln(p(y)) - \mathcal{L}(q, y)
 \end{equation}
 
-where $\mathcal{L}(q, y)$ is known as the Evidence Lower BOund (ELBO), defined by
+where $\mathcal{L}(q, y)$ is known as the Evidence Lower Bound (ELBO), defined by
 
 \begin{equation}
 \label{ELBO}
 \mathcal{L}(q, y) = \int_{\theta} q(\theta|\lambda) \ln (p(y, \theta|\lambda)) d\theta -  \int_{\theta} q(\theta|\lambda) \ln (q(\theta|\lambda)) d\theta.
 \end{equation}
 
-From (\ref{ELBO}) it is clear that maximising $\mathcal{L}(q, y)$ with respect to $q$ is equivalent to minimising (\ref{KL-def}). Maximising the ELBO is much more convenient than minimising either form of the KL Divergence, and has lead to VB being used much more widely in the literature than alternatives such as EP.
+Since $\ln(p(y))$ is constant given $y$, maximising (\ref{KL-ELBO}) with respect to $q$ is equivalent to minimising (\ref{KL-def}). Maximising the ELBO is much more convenient than minimising the KL Divergence, which can be seen in the following sections based on the two major implementations of Varitaional Bayes: Mean Field Variational Bayes and Stochastic Variational Bayes. Each of these take advantage of the functional form of the ELBO and offer computationally efficient algorithms to find a $q(\theta | \lambda)$ that is optimal within a particular clas of distributions. 
 
 \subsubsection{Mean Field Variational Bayes} 
 
-Mean Field Variational Bayes (MFVB) has origins in the physics literature \citep{Chandler1987} and restricts the search for an optimal approximating dististribution to the set of factorisable distributions
+
+
+Mean Field Variational Bayes (MFVB) has origins in the physics literature \citep{Chandler1987} and restricts the search for an optimal approximating dististribution to the class of factorisable distributions
 
 \begin{equation}
 \label{mf1}
-q(\theta|\lambda) = \prod_i q_i(\theta_i | \lambda_i).
+q(\theta|\lambda) = \prod_i^k q_i(\theta_i | \lambda_i).
 \end{equation}
 
-This technique is widely used as it greatly simplifies maximisation of the ELBO (\citealp{Jordan1999}; \citealp{Bishop2006}), particularly in exponential family models \citep{Wainwright2008}. Each component $\theta_i$ may be a scalar or a vector, and $\lambda_i$ is the component of the $\lambda$ vector that parameterises the relevant factor $q_i(\theta_i |\lambda_i)$. From here, we will use the shorthand notation that $q_i = q_i(\theta_i|\lambda_i)$ and $q_{\setminus i} = \prod_{j\neq i}q_j$. Maximising the ELBO with respect to $q_i$ is analytically involved but computationally simple, as (\ref{ELBO}) can be expressed as a function of $q_i$ only and then maximised with respect to each $q_i$ individually. \citet{Attias1999} shows that 
+Each of the $k$ components $\theta_i$ may be a vector, but in most implementations are scalars. Each $\theta_i$ has an associated vector $\lambda_i$ which may be of a higher dimension than $\theta_i$. $\lambda_i$ is an auxillary parameter vector for the relevant factor $q_i$, which will be used in this section as shorthand notation for the distribution $q_i(\theta_i |\lambda_i)$. 
+
+MFVB is widely used as it greatly simplifies maximisation of the ELBO (\citealp{Jordan1999}; \citealp{Bishop2006}), particularly in exponential family models \citep{Wainwright2008}.  Maximising the ELBO with respect to $q_i$ is as analytically involved as deriving the conditional distributions used in Gibbs based MCMC schemes, but the computation is simple. MFVB expresses (\ref{ELBO}) as a function of one $q_i$ only and then maximises with respect to that $q_i$. The final algorithm requires this to be repeated for each $i$ in $1, \dots, k$. Using the notation $q_{\setminus i} = \prod_{j\neq i}q_j$, \citet{Attias1999} shows that 
 
 \begin{equation}
 \label{mf2}
 q(\theta_i | \lambda_i) \propto\exp( \mathbb{E}_{q_{\setminus i}} [\ln(p(y,\theta))])
 \end{equation}
-
-and maximisation can proceed by matching (\ref{mf2}) to a known distribution. In the case that the likelihood and prior for $\theta_i$ form an exponential family conjugate pair, then the distributional family can be kept constant and all that is required is an update the parameters $\lambda_i$.
 
 For illustration, consider data $y_i, i = 1, \dots, n$ generated from a $\mathcal{N}(\mu, \sigma^2)$ distribution where $p(\mu) \sim \mathcal{N}(\gamma, \lambda)$ and $p(\sigma^2) \sim Inv.Gamma(\alpha, \beta)$. It can be shown that
 
@@ -180,26 +187,26 @@ and
 
 \begin{equation}
 \label{mf4}
-q(\sigma^2) \propto \sigma^{-2(n/2 + \alpha + 1) \exp \left\{ \frac{ -1/2(\sum_{i=1}^{n}y_i^2 + \mathbb{E}(\mu^2) - 2 y_i \mathbb{E}(\mu)) - \beta}{\sigma^2} \right\}.
+q(\sigma^2) \propto \sigma^{-2(n/2 + \alpha + 1)} \exp \left\{ \frac{ -1/2(\sum_{i=1}^{n}y_i^2 + \mathbb{E}(\mu^2) - 2 y_i \mathbb{E}(\mu)) - \beta}{\sigma^2} \right\}.
+\end{equation}
 
-It is evident that $q(\mu | \lambda) \sim \mathcal{N}(\tilde{\gamma}, \tilde{\lambda})$ and $q(\sigma^2 | \lambda) \sim Inv.Gamma( \tilde_{\alpha}, \tilde{\beta})$. The parameters $\lambda = (\tilde{\gamma}, \tilde{\lambda}, \tilde_{\alpha}, \tilde{\beta})'$ can be found by the set of mean field equations,
+It is evident that $q(\mu | \lambda) \sim \mathcal{N}(\tilde{\gamma}, \tilde{\lambda})$ and $q(\sigma^2 | \lambda) \sim Inv.Gamma(\tilde{\alpha}, \tilde{\beta})$. The parameters $\lambda = (\tilde{\gamma}, \tilde{\lambda}, \tilde{\alpha}, \tilde{\beta})'$ can be found by the set of mean field equations:
 
 \begin{align}
-
-\tilde{\gamma} &= \frac{\alpba/\beta \gamma + \lambda \sum_{i=1}^{n} y_i} {n \lambda + \alpha / \beta} \label{mf5} \\ 
-\tilde{\lambda} &= \frac{n \alpha /\beta}{n \lambda + \alpha / \beta} \\
+\tilde{\gamma} &= \frac{\alpha / \beta \gamma + \lambda \sum_{i=1}^{n} y_i} {n \lambda + \alpha / \beta} \label{mf5} \\ 
+\tilde{\lambda} &= \frac{n \alpha / \beta}{n \lambda + \alpha / \beta} \\
 \tilde{\alpha} &= \frac{n}{2} + \alpha \\
 \tilde{\beta} &= \frac{1}{2} \left(\sum_{i=1}^{n} y_i^2 + n(\tilde{\gamma}^2 + \tilde{\lambda}) - 2 \sum_{i=1}^{n} y_i \tilde{\gamma} \right) + \beta. \label{mf6}
 \end{align}.
 
 As there is a circular dependence in these equations an algorithm that cycles through each auxillary parameter until convergence to some pre-specified threshold is required.
 
-If (\ref{mf2})  does not match a known distribution, we may need to make a further approximation substituting in another $\tilde{q_i(\theta_i|\lambda_i)}. One method as used in \citet{Friston2006} uses a Laplace approximation to and substitute in a Gaussian distribution for these unrecognizable $q_i(\theta_i | \lambda_i)$. 
+In the event that (\ref{mf2}) is from an unrecognisable distribution a further approximation can be used, substituting in another distribution for the problematic $\tilde{q_i(\theta_i|\lambda_i)}.$ One method in \citet{Friston2006} uses a Laplace approximation to substitute a Gaussian distribution for these unrecognizable $q_i(\theta_i | \lambda_i)$, though the only requirement is that the substitute has an expectation that is a tractable function of its parameters to be used in (\ref{mf2}). 
 
 Matching distributions in this way is a very similar method to finding the posterior conditional distribution, $p(\theta_i | y, \theta_{\setminus i}$ in a Gibbs MCMC scheme, with dependence on other parameters replaced by their expectations. The optimal approximating family for $\theta_i$, $q(\theta_i | \lambda_i)$, will come from the same distributional family as the conditional distribution $p(\theta_i | \theta_{j \neq i}, y)$, if it exists in a recognisable form such as the exponential family. The secondary level of approximations is analogous to the requirement of a Metropolis-Hastings-within-Gibbs step in MCMC to handle unrecognisable distributions.
 \vspace{5mm}
 
-The required algorithm is known as a coordinate ascent algorithm, and is described below where $\lambda$ is $k$ dimensional.
+The required algorithm is known as a coordinate ascent algorithm, and is described below where $\lambda$ is a $p$ dimensional vector.
 
 \vspace{2mm}
 
@@ -222,25 +229,25 @@ The required algorithm is known as a coordinate ascent algorithm, and is describ
 
 \subsubsection{Stochastic Variational Bayes}
 
-In many cases, the posterior is too complex to be captured for a factorising approximation to be reasonabl as we desire our distribution $q(\theta | \lambda)$ to capture dependence between parameters. In this case, the easy maximisation in MFVB is unavailable, and we must resort to what is called Stochastic Variational Bayes (SVB) using a gradient ascent algorithm developed by \citet{Paisley2012} and \citet{Ranganath2014}.
+Restricting the approximating distribution to a factorisable family may be unsatisfactory in many applications where the dependence between parameters is important, as in the AR(2) model where Figure (\ref{MCMC}) shows strong dependence between $\phi_1$ and $\phi_2$. Without factorisation the simple method to maximise the ELBO as in MFVB is unavailable. \citet{Paisley2012} and \citet{Ranganath2014} have adapted a gradient ascent algorithm for use in Variational Bayes, resulting in what is known as Stochastic Variational Bayes (SVB).
 
-To maximise the function $\mathcal{L}(q(\theta | \lambda), y)$ we can take the derivative of $\mathcal{L}(q(\theta | \lambda), y)$ with respect to $\lambda$ and use the updating step:
+The algorithm for SVB iteratively takes the  derivative of $\mathcal{L}(q(\theta | \lambda), y)$ in (\ref{ELBO}) with respect to $\lambda$ and the following updating step is applied until the ELBO converges to a maximum.
 
 \begin{equation}
 \label{SGA1}
 \lambda^{(m+1)} = \lambda^{(m)} + \rho^{(m)} \nabla_{\lambda} \mathcal{L}(q(\theta | \lambda^{(m)}), y),
 \end{equation}
 
-where $\nabla_{\lambda}\mathcal{L}(q(\theta | \lambda^{(m)}), y)$ is the vector of partial derivatives of $\mathcal{L}(q(\theta | \lambda^{(m)}), y)$ with respect to each element of $\lambda$. This update requires initial values $\lambda^{(0)}$ and some learning rate sequence $\rho^{(m)}$. If $\rho^{(m)}$ is chosen to satisfy the following conditions, it is a Robbins-Monro sequence and the algorithm is guaranteed to converge to a local maximum.
+where $\nabla_{\lambda}\mathcal{L}(q(\theta | \lambda^{(m)}), y)$ is the vector of partial derivatives of $\mathcal{L}(q(\theta | \lambda^{(m)}), y)$ with respect to each element of $\lambda$. This update requires some initial values $\lambda^{(0)}$ and a sequence $\rho^{(m)}, m = 1, 2, \dots$ known as the learning rate. If $\rho^{(m)}$ is chosen to satisfy the following conditions the algorithm is guaranteed to converge to a local maximum \citep{Robbins1951}.
 
 \begin{align}
 \sum_{m=1}^{\infty} \rho^{(m)} &=  \infty \\
 \sum_{m=1}^{\infty} (\rho^{(m)})^2 &<  \infty.
 \end{align}
 
-Whilst a global maximum is desired, the ELBO can have a problem specific shape that makes finding the global maximum extremely difficult, as we do not know how many stationary points exist. The dimension of the ELBO is the dimension of the $\lambda$ vector, which is often much greater than the dimension of the parameters $\theta$ so a grid search is suspect to the curse of dimensionality. To alleiviate this problem, we can start the algorithm at a range of initial values choose the converged value with the highest value of the ELBO. 
+Whilst a global maximum is desired, the ELBO is a high dimensional problem specific function that makes finding the global maximum extremely difficult and often only a local maximum can be found. One option to alleiviate this problem is to start the algorithm at a range of initial values choose the converged value with the highest maximised ELBO and hence lowest KL divergence to the true posterior 
 
-SVB does not provide the family of the the optimal approximating distribution, unlike under the mean field assumption. To run SVB we may need to try many approximating distributions and then choose the $q(\theta | \lambda)$ that has the highest ELBO, and hence lowest KL divergence to the true posterior. We must restrict the approximation to distributions that satisfy the condition that the order of differentation of the ELBO with respect to $\lambda$ and integration with respect to $\theta$ are interchangable. In this case \citet{Ranganath2014} shows that a Monte Carlo estimate of the derivative of the ELBO can be taken by
+SVB can find only the optimal values for $\lambda$ that are optimal for a distributional family $q$ that is specified by the user. To run SVB many choices of $q$ may be used and one selected on the basis of the highest ELBO. $q(\theta | \lambda)$ is restricted to the family of distributions that satisfy the condition that the order of differentation of the ELBO with respect to $\lambda$ and integration with respect to $\theta$ are interchangable, and SVB can only be applied to models where the log likelihood for $y$ is able to be evaluated. Given these conditions \citet{Ranganath2014} showed that a Monte Carlo estimate of the derivative of the ELBO can be taken by
 
 \begin{equation}
 \label{SGA2}
@@ -249,9 +256,7 @@ SVB does not provide the family of the the optimal approximating distribution, u
 
 where $s = 1, \dots, S$ indicates simulations from $q(\theta | \lambda^{(m)})$.
 
-As the distribution $q(\theta | \lambda)$ is specified by the user, the main restriction on the use of SVB is that the log-joint density $\ln(p(y, \theta))$ is able to be evaluated.
-
-\citet{Duchi2011} introduces the AdaGrad algorithm which can be implemented within SVB to control $\rho^{(m)}$. AdaGrad allows each $\lambda_i$ to have an independent $\rho^{(m)}_i$ that is inversely proportional to the gradient. 
+\citet{Duchi2011} introduced the AdaGrad algorithm which can be implemented within SVB to control $\rho^{(m)}$. AdaGrad allows each $\lambda_i$ to have an independent $\rho^{(m)}_i$ that is inversely proportional to the gradient, so $\lambda$ takes bigger steps in flat regions and smaller steps in steep regions. 
 
 Let 
 
@@ -269,7 +274,7 @@ then each component's learning rate is defined as
 
 for some tuning parameter $\eta$.
 
-The resulting Stochastic Gradient Ascent algorithm proceeds below.
+The resulting Stochastic Gradient Ascent algorithm proceeds below with a $p$ dimensional $\lambda$ vector.
 
 \begin{algorithm}[H]
  \SetKwInOut{Input}{Input}
@@ -278,162 +283,76 @@ The resulting Stochastic Gradient Ascent algorithm proceeds below.
  Initialise $\lambda$\;
  \While{Not converged}{
   Simulate $\theta^s$ for $s = 1, \dots S$ from $q(\theta|\lambda^{(m)})$\;
-  \For{$i =  1$ \KwTo $k$}{
-      Calculate $\nabla_{\lambda_i} =  1/S\sum_{s=1}^{S} \nabla_{\lambda_i}[\log(q(\theta^s|\lambda^{(m)})](\log(p(\theta^s, y)) - \log(q(\theta^s |\lambda^{(m)})))$\;
-      Update $G_i^{(m)} = G_i^{(m-1)} + \left(\nabla_{\lambda_i}\mathcal{L}(q(\theta | \lambda^{(m)})\right)^2$\;
-      Calculate $\rho^{(m)}_i =  \left(G_i^{(m)}\right)^{-1/2}$\;
-     }
-  Set $\lambda^{(m+1)} = \lambda^{(m)} + \rho^{(m)}  \nabla_{\lambda}$\;
+  \For{$i =  1$ \KwTo $p$}{
+      Calculate $\nabla_{\lambda_i}$ from (\ref{SGA2})\;
+      Update $G_i^{(m)}$ and $\rho^{(m)}_i$ from (\ref{SGA3}) and (\ref{SGA4})\;
+      }
+  Update $\lambda^{(m+1)}$ from (\ref{SGA1})\;
   Set $m = m + 1$\;
  }
  \caption{Stochastic Gradient Ascent for SVB}
   \label{alg:algorithm2}
 \end{algorithm}
 
-\subsection{Variance Reduction Techniques}
 
-For many models the estimator in (\ref{SGA2}) has a large variance, so a more efficient estimator will allow a lower value of $S$ and hence reduced computation time.
-\subsubsection{Control Variates}
-\citet{Paisley2012} considers the use of control variates to augment the estimator of the gradient. Define
+\subsection{Vine Copulas}
 
-\begin{equation}
-\label{CV1}
-g(\theta, \lambda, y) =  \nabla_{\lambda} [\ln(q(\theta_s | \lambda))] (\ln (p(y, \theta_s)) - \ln(q(\theta_s | \lambda))),
-\end{equation}
-
-the function estimated in (\ref{SGA2}), then for some other function $h$, define
+Armed with an algorithm to find the Variational Bayes optimal paramerters $\lambda$ for a distribution $q$, there is a requirement to have a distribution $q$ that is itself optimal. Copulas are a flexible tool for constructing these distributions, as they allow the dependence structure between parameters to be fit independently from the marginal distributions. \citet{Sklar1959} proves that any joint probability distribution can be written as the product of the marginals and a copula function,
 
 \begin{equation}
-\label{CV2}
-\hat{g}(\theta, \lambda, y) = g(\theta, \lambda, y) - a(h - \mathbb{E}(h)).
+\label{vc1}
+p(\theta_1, \dots, \theta_k) = p(\theta_1) \dots p(\theta_k) c(P(\theta_1), \dots, P(\theta_k))
 \end{equation}
 
-Then both $g(\theta, \lambda, y)$ and $\hat{g}(\theta, \lambda, y)$ have the same expectation and
+where $p(\theta)$ is a pdf, $P(\theta)$ is a cdf, and $c(\cdot)$ is a copula. 
+
+\citet{Joe1994} introduces the vine copula, a technique to factorise a high-dimensional copula into a set of bivariate copulas in a similar way to the factorisation of a joint distribution into a marginal and conditional distribution, for example
 
 \begin{equation}
-\label{CV3}
-\mbox{Var}(\hat{g}) = \mbox{Var}(g) + a^2 \mbox{Var}(h) - 2a\mbox{Cov}(g, h). 
+\label{vc2}
+c(P(\theta_1), P(\theta_2), P(\theta_3)) = c(P(\theta_1), P(\theta_2)) \cdot c(P(\theta_1), P(\theta_3)) \cdot c(P(\theta_2), P(\theta_3) | P(\theta_1)).
 \end{equation}
 
-Solving the polynomial (\ref{CV3}) in $a$ shows that the variance of $\hat{g}$ is minimised by 
+A copula for a $k$ dimensional $\theta$ can be replaced with $k(k-1)/2$ bivariate copulas arranged in a vine copula, greatly increasing the amount of flexibility available to fit a distribution. However there are $O(k!)$ ways to factorise the full copula and choose a family for each bivariate copula, so without detailed problem specific information the application of a vine copula to Stochastic Variational Bayes is difficult. \citet{Tran2015} implements Variational Bayes with a vine copula in what they call Copula Variational Bayes, but the dimension of $\theta$ was small in that case allowing an exhaustive search for the vine copula that maximised the ELBO. 
 
-\begin{equation}
-\label{CV4}
-\hat{a} = \mbox{Cov}(g, h)/\mbox{Var}(h).
-\end{equation}
+Given a sample of $\theta$, \citet{Diimann2013} provide an algorithm to select the best vine factorisation by maximising Kendell's Tau, and the best family for each bivariate copula by maximising an information criterion such as AIC. In the real-time forecasting models used for electricity load demand, MCMC samples of the posterior distribution are available, though often immediately out of date. The approach used in this thesis is to run an MCMC algorithm, thin the resulting draws until they are effectively independent, choose an optimal family for each marginal distribution by AIC, then run (Vine copula algorithm here) to infer an optimal vine copula. This results in an approximating distribution $q(\theta | \lambda)$ that can then be used in an SVB algorithm to update $q(\theta | \lambda)$ as more observations become available. MCMC can be ran simultaenously and the resulting sample can be used to check if the distribution $q$ should be changed. 
 
-Substituting (\ref{CV4}) into (\ref{CV3}) yields
+\subsection{Applying Stochastic Variational Bayes}
 
-\begin{equation}
-\label{CV5}
-\mbox{Var}(\hat{g}) = \mbox{Var}(g) - \mbox{Cov}(g, h)^2/\mbox{Var}(h).
-\end{equation}
-
-We need to choose some function $h$ that has a large covariance with $g$. \citet{Ranganath2014} suggests that the easy option of
-
-\begin{equation}
-\label{CV6}
-h(\theta, \lambda) = \nabla_{\lambda} [\ln(q(\theta_s | \lambda))].
-\end{equation}
-
-As $h$ is a score function, it has an expectation of zero and our estimator becomes
-
-\begin{equation}
-\label{CV7}
-\nabla_{\lambda} \mathcal{L}(q(\theta | \lambda), y) \approx \frac{1}{S}\sum_{s=1}^{S} \nabla_{\lambda} [\ln(q(\theta_s | \lambda))] (\ln (p(y, \theta_s)) - \ln(q(\theta_s | \lambda)) - \hat{a}),
-\end{equation}
-
-where $\hat{a}$ is estimated from the sample variance and covariance of a subset of the $S$ Monte-Carlo draws.
-
-\begin{algorithm}[H]
- \SetKwInOut{Input}{Input}
- \Input{Log Joint Density, Approximation family q}
- \KwResult{Variational Approximation}
- Initialise $\lambda$\;
- \While{Not converged}{
-  Simulate $\theta_s$ for $s = 1, \dots S$ from $q(\theta|\lambda^{(m-1)})$\;
-  \For{$i =  1$ \KwTo $k$}{
-      Calculate $g_{\lambda_i} = 1/S\sum_{s=1}^{S} \nabla_{\lambda_i}[\log(q(\theta^s|\lambda^{(m-1)})](\log(p(\theta^s, y)) - \log(q(\theta^s |\lambda^{(m-1)})))$\;
-      Calculate $h_{\lambda_i} = 1/S\sum_{s=1}^{S}\nabla_{\lambda_i}[\log(q(\theta^s |\lambda^{(m-1)}))]$\;
-      Use a subset of $S$ to estimate $\hat{a} = \mbox{Cov}(h, g)/\mbox{Var}(g)$\;
-      Calculate $\nabla_{\lambda_i} = g_{\lambda_i} - \hat{a} h_{\lambda_i}$\;
-     }
-  Set $\lambda^{(m)} = \lambda^{(m-1)} + \rho^{(m)}  \nabla_{\lambda}$\;
-  Set $m = m + 1$\;
- }
- \caption{Gradient Ascent for SVB with control variates}
-  \label{alg:algorithm3}
-\end{algorithm}
-
-\subsubsection{Reparameterisation}
-
-The reparameterisation trick was popularised following \citet{Kingma2013} and allows the gradient of the ELBO to be simplified.
-
-Consider a parameter free auxillary distribution $q(\epsilon)$ and differentiable transformation $f(\cdot,\cdot)$ such that $\theta = f(\epsilon, \lambda)$. Examples include a location-scale transformation from a standard normal or an inverse-CDF transform from a uniform$(0, 1)$ variable. Note that 
-
-$$q_\theta(\theta | \lambda) = q_\epsilon(\epsilon) \left| \frac{d\epsilon}{d\theta} \right| $$
-
-where the parameters that govern the transform $f$ are the same $\lambda$ parameters as in $q(\theta | \lambda)$. Now (\ref{SGA2}) becomes
-
-\begin{align}
-\nabla_{\lambda} \mathcal{L}(q(\theta | \lambda), y) &=  \int_{\epsilon} \nabla_{\lambda}[  q(\epsilon) \left( \ln (p(y, f(\epsilon, \lambda))) - \ln(q(f(\epsilon, \lambda) | \lambda) \right)] d\epsilon \nonumber \\
-&=  \int_{\epsilon}  q(\epsilon) \nabla_{\lambda} \left[ \ln (p(y, f(\epsilon, \lambda))) - \ln(q(f(\epsilon, \lambda)| \lambda) \right] d\epsilon \label{RP1} \\
-&= \int_{\epsilon}  q(\epsilon) \nabla_{\lambda} \left[ \ln (p(y, f(\epsilon, \lambda)) \right] d\epsilon\nonumber
-\end{align}
-
-as the second part on the right hand side of (\ref{RP1}) is a score function with expectation equal to zero. This can be estimated using 
-
-\begin{equation}
-\label{RP2}
- \mathcal{L}(q(\theta | \lambda), y) \approx  \frac{1}{S}\sum_{s=1}^{S} \nabla_{\lambda} \left[ \ln (p(y, f(\epsilon_s, \lambda))) \right].
-\end{equation}
-
-with $\epsilon_s \sim q(\epsilon)$.
-
-\citet{Kingma2015} explore how this reparameterised version can have orders of magnitude lower variance than the estimator in (\ref{SGA2}).
-
-\begin{algorithm}[H]
- \SetKwInOut{Input}{Input}
- \Input{Log Joint Density, Approximation family q}
- \KwResult{Variational Approximation}
- Initialise $\lambda$\;
- \While{Not converged}{
-  Simulate $\epsilon^s$ for $s = 1, \dots S$\;
-  \For{$i =  1$ \KwTo $k$}{
-      Calculate $\nabla_{\lambda_i} =  1/S\sum_{s=1}^{S} \nabla_{\lambda_i}[\log(p(f(\epsilon^s, \lambda^{(m-1)}), y))]$
-     }
-  Set $\lambda^{(m)} = \lambda^{(m-1)} + \rho^{(m)} \nabla_{\lambda}^{t}$\;
-  Set $m = m + 1$\;
- }
- \caption{Gradient Ascent for re-parameterised SVB}
-  \label{alg:algorithm4}
-\end{algorithm}
-
-\subsection{AR2 model example (Revisited using VB)}
-
-As the use of SVB does not provide an optimal approximating distribution like in MFVB, we instead analyse the MCMC results and fit a parametric distribution to the MCMC samples. \citet{Tran2015} extends SVB for use in approximations with a vine copula dependency structure, so we adopt their approach.
-
-As fitting a distribution to a sample from the posterior by MLE is equivalent to minimising the reverse of the KL dependence, we use the best fitting set of marginal distributions augmented by a vine copula by AIC (or BIC or something else?) and make the assumption that the family $q(\theta | \lambda)$ that minimises the reverse KL, and is optimal in EP, is the same family that is optimal for VB.
+Using the approach described in section 2.3, an application of VC algorirhtm to the MCMC draws obtained in section 2.1 found the following distribution to be optimal by AIC.
 
 \begin{itemize}
-\item State optimal families
-\item Fit via SVB
-\item Compare forecast accuracy to MCMC 
-\item Maybe use a lot of one step ahead forecasts with continuous VB updates compared to MCMC results with no parameter updates 
+\item $q(\phi_1)$ - Gaussian marginal
+\item $q(\phi_2)$ - Gaussian marginal
+\item $q(\sigma^2)$ - Inverse Gamma marginal
+\item $c(Q(\phi_1), Q(\phi_2))$ - Gaussian copula
+\item $c(Q(\phi_1), Q(\sigma^2))$ - Independent
+\item $c(Q(\phi_2), Q(\sigma^2) | Q(\phi_1))$ - Independent
 \end{itemize}
+
+Figure (\ref{VBfit}) shows that Stochastic Variational Bayes (blue) fit the MCMC (red) sample very closely.
+
+\begin{figure}[h]
+\label{VBfit}
+\centering
+\includegraphics[scale = 0.5]{VBfit.png}
+\caption{The fit of an SVB algorithm (red) compared to MCMC (red) for the AR(2) model described in section 2.1. SVB resulted in an almost identical posterior to MCMC while taking X less time to run. (working from home, will check runtime at uni)}
+\end{figure}
 
 \section{Electricity Load Forecasts}
 \subsection{Motivation}
+
+Note: Don't have data on hand, will do this section shortly
+
 \begin{itemize}
-\item Describe and plot Data
-\item Real data has five minute updates
-\item Density is of interest due to rare price spikes - show price data/supply curve etc to demonstrate
-\item Some general background on load forecasting somewhere here
+\item Describe and plot load Data
+\item Plot price data to emphasize price spikes
+\item Follow up the intro to talk a bit about load forecasting
 \end{itemize}
 
 \subsection{Exponential Smoothing}
 
-\citet{Taylor2003} explores the seasonal properties of electricity demand and introduces a double seasonal Holt-Winters exponential smoothing model with daily and weekly effects described by (\ref{ds-hw1})-(\ref{ds-hw4}), and in \citet{Taylor2008} verifies that this approach is superior to other common time-series models for very short-term load forecasting \citep{Taylor2008}.
+\citet{Taylor2003} explores the seasonal properties of electricity demand and introduces a double seasonal Holt-Winters exponential smoothing model with daily and weekly effects described by (\ref{ds-hw1})-(\ref{ds-hw4}), and later in \citet{Taylor2008} verifies that this approach is superior to other common time-series models for very short-term load forecasting \citep{Taylor2008}.
 
 \begin{align}
 y_t &= l_{t-1} + d_{t-m_1} + w_{t-m_2} + e_t \label{ds-hw1} \\
@@ -451,7 +370,15 @@ d_t &= d_{t-m_1} + \delta e_t \label{ds-hw-ssoe3} \\
 w_t &= w_{t-m_2} + \omega e_t \label{ds-hw-ssoe4}. 
 \end{align}
 
-\citet{Forbes2000} describes a Bayesian method to sample the posterior distribution  when $e_t \sim \mathcal{N}(0, \sigma^2)$. This method involves inverting a matrix that is singular using the parameterisation described by (\ref{ds-hw-ssoe1}) - (\ref{ds-hw-ssoe4}) so we reparameterise the seasonality using (\ref{ds-hw-rp1}) - (\ref{ds-hw-rp4}) to avoid this problem.
+The unknown parameters are $\theta = (\alpha, \delta, \omega)', \sigma^2$ and $b_0 = (l_0, d_0, \dots, d_{-(m_1 - 1)}, w_0, \dots, w_{-(m_2 - 1)})'$ a $m_1 + m_2 + 1$ length vector of the initial states of the latent variables. 
+\citet{Forbes2000} derives the marginal distribution $p(\theta | y)$ and notes that, conditioned on a draw of these parameters, the remaining unknown parameters can be sampled as a Bayesian linear regression problem. This method involves inverting a matrix that is singular using the parameterisation described by (\ref{ds-hw-ssoe1}) - (\ref{ds-hw-ssoe4}), but restricting the latent parameters via
+
+\begin{align}
+d_t &= - \sum_{i=1}^{m_1-1} d_{t-i} \\
+w_t &= - \sum_{i=1}^{m_2-1} w_{t-i}
+\end{align}
+
+avoids this problem. The resulting model is described by
 
 \begin{align}
 y_t &= l_{t-1} - \sum_{i = 1}^{m_1 - 1}d_{t-i} - \sum_{i = 1}^{m_2 - 1}w_{t-i} + e_t \label{ds-hw-rp1} \\
@@ -460,7 +387,6 @@ d_t &= - \sum_{i = 1}^{m_1 - 1}d_{t-i} + \delta e_t \label{ds-hw-rp3} \\
 w_t &= - \sum_{i = 1}^{m_2 - 1}w_{t-i} + \omega e_t \label{ds-hw-rp4}.
 \end{align}
 
-The resulting unknown parameters are $\theta = (\alpha, \delta, \omega)', \sigma^2$ and $b_0$, the $m_1 + m_2 - 1$ length vector of the initial states of $l_0, d_0, \dots, d_{-(m_1 - 2)}, w_0, \dots, w_{-(m_2 - 2)}$.
 \citet{Forbes2000} recommends numerical integration of the marginal posterior density of $\theta$,
 
 \begin{equation}
@@ -468,25 +394,10 @@ The resulting unknown parameters are $\theta = (\alpha, \delta, \omega)', \sigma
 p(\theta | y_{1:T}) \propto \left| \widetilde{X}' \widetilde{X} \right|^{-1/2} \tilde{s}^{-(T-(m_1 + m_2 - 1))} p(\theta),
 \end{equation}
 
-where $\widetilde{X}$ and $\tilde{s}$ are functions of $\theta$ and $y$. The problems with using this method in our model are two-fold: repeating numerical integrion each time a new data point is observed for a three dimensional distribution is computationally difficult, and the $T$ in the exponent makes most evalutions of $p(\theta | y_{1:T})$ computationally zero when $T$ is large.
+where $\widetilde{X}$ and $\tilde{s}$ are functions of $\theta$ and $y$. The problems with using this method in our model are two-fold: repeating a three dimensional numerical integrion each time a new data point is observed within the five minute window is not feasible difficult, and the $T$ in the exponent makes most evalutions of $p(\theta | y_{1:T})$ computationally zero when $T$ is large. 
 
 \begin{itemize}
-\item Derive some MCMC algorithm using $\theta$ conditional
-\item Infer model structure from draws if we can run this
-\item Or pick as flexible as possible distribution for marginals (normal mixture?) and figure out some vine structure to run VB without MCMC
-\end{itemize}
-
-\subsection{Variational Bayes Implementation}
-\begin{itemize}
-\item Posterior Distributions hopefully do not change much as more data is observed, so we can keep approximating distribution family constant
-\item But we might want a model that does change to make updates worthwhile
-\item Ideal model has constant distributional family with changing parameter values
-\item Maybe via Markov Switching mechanism to be added as probability of being in a certain state should change.
-\end{itemize}
-\subsection{Forecasting}
-
-\begin{itemize}
-\item Compare to MCMC when possible
+\item Should try and get an exponential smoothing MCMC working using Metropolis-Hastings for $\theta$. Log densities help with the $T$ being too large problem but the grid is too large for numerical integration to be a good idea.
 \end{itemize}
 
 \section{Timeline}
