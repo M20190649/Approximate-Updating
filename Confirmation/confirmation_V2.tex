@@ -59,11 +59,11 @@
 \tableofcontents
 \section{Introduction} 
 
-Electricity prices have been subject to an extensive forecasting literature and is known to be extremely volatile. For the 2011-2015 period in Victoria the mean price per megawatt hour (mWh) was $42.06, with 99\% of oberservations less than \$100/mWh, but on 39 occaisions the price spiked greater than \$1,000/mWh, reaching as high as \$9,974/mWh on November 29 2012. For this reason market participants are increasingly interested in a predictive density forecast, as the probability that the price will rise above a particular threshold in the next time period is more important than the mean value. To calculate a suitably accurate predictive density the Bayesian methodology is to be adopted in this thesis, as it can average over parameter and model uncertainty that is often ignored in frequentist methods. See \citet{Geweke2006} for a review on Bayesian forecasting and \citet{Gneiting2014} for density forecasting in general. 
+Electricity prices have been subject to an extensive forecasting literature and is known to be extremely volatile. For the 2011-2015 period in Victoria the mean price per megawatt hour (mWh) was \$42.06, with 99\% of oberservations less than \$100/mWh, but on 39 occaisions the price spiked greater than \$1,000/mWh, reaching as high as \$9,974/mWh on November 29, 2012. For this reason market participants are increasingly interested in a predictive density forecast, as the probability that the price will rise above a particular threshold in the next time period is more important than the mean value. To calculate a suitably accurate predictive density the Bayesian methodology is to be adopted in this thesis, as it can average over parameter and model uncertainty that is often ignored in frequentist methods. See \citet{Geweke2006} for a review on Bayesian forecasting and \citet{Gneiting2014} for density forecasting in general. 
 
 Bayesian methods are computationally complex as they require integration over the set of unknown parameters, which must be large in a model that can capture the strong seasonal patterns in short term electricity load \citep{Taylor2003}, which is the main driver for electricity price and the focus of this work. To avoid this problem there are a range of techniques available to obtain the predictive distribution which do not involve integration, notably Markov Chain Monte Carlo (MCMC) methods. While MCMC has very strong convergence properties, computation is slow for even moderately complex models, which is problematic as Electricity demand in Victoria operates on a five minute interval. The predictive density for the next period's electricity load may not be available before it is observed.
 
-Alternatives to MCMC include Variational Bayes (VB) and Expectation Propogation (EP), which aim to substitute the true posterior distribution for a vector of unknown parameters $\theta$, denoted by $p(\theta | y)$, with some approximate distribution denoted by $q(\theta | \lambda)$. Here $\lambda$ is a set of auxillary parameters associated with the approximation and not the model. For example, if $q(\theta | \lambda)$ is Gaussian $\lambda$ would be the mean and variance that parameterise $q$. Variational Bayes will be explored as an alternative computation strategy to MCMC in the context of short term electricity load forecasting using data from the 2011-2015 period in Victoria. The advantages in computation time for VB will be compared to the loss of statisitcal accuracy associated with the use of an approximation of the posterior instead of the truth. 
+Alternatives to MCMC include Variational Bayes (VB), which aim to replace the unknown true posterior distribution for a vector of unknown parameters $\theta$ with a parametric approximation. Variational Bayes will be explored as an alternative computation strategy to MCMC in the context of short term electricity load forecasting using data from the 2011-2015 period in Victoria. The advantages in computation time for VB will be compared to the loss of statisitcal accuracy associated with the use of an approximation of the posterior instead of the truth. 
 
 \section{Bayesian Inference}
 
@@ -75,7 +75,7 @@ Exact Bayesian inference in the context of forecasting uses the predictive densi
 \end{equation}
 
 Generally the solution to (\ref{posterior}) is unavailable. This section will offer two alternatives, MCMC and VB.
-MCMC is used to create a sample from $p(\theta | y)$, and any function of interest from $p(\theta | y$ can be found with the relevant function applied to the sample, while VB replaces $p(\theta | y)$ with an approximation $q(\theta | \lambda)$, choosing some family $q$ and auxillary parameters $\lambda$ to minimise the Kullback-Leibler divergence from $q(\theta | \lambda)$ to $p(\theta | y)$.
+MCMC is used to create a sample from $p(\theta | y)$, and any function of interest from $p(\theta | y)$ can be found with the relevant function applied to the sample, while VB replaces $p(\theta | y)$ with an approximation $q(\theta | \lambda)$, where $\lambda$ is a vector of auxillary parameters associated with the approximation and not the model. For example, if $q(\theta | \lambda)$ is Gaussian $\lambda$ would be the mean and variance of $\theta$. Variational Bayes aims to choose the distribution $q(\theta | \lambda)$ such that the Kullback-Leibler divergence from $q(\theta | \lambda)$ to $p(\theta | y)$ is minimised.
 
 \subsection{Markov Chain Monte Carlo}
 
@@ -125,10 +125,10 @@ are used, where $\mathbb{I}$ is the indicator and $p(\rho_1, \rho_2)$ defines th
 The conditional distribution $p(\sigma^2 | y, \phi_1, \phi_2)$ is Inverse Gamma, while the conditionals for both $\phi$ parameters are intractable and sampled using a Metropolis-Hastings step with truncated normal random walk proposals. The truncation ensures that draws are only taken from the AR(2) stationary region.
 
 \begin{figure}[h]
-\label{MCMCplot}
 \centering
-\includegraphics[scale = 0.5]{MCMC.png}
+\includegraphics[scale = 0.6]{MCMC.png}
 \caption{MCMC draws for the AR(2) model with $T = 150, \phi_1 = 0.75, \phi_2 = 0.2$ and $\sigma^2 = 1$. Approximately 24\% of both $\phi$ parameters were accepted by the Metropolis Hastings step, then the first 10,000 draws were discarded and the remainder thinned to 1 in 200 to make dependence between draws negligible.}
+\label{MCMCplot}
 \end{figure}
 
 \subsection{Variational Bayes}
@@ -158,9 +158,7 @@ Since $\ln(p(y))$ is constant given $y$, maximising (\ref{KL-ELBO}) with respect
 
 \subsubsection{Mean Field Variational Bayes} 
 
-
-
-Mean Field Variational Bayes (MFVB) has origins in the physics literature \citep{Chandler1987} and restricts the search for an optimal approximating dististribution to the class of factorisable distributions
+Mean Field Variational Bayes (MFVB) has origins in the physics literature \citep{Chandler1987} and restricts the class of distributions Variational Bayes selects from to the set of factorisable distributions,
 
 \begin{equation}
 \label{mf1}
@@ -176,18 +174,18 @@ MFVB is widely used as it greatly simplifies maximisation of the ELBO (\citealp{
 q(\theta_i | \lambda_i) \propto\exp( \mathbb{E}_{q_{\setminus i}} [\ln(p(y,\theta))])
 \end{equation}
 
-For illustration, consider data $y_i, i = 1, \dots, n$ generated from a $\mathcal{N}(\mu, \sigma^2)$ distribution where $p(\mu) \sim \mathcal{N}(\gamma, \lambda)$ and $p(\sigma^2) \sim Inv.Gamma(\alpha, \beta)$. It can be shown that
+For illustration, consider data $y_i$ for $i = 1, \dots, n$ generated from a $\mathcal{N}(\mu, \sigma^2)$ distribution with priors $p(\mu) \sim \mathcal{N}(\gamma, \lambda)$ and $p(\sigma^2) \sim Inv.Gamma(\alpha, \beta)$. It can be shown that
 
 \begin{equation}
 \label{mf3}
-q(\mu) \propto \exp \left\{ \frac{-(n\lambda + \mathbb{E}(\sigma^{-2}))}{2\lambda\mathbb{E}(\sigma^{-2})} \left( \mu - \frac{\mathbb{E}(\sigma^{-2})\gamma + \lambda \sum_{i=1}^{n} y_i}{n \lambda + \mathbb{E}(\sigma^{-2})} \right) \right\}
+q(\mu) \propto \exp \left\{ \frac{-(n\lambda + \mathbb{E}(\sigma^{-2}))}{2\lambda\mathbb{E}(\sigma^{-2})} \left( \mu - \frac{\mathbb{E}(\sigma^{-2})\gamma + \lambda \sum_{i=1}^{n} y_i}{n \lambda + \mathbb{E}(\sigma^{-2})} \right)^2 \right\}
 \end{equation}
 
 and
 
 \begin{equation}
 \label{mf4}
-q(\sigma^2) \propto \sigma^{-2(n/2 + \alpha + 1)} \exp \left\{ \frac{ -1/2(\sum_{i=1}^{n}y_i^2 + \mathbb{E}(\mu^2) - 2 y_i \mathbb{E}(\mu)) - \beta}{\sigma^2} \right\}.
+q(\sigma^2) \propto \sigma^{-2(n/2 + \alpha + 1)} \exp \left\{ \frac{ -1/2(\sum_{i=1}^{n}y_i^2 + n\mathbb{E}(\mu^2) - 2\sum_{i=1}^{n} y_i \mathbb{E}(\mu)) - \beta}{\sigma^2} \right\}.
 \end{equation}
 
 It is evident that $q(\mu | \lambda) \sim \mathcal{N}(\tilde{\gamma}, \tilde{\lambda})$ and $q(\sigma^2 | \lambda) \sim Inv.Gamma(\tilde{\alpha}, \tilde{\beta})$. The parameters $\lambda = (\tilde{\gamma}, \tilde{\lambda}, \tilde{\alpha}, \tilde{\beta})'$ can be found by the set of mean field equations:
@@ -201,7 +199,7 @@ It is evident that $q(\mu | \lambda) \sim \mathcal{N}(\tilde{\gamma}, \tilde{\la
 
 As there is a circular dependence in these equations an algorithm that cycles through each auxillary parameter until convergence to some pre-specified threshold is required.
 
-In the event that (\ref{mf2}) is from an unrecognisable distribution a further approximation can be used, substituting in another distribution for the problematic $\tilde{q_i(\theta_i|\lambda_i)}.$ One method in \citet{Friston2006} uses a Laplace approximation to substitute a Gaussian distribution for these unrecognizable $q_i(\theta_i | \lambda_i)$, though the only requirement is that the substitute has an expectation that is a tractable function of its parameters to be used in (\ref{mf2}). 
+In the event that (\ref{mf2}) is from an unrecognisable distribution a further approximation can be used, substituting in another distribution for the problematic $\tilde{q_i(\theta_i|\lambda_i)}.$ One method in \citet{Friston2006} uses a Laplace approximation to substitute a Gaussian distribution for these unrecognizable $q_i(\theta_i | \lambda_i)$, though the only requirement is that the substitute has an expectation that is a tractable function of its parameters to be used for other parameters in (\ref{mf2}). 
 
 Matching distributions in this way is a very similar method to finding the posterior conditional distribution, $p(\theta_i | y, \theta_{\setminus i}$ in a Gibbs MCMC scheme, with dependence on other parameters replaced by their expectations. The optimal approximating family for $\theta_i$, $q(\theta_i | \lambda_i)$, will come from the same distributional family as the conditional distribution $p(\theta_i | \theta_{j \neq i}, y)$, if it exists in a recognisable form such as the exponential family. The secondary level of approximations is analogous to the requirement of a Metropolis-Hastings-within-Gibbs step in MCMC to handle unrecognisable distributions.
 \vspace{5mm}
@@ -214,8 +212,8 @@ The required algorithm is known as a coordinate ascent algorithm, and is describ
  \SetKwInOut{Input}{Input}
  \Input{Log Joint Density}
  \KwResult{Mean Field Approximation}
- Use (\ref{mf3}) to match each $q(\theta_i|\lambda_i)$ to a tractable distribution, or substitute a further approximation if neccesary.\;
- Derive the set of mean field equations such as in (\ref{mf5}) - (\ref{mf6}).\;
+ Use (\ref{mf3}) to match each $q(\theta_i|\lambda_i)$ to a tractable distribution or substitute a further approximation if neccesary.\;
+ Derive the set of mean field equations, such as (\ref{mf5}) - (\ref{mf6}).\;
  Initialise $\lambda$ randomly. \;
  \While{Not converged}{
   \For{$i =  1$ \KwTo $k$}{
@@ -229,7 +227,7 @@ The required algorithm is known as a coordinate ascent algorithm, and is describ
 
 \subsubsection{Stochastic Variational Bayes}
 
-Restricting the approximating distribution to a factorisable family may be unsatisfactory in many applications where the dependence between parameters is important, as in the AR(2) model where Figure (\ref{MCMCplot}) shows strong dependence between $\phi_1$ and $\phi_2$. Without factorisation the simple method to maximise the ELBO as in MFVB is unavailable. \citet{Paisley2012} and \citet{Ranganath2014} have adapted a gradient ascent algorithm for use in Variational Bayes, resulting in what is known as Stochastic Variational Bayes (SVB).
+Restricting the approximating distribution to a factorisable family may be unsatisfactory in many applications where the dependence between parameters is important, as in the AR(2) model where Figure \ref{MCMCplot} shows strong dependence between $\phi_1$ and $\phi_2$. Without factorisation the simple method to maximise the ELBO as in MFVB is unavailable. \citet{Paisley2012} and \citet{Ranganath2014} have adapted a gradient ascent algorithm for use in Variational Bayes, resulting in what is known as Stochastic Variational Bayes (SVB).
 
 The algorithm for SVB iteratively takes the  derivative of $\mathcal{L}(q(\theta | \lambda), y)$ in (\ref{ELBO}) with respect to $\lambda$ and the following updating step is applied until the ELBO converges to a maximum.
 
@@ -330,13 +328,13 @@ Using the approach described in section 2.3, an application of VC algorirhtm to 
 \item $c(Q(\phi_2), Q(\sigma^2) | Q(\phi_1))$ - Independent
 \end{itemize}
 
-Figure (\ref{VBfit}) shows that Stochastic Variational Bayes (blue) fit the MCMC (red) sample very closely.
+Figure \ref{VBfit} shows that Stochastic Variational Bayes (blue) fit the MCMC (red) sample very closely.
 
 \begin{figure}[h]
-\label{VBfit}
 \centering
 \includegraphics[scale = 0.5]{VBfit.png}
-\caption{The fit of an SVB algorithm (red) compared to MCMC (red) for the AR(2) model described in section 2.1. SVB resulted in an almost identical posterior to MCMC while taking X less time to run. (working from home, will check runtime at uni)}
+\caption{The fit of an SVB algorithm (red) compared to MCMC (red) for the AR(2) model described in section 2.1. SVB resulted in an almost identical posterior to MCMC, requiring around one hundredth of the runtime for MCMC.}
+\label{VBfit}
 \end{figure}
 
 \section{Electricity Load Forecasts}
@@ -344,16 +342,27 @@ Figure (\ref{VBfit}) shows that Stochastic Variational Bayes (blue) fit the MCMC
 
 The literature for electricity forecasting is wide, and contains models based on many different fields, such as game theory, time-series modelling and neural networks, see \citet{Weron2014} for a recent review. Density forecasting for short term electricity load has had less attention, with \citet{Fan2012} and \citet{He2016} being notable examples, which used boot strapping and quantile regression respectively to generate forecast densities. Both of these approaches create forecast densities that are conditioned on the model and estimated parameters being correct, while the Bayesian approach used in this thesis can average over parameter and model uncertainty leading to a more accurate forecast density. This thesis also aims to re-estimate the model after each data point is observed to fully take advantage of any extra information on changes in parameters and thus further increase the accuracy of the forecast density. 
 
+Half hourly electricity load data for Victoria, Australia has been collected for the 2011-2015 period, and is plotted in Figure \ref{loadplot}. The time series displays strong seasonal characteristics, with a yearly, day of week, and time of day pattern. Electricity load is strongly dependent on temperature, with high load experienced on both very cold and very hot days. In summer periods, load is often low but shows extreme volatility, while load slowly rises then falls in winter and displays significantly less volatility. 
 
-\begin{itemize}
-\item Describe and plot load Data
-\item Plot price data to emphasize price spikes
-\item Follow up the intro to talk a bit about load forecasting
-\end{itemize}
+The electricity market in Victoria operates by market participants sending electricity bid and offers for each five minute period to  AEMO, a centralised market operator. AEMO then determines the dispatch price and load for that five minute period, and determines the final spot price participants pay for each half-hour period by averaging the six five minute dispath prices in that half-hour. Market participants are allowed to revise bids and offers at any point before dispatch. The electricity supply curve is strongly J shaped, as coal generators are able to provide a large load cheaply but if demand exceeds this level the price spikes as other generators must be brought online expensively. These characteristics of the electricity market leads to a large amount of volatility in prices demonstrated by Figure \ref{rrpplot}. The seasonal effects of the load data are also present in prices, but these effects are dominated by irregular spikes as high as \$9,974/mWh, compared to a four year mean of \$42/mWh.
+
+\begin{figure}[h]
+\centering
+\includegraphics[scale = 0.5]{load_timeseries.png}
+\caption{Half hourly load data measured in megawatt hours for Victoria from January 1 2011 to December 31 2015. The yearly pattern is characterised by a low median load with regular spikes in summer and a more consistent sine curve in winter. Note: Replace with daily average to make the pattern clearer?}
+\label{loadplot}
+\end{figure}.
+
+\begin{figure}[h]
+\centering
+\includegraphics[scale = 0.5]{RRP_timeseries.png}
+\caption{Half hourly price data for Victoria from January 1 2011 to December 31 2015. The price shows a strong time of week and time of day seasonal effect in the low price periods, and has irregular spikes.}
+\label{rrpplot}
+\end{figure}.
 
 \subsection{Exponential Smoothing}
 
-\citet{Taylor2003} explores the seasonal properties of electricity demand and introduces a double seasonal Holt-Winters exponential smoothing model with daily and weekly effects described by (\ref{ds-hw1})-(\ref{ds-hw4}), and later in \citet{Taylor2008} verifies that this approach is superior to other common time-series models for very short-term load forecasting \citep{Taylor2008}.
+\citet{Taylor2003} explores the seasonal properties of minute-by-minute electricity demand in the United Kingdom and introduces a double seasonal Holt-Winters exponential smoothing model with daily and weekly effects described by (\ref{ds-hw1})-(\ref{ds-hw4}). Yearly effects are omitted as their inclusion requires a large number of latent states to be estimated. This model is later verified in \citet{Taylor2008} as superior to other common time-series models for very short-term load forecasting.
 
 \begin{align}
 y_t &= l_{t-1} + d_{t-m_1} + w_{t-m_2} + e_t \label{ds-hw1} \\
