@@ -14,10 +14,10 @@ source("conf_functions.R")
 sourceCpp("../AR2.cpp")
 
 set.seed(21)
-phi1 = 0.79
+phi1 = 0.75
 phi2 = 0.2
 sigma2 = 1
-T = 30
+T = 150
 J = 150 #for forecasting
 y = vector(length = T+J)
 
@@ -39,9 +39,9 @@ theta = matrix(0, ncol = 3, nrow = rep)
 sig2 = 1
 phi = c(0.6, 0.1)
 
-tune1 = 0.16
+tune1 = 0.25
 accept1 = 0
-tune2 = 0.16
+tune2 = 0.25
 accept2 = 0
 set.seed(3)
 
@@ -105,7 +105,7 @@ theta %>% as.data.frame() %>% cbind(rep = 1:rep) %>% gather(parameter, draw, -re
   ggplot() + geom_line(aes(rep, draw)) + facet_wrap(~parameter, scales = "free")
 
 
-thetaKeep = data.frame(theta[seq(10001, 500000, 1550),])
+thetaKeep = data.frame(theta[seq(50001, 500000, 200),])
 effectiveSize(thetaKeep)
 ggpairs(thetaKeep)
 cov(thetaKeep)
