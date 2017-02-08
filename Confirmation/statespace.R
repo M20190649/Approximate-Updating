@@ -2,47 +2,47 @@ library(FKF)
 library(truncnorm)
 library(ggplot2)
 T = 150
-J = 150
+set.seed(51)
 
+mu = 3
 rho = 0.8
-beta = 1
+sigmaSqY = 1
+sigmaSqX = 1
 
-a0 = rnorm(1)
-a = rep(0, T+J)
-y = rep(0, T+J)
-for(t in 1:300){
+x0 = rnorm(1)
+x = rep(0, T)
+y = rep(0, T)
+for(t in 1:T){
   if(t == 1){
-    a[t] = rho*a0 + rnorm(1) 
+    x[t] = rho*x0 + rnorm(1, 0, sigmaSqX) 
   } else {
-    a[t] = rho*a[t-1] + rnorm(1)
+    x[t] = rho*x[t-1] + rnorm(1, 0, sigmaSqX)
   }
-  y[t] = beta*a[t] + rnorm(1)
+  y[t] = mu + x[t] + rnorm(1, 0, sigmaSqY)
 }
 
-forwardsFilter = function(y, T, rho, beta){
+#add sigmas
+forwardsFilter = function(y, T, rho, mu, sigy, sigx){
   att = rep(0, T)
   ptt = rep(0, T)
-  
+  y = y - mu
   at = 0
   pt = rho^2 + 1
-  vt = y[1] - beta*at
-  ft = beta^2*pt + 1
-  mt = pt*beta
-  att[1] = at + mt*vt/ft
-  ptt[1] = pt - mt^2/ft
+  vt = y[1] - at
+  att[1] = at + pt*vt/(pt + 1)
+  ptt[1] = pt - pt^2/(pt + 1)
   for(t in 2:T){
     at = rho*att[t-1]
     pt = rho^2*ptt[t-1] + 1
-    vt = y[t] - beta*at
-    ft = beta^2*pt + 1
-    mt = pt*beta
-    att[t] = at + mt*vt/ft
-    ptt[t] = pt - mt^2/ft
+    vt = y[t] - at
+    att[t] = at + pt*vt/(pt + 1)
+    ptt[t] = pt - pt^2/(pt + 1)
   }
   return(list(att = att, ptt = ptt))
 }
 
-backwardsSampler = function(kalman, T, rho){
+#add sigmas
+backwardsSampler = function(kalman, T, rho, sigx){
   alpha = rep(0, T+1)
   alpha[T+1] = rnorm(1, kalman$att[T], sqrt(kalman$ptt[T]))
   for(t in T:2){
@@ -60,16 +60,23 @@ backwardsSampler = function(kalman, T, rho){
 }
 
 rep = 5000
-adraw = matrix(0, nrow = rep, ncol = T+1)
-theta = rep(0, rep)
+xdraw = matrix(0, nrow = rep, ncol = T+1)
+theta = matrix(0, ncol = 4, nrow = rep) #rho, mu, sigy, sigx
 
-theta[1] = 0.5
+theta[1,] = 0.5
 
 for(i in 2:rep){
-  kalman = forwardsFilter(y[1:T], T, theta[i-1], beta)
+  kalman = forwardsFilter(y[1:T], T, theta[i-1, 1], theta[i-1, 2], theta[i-1, 3], theta[i-1, 4])
   
-  adraw[i, ] = backwardsSampler(kalman, T, theta[i-1])
+  adraw[i, ] = backwardsSampler(kalman, T, theta[i-1], theta[i-1, 4])
   
-  theta[i] = rtruncnorm(1, -1, 1, sum(adraw[i,1:T]*adraw[i,2:(T+1)]) / sum(adraw[i,1:T]^2), sqrt(1/sum(adraw[i,1:T]^2)))
+  #rho from trunc normal
+  theta[i, 1] = rtruncnorm(1, -1, 1, sum(xdraw[i,1:T]*xdraw[i,2:(T+1)]) / sum(xdraw[i,1:T]^2), sqrt(1/sum(xdraw[i,1:T]^2)))
+  #mu from normal
+  theta[i, 2] = rnorm(1)
+  #sigy from InvG
+  theta[i, 3] = 1/rgamma(1)
+  #sigx from InvG
+  theta[i, 4] = 1/rgamma(1)
 }
 
