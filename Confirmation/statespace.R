@@ -1,82 +1,126 @@
-library(FKF)
-library(truncnorm)
 library(ggplot2)
-T = 150
-set.seed(51)
+library(GGally)
+library(coda)
 
+set.seed(31)
+T = 150
 mu = 3
-rho = 0.8
+phi = 0.6
 sigmaSqY = 1
 sigmaSqX = 1
+alphaxy = 1
+betay = 1
+alphax = 1
+betax = 1
 
-x0 = rnorm(1)
+x0 = rnorm(1, 0, sqrt(sigmaSqX))
 x = rep(0, T)
 y = rep(0, T)
 for(t in 1:T){
   if(t == 1){
-    x[t] = rho*x0 + rnorm(1, 0, sigmaSqX) 
+    x[t] = phi*x0 + rnorm(1, 0, sqrt(sigmaSqX)) 
   } else {
-    x[t] = rho*x[t-1] + rnorm(1, 0, sigmaSqX)
+    x[t] = phi*x[t-1] + rnorm(1, 0, sqrt(sigmaSqX))
   }
-  y[t] = mu + x[t] + rnorm(1, 0, sigmaSqY)
+  y[t] = mu + x[t] + rnorm(1, 0, sqrt(sigmaSqY))
 }
 
-#add sigmas
-forwardsFilter = function(y, T, rho, mu, sigy, sigx){
+FFBS = function(y, T, phi, mu, sigmaSqY, sigmaSqX){
   att = rep(0, T)
   ptt = rep(0, T)
   y = y - mu
   at = 0
-  pt = rho^2 + 1
-  vt = y[1] - at
-  att[1] = at + pt*vt/(pt + 1)
-  ptt[1] = pt - pt^2/(pt + 1)
+  pt = phi^2*sigmaSqX + sigmaSqX
+  vt = y[1] 
+  att[1] = pt*vt/(pt + sigmaSqY)
+  ptt[1] = pt - pt^2/(pt + sigmaSqY)
   for(t in 2:T){
-    at = rho*att[t-1]
-    pt = rho^2*ptt[t-1] + 1
+    at = phi*att[t-1]
+    pt = phi^2*ptt[t-1] + sigmaSqX
     vt = y[t] - at
-    att[t] = at + pt*vt/(pt + 1)
-    ptt[t] = pt - pt^2/(pt + 1)
+    att[t] = at + pt*vt/(pt + sigmaSqY)
+    ptt[t] = pt - pt^2/(pt + sigmaSqY)
   }
-  return(list(att = att, ptt = ptt))
-}
-
-#add sigmas
-backwardsSampler = function(kalman, T, rho, sigx){
-  alpha = rep(0, T+1)
-  alpha[T+1] = rnorm(1, kalman$att[T], sqrt(kalman$ptt[T]))
-  for(t in T:2){
-    vstar = alpha[t+1] - rho*kalman$att[t]
-    fstar = rho^2*kalman$ptt[t] + 1
-    mstar = kalman$ptt[t]*rho
-    atT = kalman$att[t] + mstar*vstar/fstar
-    ptT = kalman$ptt[t] - mstar^2/fstar
+  
+  alpha = rep(0, T)
+  alpha[T] = rnorm(1, att[T], sqrt(ptt[T]))
+  for(t in (T-1):1){
+    vstar = alpha[t+1] - phi*att[t]
+    fstar = phi^2*ptt[t] + sigmaSqX
+    mstar = ptt[t]*phi
+    atT = att[t] + mstar*vstar/fstar
+    ptT = ptt[t] - mstar^2/fstar
     alpha[t] = rnorm(1, atT, sqrt(ptT))
   }
-  a0T = rho*alpha[2]/(rho^2+1)
-  p0T = 1 - rho^2/(rho^2 + 1)
-  alpha[1] = rnorm(1, a0T, sqrt(p0T))
-  return(alpha)
+  a0T = phi*alpha[1]/(phi^2+1)
+  p0T = sigmaSqX/(phi^2 + 1)
+  alpha0 = rnorm(1, a0T, sqrt(p0T))
+  return(c(alpha0, alpha))
 }
 
-rep = 5000
+rep = 1000
 xdraw = matrix(0, nrow = rep, ncol = T+1)
-theta = matrix(0, ncol = 4, nrow = rep) #rho, mu, sigy, sigx
+theta = matrix(0, ncol = 4, nrow = rep) #phi, mu, sigmaSqY, sigmaSqX
 
 theta[1,] = 0.5
+xdraw[1,] = 0
 
 for(i in 2:rep){
-  kalman = forwardsFilter(y[1:T], T, theta[i-1, 1], theta[i-1, 2], theta[i-1, 3], theta[i-1, 4])
-  
-  adraw[i, ] = backwardsSampler(kalman, T, theta[i-1], theta[i-1, 4])
-  
-  #rho from trunc normal
-  theta[i, 1] = rtruncnorm(1, -1, 1, sum(xdraw[i,1:T]*xdraw[i,2:(T+1)]) / sum(xdraw[i,1:T]^2), sqrt(1/sum(xdraw[i,1:T]^2)))
+  #states from the Kalman Filter
+  #xdraw[i, ] = FFBS(y[1:T], T, theta[i-1, 1], theta[i-1, 2], theta[i-1, 3], theta[i-1, 4])
+  xdraw[i, 1] = rnorm(1, theta[i-1, 1]*xdraw[i-1, 2]/(1 + theta[i-1, 1]^2), sqrt(theta[i-1, 4]/(1 + theta[i-1, 1]^2)))
+  for(t in 2:150){
+    xdraw[i, t] = rnorm(1, theta[i-1, 1]*(xdraw[i, t-1] + xdraw[i-1, t+1])/(1+theta[i-1, 1]^2), sqrt(theta[i-1, 4]/(1 + theta[i-1, 1]^2)))
+  }
+  xdraw[i, T+1] = rnorm(1, theta[i-1, 1]*xdraw[i, T], sqrt(theta[i-1, 4]))
+  #phi from trunc normal
+  theta[i, 1] = rtruncnorm(1, -1, 1, sum(xdraw[i,1:T]*xdraw[i,2:(T+1)]) / sum(xdraw[i,1:T]^2), sqrt(theta[i-1, 4]/sum(xdraw[i,1:T]^2)))
   #mu from normal
-  theta[i, 2] = rnorm(1)
-  #sigy from InvG
-  theta[i, 3] = 1/rgamma(1)
-  #sigx from InvG
-  theta[i, 4] = 1/rgamma(1)
+  theta[i, 2] = rnorm(1, (sum(y - xdraw[i, 2:(T+1)]))/T, sqrt(theta[i-1, 3]/T))
+  #sigmaSqY from invG
+  theta[i, 3] = 1/rgamma(1, shape = T/2 + alphay, rate = betay + sum((y - xdraw[i, 2:(T+1)] - theta[i, 2])^2)/2)
+  #sigmaSqX from invG
+  theta[i, 4] = 1/rgamma(1, shape = (T+1)/2 + alphax, rate = betax + (xdraw[i, 1]^2 + sum((xdraw[i, 2:(T+1)] - xdraw[i, 1:T]*theta[i, 1])^2)/2))
 }
 
+thetaKeep = theta[seq(20001, 100000, length.out = 500),]
+colnames(thetaKeep) = c("Phi", "Mu", "SigY", "SigX")
+effectiveSize(thetaKeep)
+ggpairs(thetaKeep)
+xdrawKeep = xdraw[seq(20001, 100000, length.out = 500),]
+effectiveSize(xdrawKeep)
+
+posterior.statistics = function(x){
+  l95 = quantile(x, probs = 0.025)
+  mean = mean(x)
+  median = median(x)
+  u95 = quantile(x, probs = 0.975)
+  return(c(l95, mean, median, u95))
+}
+
+xd = t(replicate(1000, FFBS(y, T, rho, mu, sigmaSqY, sigmaSqX), simplify = "matrix"))
+l95 = apply(xd[,2:151], 2, quantile, probs = 0.025)
+u95 = apply(xd[,2:151], 2, quantile, probs = 0.975)
+sum(l95 < x & x < u95)/T
+ggplot() + geom_line(aes(1:150, l95), colour = "red") + geom_line(aes(1:150, x)) + geom_line(aes(1:150, u95), colour = "red")
+
+apply(thetaKeep, 2, posterior.statistics)
+apply(xdrawKeep[,1:5], 2, posterior.statistics)
+
+ggpairs(cbind(thetaKeep, xdrawKeep[,1:5]))
+
+library(VineCopula)
+pobtheta = pobs(thetaKeep)
+VineTheta = RVineStructureSelect(pobtheta, indeptest = TRUE)
+VineTheta$Matrix
+VineTheta$family
+
+pobx = pobs(xdrawKeep)
+colnames(pobx) = paste0("x", 0:T)
+
+VineX = list()
+for(t in 1:T){
+  VineX[[t]] = BiCopSelect(pobx[,t], pobx[,t+1])
+}
+
+#Vine = RVineStructureSelect(cbind(pobtheta, pobx), indeptest = TRUE, cores = 4)
