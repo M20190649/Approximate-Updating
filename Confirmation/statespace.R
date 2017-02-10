@@ -1,14 +1,15 @@
 library(ggplot2)
 library(GGally)
 library(coda)
+library(truncnorm)
 
 set.seed(31)
-T = 150
+T = 100
 mu = 3
-phi = 0.6
+phi = 0.5
 sigmaSqY = 1
 sigmaSqX = 1
-alphaxy = 1
+alphay = 1
 betay = 1
 alphax = 1
 betax = 1
@@ -58,37 +59,33 @@ FFBS = function(y, T, phi, mu, sigmaSqY, sigmaSqX){
   return(c(alpha0, alpha))
 }
 
-rep = 1000
+rep = 10000
 xdraw = matrix(0, nrow = rep, ncol = T+1)
 theta = matrix(0, ncol = 4, nrow = rep) #phi, mu, sigmaSqY, sigmaSqX
 
-theta[1,] = 0.5
-xdraw[1,] = 0
+theta[1,] = c(phi, mu, sigmaSqY, sigmaSqX)
 
 for(i in 2:rep){
   #states from the Kalman Filter
-  #xdraw[i, ] = FFBS(y[1:T], T, theta[i-1, 1], theta[i-1, 2], theta[i-1, 3], theta[i-1, 4])
-  xdraw[i, 1] = rnorm(1, theta[i-1, 1]*xdraw[i-1, 2]/(1 + theta[i-1, 1]^2), sqrt(theta[i-1, 4]/(1 + theta[i-1, 1]^2)))
-  for(t in 2:150){
-    xdraw[i, t] = rnorm(1, theta[i-1, 1]*(xdraw[i, t-1] + xdraw[i-1, t+1])/(1+theta[i-1, 1]^2), sqrt(theta[i-1, 4]/(1 + theta[i-1, 1]^2)))
-  }
-  xdraw[i, T+1] = rnorm(1, theta[i-1, 1]*xdraw[i, T], sqrt(theta[i-1, 4]))
+  xdraw[i, ] = FFBS(y[1:T], T, theta[i-1, 1], theta[i-1, 2], theta[i-1, 3], theta[i-1, 4])
   #phi from trunc normal
   theta[i, 1] = rtruncnorm(1, -1, 1, sum(xdraw[i,1:T]*xdraw[i,2:(T+1)]) / sum(xdraw[i,1:T]^2), sqrt(theta[i-1, 4]/sum(xdraw[i,1:T]^2)))
   #mu from normal
-  theta[i, 2] = rnorm(1, (sum(y - xdraw[i, 2:(T+1)]))/T, sqrt(theta[i-1, 3]/T))
+  theta[i, 2] = rnorm(1, sum(y - xdraw[i, 2:(T+1)])/T, sqrt(theta[i-1, 3]/T))
   #sigmaSqY from invG
-  theta[i, 3] = 1/rgamma(1, shape = T/2 + alphay, rate = betay + sum((y - xdraw[i, 2:(T+1)] - theta[i, 2])^2)/2)
+  theta[i, 3] = 1/rgamma(1, shape = T/2 + alphay, rate = betay + sum((y - xdraw[i, 2:(T+1)]*theta[i,1] - theta[i, 2])^2)/2)
   #sigmaSqX from invG
   theta[i, 4] = 1/rgamma(1, shape = (T+1)/2 + alphax, rate = betax + (xdraw[i, 1]^2 + sum((xdraw[i, 2:(T+1)] - xdraw[i, 1:T]*theta[i, 1])^2)/2))
 }
 
-thetaKeep = theta[seq(20001, 100000, length.out = 500),]
+thetaKeep = theta[seq(0.2*rep + 1, rep, length.out = 5000),]
 colnames(thetaKeep) = c("Phi", "Mu", "SigY", "SigX")
 effectiveSize(thetaKeep)
 ggpairs(thetaKeep)
-xdrawKeep = xdraw[seq(20001, 100000, length.out = 500),]
+xdrawKeep = xdraw[seq(0.2*rep + 1, rep, length.out = 500),]
+colnames(xdrawKeep) = paste0("X", 0:T)
 effectiveSize(xdrawKeep)
+ggpairs(xdrawKeep[,1:5])
 
 posterior.statistics = function(x){
   l95 = quantile(x, probs = 0.025)
@@ -98,25 +95,22 @@ posterior.statistics = function(x){
   return(c(l95, mean, median, u95))
 }
 
-xd = t(replicate(1000, FFBS(y, T, rho, mu, sigmaSqY, sigmaSqX), simplify = "matrix"))
-l95 = apply(xd[,2:151], 2, quantile, probs = 0.025)
-u95 = apply(xd[,2:151], 2, quantile, probs = 0.975)
-sum(l95 < x & x < u95)/T
-ggplot() + geom_line(aes(1:150, l95), colour = "red") + geom_line(aes(1:150, x)) + geom_line(aes(1:150, u95), colour = "red")
+#xd = t(replicate(1000, FFBS(y, T, phi, mu, sigmaSqY, sigmaSqX), simplify = "matrix"))
+#l95 = apply(xd[,2:151], 2, quantile, probs = 0.025)
+#u95 = apply(xd[,2:151], 2, quantile, probs = 0.975)
+#sum(l95 < x & x < u95)/T
+#ggplot() + geom_line(aes(1:150, l95), colour = "red") + geom_line(aes(1:150, x)) + geom_line(aes(1:150, u95), colour = "red")
 
 apply(thetaKeep, 2, posterior.statistics)
 apply(xdrawKeep[,1:5], 2, posterior.statistics)
 
-ggpairs(cbind(thetaKeep, xdrawKeep[,1:5]))
-
 library(VineCopula)
 pobtheta = pobs(thetaKeep)
-VineTheta = RVineStructureSelect(pobtheta, indeptest = TRUE)
+VineTheta = RVineStructureSelect(pobtheta, indeptest = TRUE, cores = 4)
 VineTheta$Matrix
 VineTheta$family
 
 pobx = pobs(xdrawKeep)
-colnames(pobx) = paste0("x", 0:T)
 
 VineX = list()
 for(t in 1:T){

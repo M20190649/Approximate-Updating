@@ -9,7 +9,6 @@ using namespace Rcpp;
 using namespace arma;
 using namespace std;
 using namespace boost::math;
-//namespaces have yet to clash so I'll be a bit lazy and declare them all here
 
 //arma = bulk of vectors/matrices used (R package = "RcppArmadillo")
 //boost = has gamma quantile function (R package = "BH")
