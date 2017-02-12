@@ -73,7 +73,7 @@ for(i in 2:rep){
   #mu from normal
   theta[i, 2] = rnorm(1, sum(y - xdraw[i, 2:(T+1)])/T, sqrt(theta[i-1, 3]/T))
   #sigmaSqY from invG
-  theta[i, 3] = 1/rgamma(1, shape = T/2 + alphay, rate = betay + sum((y - xdraw[i, 2:(T+1)]*theta[i,1] - theta[i, 2])^2)/2)
+  theta[i, 3] = 1/rgamma(1, shape = T/2 + alphay, rate = betay + sum((y - xdraw[i, 2:(T+1)] - theta[i, 2])^2)/2)
   #sigmaSqX from invG
   theta[i, 4] = 1/rgamma(1, shape = (T+1)/2 + alphax, rate = betax + (xdraw[i, 1]^2 + sum((xdraw[i, 2:(T+1)] - xdraw[i, 1:T]*theta[i, 1])^2)/2))
 }
