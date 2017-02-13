@@ -59,7 +59,7 @@ FFBS = function(y, T, phi, mu, sigmaSqY, sigmaSqX){
   return(c(alpha0, alpha))
 }
 
-rep = 10000
+rep = 100000
 xdraw = matrix(0, nrow = rep, ncol = T+1)
 theta = matrix(0, ncol = 4, nrow = rep) #phi, mu, sigmaSqY, sigmaSqX
 
@@ -67,7 +67,7 @@ theta[1,] = c(phi, mu, sigmaSqY, sigmaSqX)
 
 for(i in 2:rep){
   #states from the Kalman Filter
-  xdraw[i, ] = FFBS(y[1:T], T, theta[i-1, 1], theta[i-1, 2], theta[i-1, 3], theta[i-1, 4])
+  xdraw[i, ] = FFBS(y, theta[i-1, ])
   #phi from trunc normal
   theta[i, 1] = rtruncnorm(1, -1, 1, sum(xdraw[i,1:T]*xdraw[i,2:(T+1)]) / sum(xdraw[i,1:T]^2), sqrt(theta[i-1, 4]/sum(xdraw[i,1:T]^2)))
   #mu from normal
@@ -78,11 +78,11 @@ for(i in 2:rep){
   theta[i, 4] = 1/rgamma(1, shape = (T+1)/2 + alphax, rate = betax + (xdraw[i, 1]^2 + sum((xdraw[i, 2:(T+1)] - xdraw[i, 1:T]*theta[i, 1])^2)/2))
 }
 
-thetaKeep = theta[seq(0.2*rep + 1, rep, length.out = 5000),]
+thetaKeep = theta[seq(0.2*rep + 1, rep, length.out = 1000),]
 colnames(thetaKeep) = c("Phi", "Mu", "SigY", "SigX")
 effectiveSize(thetaKeep)
 ggpairs(thetaKeep)
-xdrawKeep = xdraw[seq(0.2*rep + 1, rep, length.out = 500),]
+xdrawKeep = xdraw[seq(0.2*rep + 1, rep, length.out = 1000),]
 colnames(xdrawKeep) = paste0("X", 0:T)
 effectiveSize(xdrawKeep)
 ggpairs(xdrawKeep[,1:5])
@@ -110,11 +110,17 @@ VineTheta = RVineStructureSelect(pobtheta, indeptest = TRUE, cores = 4)
 VineTheta$Matrix
 VineTheta$family
 
-pobx = pobs(xdrawKeep)
+library(fitdistrplus)
+library(mixtools)
+library(QRM)
+fitdist(thetaKeep[,1], "truncnorm", fix.arg =  list(a = -1, b = 1), start = list(mean = 0, sd = 1), method = "mle")$bic
+log(1000)*8 - 2*normalmixEM(thetaKeep[,1], k = 3)$loglik
+log(1000)*5 - 2*normalmixEM(thetaKeep[,1], k = 2)$loglik
+log(1000)*3 - 2*fit.st(thetaKeep[,2])$ll.max
 
-VineX = list()
-for(t in 1:T){
-  VineX[[t]] = BiCopSelect(pobx[,t], pobx[,t+1])
-}
+fitdist(thetaKeep[,2], "norm", method = "mle")$bic
+log(1000)*3 - 2*fit.st(thetaKeep[,2])$ll.max
+log(1000)*8 - 2*normalmixEM(thetaKeep[,2], k = 3)$loglik
+log(1000)*5 - 2*normalmixEM(thetaKeep[,2], k = 2)$loglik
 
-#Vine = RVineStructureSelect(cbind(pobtheta, pobx), indeptest = TRUE, cores = 4)
+#q(phi | truncnorm) * q(mu | t) * q(sigx | IG) * q(sigy | IG) * c(q sigx sigy | gaussian) * c(q phi q sigx Rotated BB8)

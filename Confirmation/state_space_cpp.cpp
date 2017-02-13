@@ -16,8 +16,8 @@ vec FFBS(vec y, vec theta, bool outputDraw = TRUE){
   //subtract the mean from y
   y -= theta[1];
   //forward filter steps
-  vec att(T);
-  vec ptt(T);
+  vec att(T, fill::ones);
+  vec ptt(T, fill::ones);
   vec draws(T+1);
   double at;
   double pt = pow(theta[0], 2)*theta[3] + theta[3];
@@ -38,13 +38,13 @@ vec FFBS(vec y, vec theta, bool outputDraw = TRUE){
   double mstar;
   vec atT(T);
   vec ptT(T);
-  draws[T] = att[T] + sqrt(ptt[T])*randn<vec>(1)[0];
+  draws[T] = att[T-1] + sqrt(ptt[T-1])*randn<vec>(1)[0];
   for(int t = T - 1; t > 0; --t){
-    vstar = draws[t+1] - theta[0]*att[t];
-    fstar = pow(theta[0], 2)*ptt[t] + theta[3];
-    mstar = ptt[t]*theta[0];
-    atT[t] = att[t] + mstar * vstar / fstar;
-    ptT[t] = ptt[t] - pow(mstar, 2) / fstar;
+    vstar = draws[t+1] - theta[0]*att[t-1];
+    fstar = pow(theta[0], 2)*ptt[t-1] + theta[3];
+    mstar = ptt[t-1]*theta[0];
+    atT[t] = att[t-1] + mstar * vstar / fstar;
+    ptT[t] = ptt[t-1] - pow(mstar, 2) / fstar;
     draws[t] = atT[t] + sqrt(ptT[t])*randn<vec>(1)[0];
   }
   atT[0] = theta[0]*draws[1] / (pow(theta[0], 2) + 1);
@@ -58,8 +58,8 @@ vec FFBS(vec y, vec theta, bool outputDraw = TRUE){
       output[i] = atT[i];
       output[T+i+1] = ptT[i];
     }
-    output[T] = att[T];
-    output[2*T + 1] = ptt[T];
+    output[T] = att[T-1];
+    output[2*T + 1] = ptt[T-1];
     return output;
   }
 }
