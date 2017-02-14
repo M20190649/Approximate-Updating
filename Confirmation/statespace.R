@@ -106,6 +106,21 @@ apply(xdrawKeep[,1:5], 2, posterior.statistics)
 
 library(VineCopula)
 pobtheta = pobs(thetaKeep)
+pobx = pobs(xdrawKeep)
+
+VineMatrix = matrix(0, T+5, T+5)
+VineMatrix[T+5, ] = 1
+VineMatrix[T+4, 1:(T+4)] = 2
+VineMatrix[T+3, 1:(T+3)] = 3
+VineMatrix[T+2, 1:(T+2)] = 4
+VineMatrix[1:(T+1), 1] = c(T+5, 5:(T+4))
+diag(VineMatrix[2:(T+1), 2:(T+1)]) = 5:(T+4)
+for(t in 3:(T+1)){
+  for(j in 2:(t-1)){
+    VineMatrix[t, j] = T + j - t + 5
+  }
+}
+
 VineTheta = RVineStructureSelect(pobtheta, indeptest = TRUE, cores = 4)
 VineTheta$Matrix
 VineTheta$family
@@ -123,4 +138,8 @@ log(1000)*3 - 2*fit.st(thetaKeep[,2])$ll.max
 log(1000)*8 - 2*normalmixEM(thetaKeep[,2], k = 3)$loglik
 log(1000)*5 - 2*normalmixEM(thetaKeep[,2], k = 2)$loglik
 
-#q(phi | truncnorm) * q(mu | t) * q(sigx | IG) * q(sigy | IG) * c(q sigx sigy | gaussian) * c(q phi q sigx Rotated BB8)
+states = matrix(0, T+1, 2)
+for(i in 1:(T+1)){
+  states[i, 1] = fitdist(xdrawKeep[,i], "norm", method = "mle")
+  states[i, 2] = log(1000)*3 - 2*fit.st(xdrawKeep[,i])$ll.max
+}
