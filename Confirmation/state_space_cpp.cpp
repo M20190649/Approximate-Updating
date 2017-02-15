@@ -10,15 +10,16 @@ using namespace arma;
 using namespace std;
 using namespace boost::math;
 
+//Depricated
 // [[Rcpp::export]]
-vec FFBS(vec y, vec theta, bool outputDraw = TRUE){
+vec FFBScpp(vec y, vec theta, bool outputDraw = 1){
   int T = y.size();
   //subtract the mean from y
   y -= theta[1];
   //forward filter steps
-  vec att(T, fill::ones);
+  vec att(T, fill::ones); //0 - (T-1) -> x1 - xT
   vec ptt(T, fill::ones);
-  vec draws(T+1);
+  vec draws(T+1); //0 - T -> x0 - xT
   double at;
   double pt = pow(theta[0], 2)*theta[3] + theta[3];
   double vt = y[0];
@@ -28,7 +29,7 @@ vec FFBS(vec y, vec theta, bool outputDraw = TRUE){
     at = theta[0]*att[t-1];
     pt = pow(theta[0], 2)*ptt[t-1] + theta[3];
     vt = y[t] - at;
-    att[t] = pt * vt / (pt + theta[2]);
+    att[t] = at + pt * vt / (pt + theta[2]);
     ptt[t] = pt - pow(pt, 2) / (pt + theta[2]);
   }     
 
