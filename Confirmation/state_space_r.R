@@ -1,19 +1,3 @@
-simtheta = function(Vine, lambda, meanX, varX){
-  #simulate cdf via Vine
-  epsilon = RVineSim(1, Vine)
-  #Transform (0, 1) eps to theta and states
-  theta = c(qtruncnorm(epsilon[1], -1, 1, lambda[1], sqrt(lambda[2])),
-            QRM::qst(epsilon[2], lambda[3], sqrt(lambda[4]), lambda[5]),
-            qigamma(epsilon[3], lambda[6], lambda[7]),
-            qigamma(epsilon[4], lambda[8], lambda[9]))
-  x = rep(0, 101)
-  for(i in 1:101){
-    x[i] = qnorm(epsilon[4+i], meanX[i], sqrt(varX[i]))
-  }
-  
-  return(list(theta = theta, x = x))
-}
-  
 ELBO = function(Vine, lambda, meanX, varX, y, epsilon, n = 1000){
   out = rep(0, n)
   for(i in 1:n){
@@ -23,10 +7,10 @@ ELBO = function(Vine, lambda, meanX, varX, y, epsilon, n = 1000){
               qigamma(epsilon[i, 4], lambda[8], lambda[9]))
     x = rep(0, 101)
     for(j in 1:101){
-      x[i] = qnorm(epsilon[i, 4+j], meanX[j], sqrt(varX[j]))
+      x[j] = qnorm(epsilon[i, 4+j], meanX[j], sqrt(varX[j]))
     }
     a = logjoint(y, x, theta)
-    b = logq(T, theta, lambda, meanX, varX, Vine, x)
+    b = logq(T, theta, lambda, meanX, varX, Vine, x, epsilon[i,])
     out[i] = a - b
   }
   return(mean(out))
@@ -169,28 +153,41 @@ ELBOderiv = function(y, Vine, lambda, meanX, varX, epsilon, param){
   
 }
 
-copulaDeriv = function(y, Vine, lambda, meanX, varX, epsilon, param, i, j, k){
+copulaDeriv = function(y, Vine, lambda, meanX, varX, epsilon, i, j, whichpar){
   T = length(y)
   theta = c(qtruncnorm(epsilon[1], -1, 1, lambda[1], sqrt(lambda[2])),
             QRM::qst(epsilon[2], lambda[3], sqrt(lambda[4]), lambda[5]),
             qigamma(epsilon[3], lambda[6], lambda[7]),
             qigamma(epsilon[4], lambda[8], lambda[9]))
   x = rep(0, 101)
-  for(j in 1:101){
-    x[j] = qnorm(epsilon[4+j], meanX[j], sqrt(varX[j]))
+  for(m in 1:101){
+    x[m] = qnorm(epsilon[4+m], meanX[m], sqrt(varX[m]))
   }
   
   family = Vine$family[i, j]
   u1 = Vine$Matrix[j, j]
   u2 = Vine$Matrix[i, j]
   wrt = "par"
-  if(k == 2){
+  if(whichpar == 2){
     wrt = "par 2"
   }
   par = Vine$par[i, j]
   par2 = Vine$par2[i, j]
   
-  CopDeriv = BiCopDeriv(epsilon[u1], epsilon[u2], family, par, par2, wrt, log = TRUE)
+  if(family %in% c(1, 3, 4, 5, 6, 13, 14, 16, 23, 24, 26, 33, 34, 36)){
+    CopDeriv = BiCopDeriv(epsilon[u1], epsilon[u2], family, par, par2, wrt, log = TRUE)
+  } else {
+    h = 0.000001
+    if(whichpar == 1){
+      parh = par + h
+      CopDeriv = (log(BiCopPDF(epsilon[u1], epsilon[u2], family, parh, par2)) - 
+                    log(BiCopPDF(epsilon[u1], epsilon[u2], family, par, par2)))/h
+    } else {
+      par2h = par2 + h
+      CopDeriv = (log(BiCopPDF(epsilon[u1], epsilon[u2], family, par, par2h)) - 
+                    log(BiCopPDF(epsilon[u1], epsilon[u2], family, par, par2)))/h
+    }
+  }
   logqEval = logq(T, theta, lambda, meanX, varX, Vine, x, epsilon)
   logJointEval = logjoint(y, x, theta)
   
@@ -198,7 +195,7 @@ copulaDeriv = function(y, Vine, lambda, meanX, varX, epsilon, param, i, j, k){
 }
 
 #lambda = 1. Phi Mean, 2. Phi Variance, 3. Mu mean, 4. Mu Variance, 5. Mu df, 6. Sigy Alpha, 7. Sigy Beta, 8. Sigx Alpha, 9. Sigx Beta
-SGA = function(y, lambda, meanX, varX, s, M, threshold, eta, Vine, n){
+SGA = function(y, lambda, meanX, varX, S, M, threshold, eta, Vine, n){
   k = length(lambda)
   T = length(y)
   Gt = rep(0, 209)
@@ -209,30 +206,28 @@ SGA = function(y, lambda, meanX, varX, s, M, threshold, eta, Vine, n){
   epsilon = RVineSim(n, Vine)
   LBnew = ELBO(Vine, lambda, meanX, varX, y, epsilon, n)
   diff = threshold + 1
-  Par1 = matrix(0, T + 5, T + 5)
-  Par2 = matrix(0, T + 5, T + 5)
   
   while(diff > threshold | iter < 10){
     if(iter >= M){
       break
     }
     
-    epsSample = sample(1:n, s, replace = TRUE)
+    epsSample = sample(1:n, S, replace = TRUE)
     partials = rep(0, 209)
     partialsCop = matrix(0, ncol = 104, nrow = 5)
     partialsCop2 = matrix(0, ncol = 104, nrow = 5)
-    for(i in 1:s){
+    for(s in 1:S){
       for(j in 1:209){
-        partials[j] = partials[j] + ELBOderiv(y, Vine, lambda, meanX, varX, epsilon[epsSample[i]], j)/s
+        partials[j] = partials[j] + ELBOderiv(y, Vine, lambda, meanX, varX, epsilon[epsSample[s],], j)/S
       }
       
       for(j in 1:104){
         for(i in 101:105){
           if(Vine$par[i, j] != 0){
-            partialsCop[i-100, j] = partialsCop[i-100, j] + copulaDeriv(y, Vine, lambda, meanX, varX, epsilon[epsSample[i]], i, j, 1)/s
+            partialsCop[i-100, j] = partialsCop[i-100, j] + copulaDeriv(y, Vine, lambda, meanX, varX, epsilon[epsSample[s],], i, j, 1)/S
           }
           if(Vine$par2[i, j] != 0){
-            partialsCop2[i-100, j] = partialsCop2[i-100, j] + copulaDeriv(y, Vine, lambda, meanX, varX, epsilon[epsSample[i]], i, j, 2)/s
+            partialsCop2[i-100, j] = partialsCop2[i-100, j] + copulaDeriv(y, Vine, lambda, meanX, varX, epsilon[epsSample[s],], i, j, 2)/S
           }
         }
       }
@@ -258,3 +253,4 @@ SGA = function(y, lambda, meanX, varX, s, M, threshold, eta, Vine, n){
   }
   return(list(lambda = lambda, meanX = meanX, varX = varX, Vine = Vine, iter = iter, ELBO = LBnew))
 }
+

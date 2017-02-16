@@ -66,14 +66,15 @@ vec FFBScpp(vec y, vec theta, bool outputDraw = 1){
 }
 
 // [[Rcpp::export]]
-double logjoint(vec y, rowvec x, rowvec theta, double alphax = 1, double alphay = 1, double betax = 1, double betay = 1){
-  int T = y.size();
-  double part1 = -(alphax + (T+3)/2)*log(theta[3]) - (alphay + (T+2)/2)*log(theta[2]);
+double logjoint(vec y, vec x, vec theta, double alphax = 1, double alphay = 1, double betax = 1, double betay = 1){
+  double T = y.size();
+  double part1 = - (alphax + (T+3)/2) * log(theta[3]) - (alphay + (T+2)/2) * log(theta[2]);
   double part2 = - betay;
-  double part3 = - betax - 1/2*x[0];
+  double part3 = - betax - x[0]/2;
   for(int t = 0; t < T; ++t){
-    part2 -= 1/2 * pow(y[t] - x[t+1] - theta[1], 2);
-    part3 -= 1/2 * pow(x[t+1] - theta[0] * x[t], 2);
+    part2 -= pow(y[t] - x[t+1] - theta[1], 2)/2;
+    part3 -= pow(x[t+1] - theta[0] * x[t], 2)/2;
   }
   return part1 + part2/theta[2] + part3/theta[3];
 }
+
