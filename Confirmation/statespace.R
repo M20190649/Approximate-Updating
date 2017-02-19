@@ -132,3 +132,8 @@ fitdist(thetaKeep[,2], "norm", method = "mle")$bic
 log(1000)*3 - 2*fit.st(thetaKeep[,2])$ll.max
 log(1000)*8 - 2*normalmixEM(thetaKeep[,2], k = 3)$loglik
 log(1000)*5 - 2*normalmixEM(thetaKeep[,2], k = 2)$loglik
+
+
+Vine <- readRDS("Vine.rds")
+table(Vine$family[101:105,])
+table(Vine$family[101,1:100])

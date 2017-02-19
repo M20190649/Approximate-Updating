@@ -209,9 +209,7 @@ SGA = function(y, lambda, meanX, varX, s, M, threshold, eta, Vine, n){
   epsilon = RVineSim(n, Vine)
   LBnew = ELBO(Vine, lambda, meanX, varX, y, epsilon, n)
   diff = threshold + 1
-  Par1 = matrix(0, T + 5, T + 5)
-  Par2 = matrix(0, T + 5, T + 5)
-  
+
   while(diff > threshold | iter < 10){
     if(iter >= M){
       break

@@ -6,12 +6,12 @@
 }
 
 @inproceedings{Attias1999,
- author = {Attias, Hagai},
- title = {A Variational Bayesian Framework for Graphical Models},
- booktitle = {Proceedings of the 12th International Conference on Neural Information Processing Systems},
- year = {1999},
- location = {Denver, CO},
- pages = {209--215},
+ 	author = {Attias, Hagai},
+ 	title = {A Variational Bayesian Framework for Graphical Models},
+	booktitle = {Advances in Neural Information Processing Systems 12},
+	year = {1999},
+ 	pages = {209--215},
+	publisher = {MIT Press},
 } 
 
 @book{Bishop2006,
@@ -38,6 +38,15 @@
 	year = {1987}
 }
 
+@article{DssMann2013,
+ author = {DssMann, J. and Brechmann, E. C. and Czado, C. and Kurowicka, D.},
+ title = {Selecting and Estimating Regular Vine Copulae and Application to Financial Returns},
+ journal = {Computional Statistics and Data Analysis},
+ volume = {59},
+ year = {2013},
+ pages = {52-69},
+} 
+
 @article{Duchi2011,
 	author = {Duchi, J. and Hazan, E. and Singer, Y.},
 	journal = {Journal of Machine Learning Research},
@@ -46,6 +55,15 @@
 	title = {Adaptive Subgradient Methods for Online Learning and Stochastic Optimization},
  	year = {2011},
  	volume = {12}
+}
+
+@article{Fan2012,
+  author = {Fan, S. and Hyndman, R.},
+  journal = {IEEE Transactions on Power Systems},
+  title = {Short-term load forecasting based on a semi-parametric additive model},
+  volume = {27},
+  year = {2012},
+  pages = {134-141}
 }
 
 @unpublished{Forbes2000,
@@ -62,6 +80,17 @@
 	volume = {34},
 	pages = {220-234},
 	year = {2006},
+}
+
+@inproceedings{Ghahramani2000,
+  author = {Gahramani, Z. and Beal, M., J.},
+  title = {Propogation algorithms for Variational Bayesian Learning},
+  year = {2001},
+	editor = {Leen, T., K. and Dietterich, T. and Tresp, V.},
+	booktitle = {Advances in Neural Information Processing Systems 13},
+	year = {2000},
+	pages = {507-513},
+	publisher = {MIT Press},
 }
 
 @incollection{Geweke2006,
@@ -81,6 +110,15 @@
   volume = {1},
   pages = {125-151},
   year = {2014}
+}
+
+@article{He2016,
+  author = {He, Y. and Xu, Q. and Wan, J. and Yang, S.},
+  journal = {Energy},
+  title = {Short-term power load probability density forecasting based on quantile regression neural network and triangle kernel function},
+  volume = {114},
+  pages = {498-512},
+  year = {2016}
 }
 
 @article{Hoffman2013,
@@ -142,7 +180,7 @@
 	title = {Expectation Propagation for Approximate Bayesian Inference},
 	booktitle = {UAI '01: Proceedings of the 17th Conference in Uncertainty in Artificial Intelligence},
 	year = {2001},
-	location = {San Francisco, CA, USA},
+	publisher = {Morgan Kaufmann Publishers Inc.},
 	pages = {362-369},
 }
 
@@ -158,8 +196,8 @@
 	editor = {Langford, J. and Pineau, J.},
 	booktitle = {Proceedings of the 29th International Conference on Machine Learning (ICML-12)},
 	title = {Variational Bayesian Inference with Stochastic Search},
-  year = {2012},
-  location = {Edinburgh, Scotland},
+	year = {2012},
+	publisher = {Omnipress},
 	pages = {1367-1374},
 }
 
@@ -187,7 +225,7 @@
 	author = {Sklar, A.},
 	year = {1959},
 	title = {Fonctions de répartition à n dimensions et leurs marges},
-	publisher = {Publ. nst. Statist. Univ. Paris},
+	journal = {Publ. Inst. Statist. Univ. Paris},
 	volume = {8},
 	pages = {229-231}
 }
@@ -227,7 +265,7 @@
   title = {Copula variational inference},
   booktitle = {Advances in Neural Information Processing Systems 28},
   year = {2015},
-  location = {Montreal, Canada},
+  publisher = {Curran Associates, Inc.},
   pages = {3564-3572}
 }
 
