@@ -126,7 +126,7 @@ The conditional distribution $p(\sigma^2 | y_{1:T}, \phi_1, \phi_2)$ is Inverse 
 
 \begin{figure}[h]
 \centering
-\includegraphics[scale = 0.6]{MCMC.png}
+\includegraphics[width=0.7\linewidth,height=\textheight,keepaspectratio]{MCMC.png}
 \caption{MCMC draws for the AR(2) model with $T = 150, \phi_1 = 0.75, \phi_2 = 0.2$ and $\sigma^2 = 1$. Approximately 24\% of both $\phi$ parameters were accepted by the Metropolis Hastings step, then the first 10,000 draws were discarded and the remainder thinned to 1 in 200 to make dependence between draws negligible.}
 \label{MCMCplot}
 \end{figure}
@@ -311,16 +311,16 @@ p(\theta_1, \dots, \theta_k) = p(\theta_1) \dots p(\theta_k) c(P(\theta_1), \dot
 
 where $p(\theta)$ is a pdf, $P(\theta)$ is a cdf, and $c(\cdot)$ is a copula. 
 
-\citet{Joe1994} introduces the vine copula, a technique to factorise a high-dimensional copula into a set of bivariate copulas in a similar way to the factorisation of a joint distribution into a marginal and conditional distribution, for example
+This idea is extended by the vine copula, a technique to factorise a high-dimensional copula into a set of bivariate copulas in a similar way to the factorisation of a joint distribution into a marginal and conditional distribution, see \citet{Joe2014} and references within. An example of this factorisation is
 
 \begin{equation}
 \label{vc2}
 c(P(\theta_1), P(\theta_2), P(\theta_3)) = c(P(\theta_1), P(\theta_2)) \cdot c(P(\theta_1), P(\theta_3)) \cdot c(P(\theta_2), P(\theta_3) | P(\theta_1)).
 \end{equation}
 
-A copula for a $k$ dimensional $\theta$ can be replaced with $k(k-1)/2$ bivariate copulas arranged in a vine copula, greatly increasing the amount of flexibility available to fit a distribution. However there are $O(k!)$ ways to factorise the full copula and choose a family for each bivariate copula, so without detailed problem specific information the application of a vine copula to Stochastic Variational Bayes is difficult. \citet{Tran2015} implements Variational Bayes with a vine copula in what they call Copula Variational Bayes, but the dimension of $\boldsymbol{\theta}$ was small in that case allowing an exhaustive search for the vine copula that maximised the ELBO. 
+A copula for a $k$ dimensional $\theta$ can be replaced with $k(k-1)/2$ bivariate copulas arranged in a vine copula, greatly increasing the amount of flexibility available to fit a distribution. However factorising the copula and choosing a family for each bivariate copula takes exponential time in the number of parameters, so without detailed problem specific information the application of a vine copula to Stochastic Variational Bayes is difficult. \citet{Tran2015} implements Variational Bayes with a vine copula in what they call Copula Variational Bayes, but the dimension of $\boldsymbol{\theta}$ was small in that case allowing an exhaustive search for the vine copula that maximised the ELBO. 
 
-Given a sample of $\boldsymbol{\theta}$, \citet{Dssmann2013} provide an algorithm to select the best vine factorisation by maximising Kendall's Tau, and the best family for each bivariate copula by maximising an information criterion such as AIC. In the real-time forecasting models used for electricity load demand, MCMC samples of the posterior distribution are available, though often immediately out of date. The approach used in this thesis is to run an MCMC algorithm, thin the resulting draws until they are effectively independent, choose an optimal family for each marginal distribution by AIC, then run (Vine copula algorithm here) to infer an optimal vine copula. This results in an approximating distribution $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ that can then be used in an SVB algorithm to update $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ as more observations become available. MCMC can be ran simultaenously and the resulting sample can be used to check if the distribution $q$ should be changed. 
+Given a sample of $\boldsymbol{\theta}$, \citet{Dssmann2013} provide an algorithm to select the best vine factorisation by maximising Kendall's Tau, and the best family for each bivariate copula by minimising an information criterion such as AIC. In the real-time forecasting models used for electricity load demand, MCMC samples of the posterior distribution are available, though often immediately out of date. The approach used in this thesis is to run an MCMC algorithm, thin the resulting draws until they are effectively independent, choose an optimal family for each marginal distribution by AIC, then run (Vine copula algorithm here) to infer an optimal vine copula. This results in an approximating distribution $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ that can then be used in an SVB algorithm to update $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ as more observations become available. MCMC can be ran simultaenously and the resulting sample can be used to check if the distribution $q$ should be changed. 
 
 \subsection{Applying Stochastic Variational Bayes}
 
@@ -339,7 +339,7 @@ Figure \ref{VBfit} shows that Stochastic Variational Bayes (blue) fit the MCMC (
 
 \begin{figure}[h]
 \centering
-\includegraphics[scale = 0.5]{VBfit.png}
+\includegraphics[width=0.7\linewidth,height=\textheight,keepaspectratio]{VBfit.png}
 \caption{The fit of an SVB algorithm (red) compared to MCMC (red) for the AR(2) model described in section 2.1. SVB resulted in an almost identical posterior to MCMC, requiring around one hundredth of the runtime for MCMC.}
 \label{VBfit}
 \end{figure}
@@ -355,17 +355,17 @@ The electricity market in Victoria operates by market participants sending elect
 
 \begin{figure}[h]
 \centering
-\includegraphics{load_timeseries.png}
-\caption{Half hourly load data measured in megawatt hours for Victoria from January 1 2011 to December 31 2015. The yearly pattern is characterised by a low median load with regular spikes in summer and a more consistent sine curve in winter.}
+\includegraphics[width=\linewidth,height=\textheight,keepaspectratio]{load_timeseries.png}
+\caption{Half hourly load data measured in megawatt hours for Victoria from January 1 2011 to December 31 2015. The yearly pattern is characterised by a low median load with regular spikes in summer and a more consistent curve in winter.}
 \label{loadplot}
-\end{figure}.
+\end{figure}
 
 \begin{figure}[h]
 \centering
-\includegraphics{RRP_timeseries.png}
-\caption{Half hourly price data for Victoria from January 1 2011 to December 31 2015. The price shows a strong time of week and time of day seasonal effect in the low price periods, and has irregular spikes.}
+\includegraphics[width=\linewidth,height=\textheight,keepaspectratio]{RRP_timeseries.png}
+\caption{Half hourly price data for Victoria from January 1 2011 to December 31 2015. While the price has time of week and time of day seasonal effects these features are dominated by irregular spikes.}
 \label{rrpplot}
-\end{figure}.
+\end{figure}
 
 \subsection{Exponential Smoothing}
 
