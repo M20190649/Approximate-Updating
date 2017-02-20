@@ -22,13 +22,13 @@
 }
 
 @article{Casella1996,
-  author = {Casella, G. and Robert, C.},
-  title = {Rao-blackwellisation of sampling schemes},
-  journal = {Biometrika},
-  year = {1996},
-  volume = {83},
-  number = {1},
-  pages = {81-94}
+  	author = {Casella, G. and Robert, C.},
+  	title = {Rao-blackwellisation of sampling schemes},
+  	journal = {Biometrika},
+  	year = {1996},
+  	volume = {83},
+  	number = {1},
+  	pages = {81-94}
 }
 
 @book{Chandler1987,
@@ -39,12 +39,12 @@
 }
 
 @article{DssMann2013,
- author = {DssMann, J. and Brechmann, E. C. and Czado, C. and Kurowicka, D.},
- title = {Selecting and Estimating Regular Vine Copulae and Application to Financial Returns},
- journal = {Computional Statistics and Data Analysis},
- volume = {59},
- year = {2013},
- pages = {52-69},
+ 	author = {DssMann, J. and Brechmann, E. C. and Czado, C. and Kurowicka, D.},
+ 	title = {Selecting and Estimating Regular Vine Copulae and Application to Financial Returns},
+ 	journal = {Computional Statistics and Data Analysis},
+ 	volume = {59},
+ 	year = {2013},
+ 	pages = {52-69},
 } 
 
 @article{Duchi2011,
@@ -58,19 +58,19 @@
 }
 
 @article{Fan2012,
-  author = {Fan, S. and Hyndman, R.},
-  journal = {IEEE Transactions on Power Systems},
-  title = {Short-term load forecasting based on a semi-parametric additive model},
-  volume = {27},
-  year = {2012},
-  pages = {134-141}
+  	author = {Fan, S. and Hyndman, R.},
+  	journal = {IEEE Transactions on Power Systems},
+  	title = {Short-term load forecasting based on a semi-parametric additive model},
+  	volume = {27},
+  	year = {2012},
+  	pages = {134-141}
 }
 
 @unpublished{Forbes2000,
-    author  = {Forbes, C. S. and Snyder, R. D. and Sharmi, R. G.},
-    title   = {Bayesian Exponential Smoothing},
-    year    = {2000},
-    note    = {Working paper}
+    	author  = {Forbes, C. S. and Snyder, R. D. and Sharmi, R. G.},
+    	title   = {Bayesian Exponential Smoothing},
+    	year    = {2000},
+    	note    = {Working paper}
 }
 
 @article{Friston2006,
@@ -83,9 +83,9 @@
 }
 
 @inproceedings{Ghahramani2000,
-  author = {Gahramani, Z. and Beal, M., J.},
-  title = {Propogation algorithms for Variational Bayesian Learning},
-  year = {2001},
+  	author = {Gahramani, Z. and Beal, M., J.},
+ 	title = {Propogation algorithms for Variational Bayesian Learning},
+ 	year = {2001},
 	editor = {Leen, T., K. and Dietterich, T. and Tresp, V.},
 	booktitle = {Advances in Neural Information Processing Systems 13},
 	year = {2000},
@@ -94,31 +94,31 @@
 }
 
 @incollection{Geweke2006,
-  author      = {Geweke, J. and Whiteman, C.},
-  title       = {Bayesian Forecasting},
-  editor      = {Elliott, G. and Granger, C. W. J. and Timmermann, A.},
-  booktitle   = {Handbook of Economic Forecasting, Volume 1},
-  publisher   = {Elsevier},
-  year        = {2006},
-  chapter     = {10},
+  	author      = {Geweke, J. and Whiteman, C.},
+ 	title       = {Bayesian Forecasting},
+  	editor      = {Elliott, G. and Granger, C. W. J. and Timmermann, A.},
+  	booktitle   = {Handbook of Economic Forecasting, Volume 1},
+  	publisher   = {Elsevier},
+  	year        = {2006},
+  	chapter     = {10},
 }
 
 @article{Gneiting2014,
-  author = {Gneiting, T. and Katzfuss, M.},
-  title = {Probabilistic Forecasting},
-  journal = {Annual Review of Statistics and Its Application},
-  volume = {1},
-  pages = {125-151},
-  year = {2014}
+  	author = {Gneiting, T. and Katzfuss, M.},
+  	title = {Probabilistic Forecasting},
+  	journal = {Annual Review of Statistics and Its Application},
+  	volume = {1},
+  	pages = {125-151},
+  	year = {2014}
 }
 
 @article{He2016,
-  author = {He, Y. and Xu, Q. and Wan, J. and Yang, S.},
-  journal = {Energy},
-  title = {Short-term power load probability density forecasting based on quantile regression neural network and triangle kernel function},
-  volume = {114},
-  pages = {498-512},
-  year = {2016}
+  	author = {He, Y. and Xu, Q. and Wan, J. and Yang, S.},
+  	journal = {Energy},
+  	title = {Short-term power load probability density forecasting based on quantile regression neural network and triangle kernel function},
+  	volume = {114},
+  	pages = {498-512},
+ 	year = {2016}
 }
 
 @article{Hoffman2013,
@@ -130,38 +130,36 @@
  	year = {2013}
 }
 
-@article{Joe1994,
+@book{Joe2014,
 	author = {Joe, H.},
-	journal = {The Canadian Journal of Statistics},
-	title = {Multivariate extreme-value distributions with applications in environmental data},
-	year = {1994},
-	volume = {22},
-	pages = {47-64}
+	publisher = {CRC Press},
+	title = {Dependence modeling with copulas},
+	year = {2014},
 }
 
 @article{Jordan1999,
 	author = {Jordan, M.I. and Ghahramani, Z. and Jaakola, T.S. and Saul, L.K.},
 	journal = {Machine Learning},
-  volume = {37},
+  	volume = {37},
 	pages = {183-233},
 	title = {An introduction to variational methods for graphical models},
  	year = {1999}
 }
 
 @article{Kingma2013,
-  author = {Kingma, D. P. and Welling, M.},
-  title = {Auto-Encoding Variational Bayes},
-  journal = {ArXiv e-prints},
-  year = {2013},
-  month = {dec},
+  	author = {Kingma, D. P. and Welling, M.},
+  	title = {Auto-Encoding Variational Bayes},
+  	journal = {ArXiv e-prints},
+  	year = {2013},
+  	month = {dec},
 }
 
 @article{Kingma2015,
-  author = {Kingma, D. P. and Salimans, T. and Welling, M.},
-  title = {Variational Dropout and the Local Reparameterization Trick},
-  journal = {ArXiv e-prints},
-  year = {2015},
-  month = {jun},
+  	author = {Kingma, D. P. and Salimans, T. and Welling, M.},
+  	title = {Variational Dropout and the Local Reparameterization Trick},
+  	journal = {ArXiv e-prints},
+  	year = {2015},
+  	month = {jun},
 }
 
 @article{Kullback1951,
@@ -207,7 +205,6 @@
 	title = {Black Box Variational Inference},
 	booktitle = {Proceedings of the Seventeenth International Conference on Artificial Intelligence and Statistics},
 	year = {2014},
-	location = {Reykjavik, Iceland},
 	pages = {814-822},
 }
 
@@ -232,60 +229,70 @@
 
 
 @article{Snyder1985,
-  author = {Snyder, R. D.},
-  journal = {Journal of the Royal Statisitcal Society, Series B},
-  volume = {47},
-  title = {Recursive Estimation of Dynamic Linear Models},
-  year = {1985},
-  pages = {272-276}
+  	author = {Snyder, R. D.},
+  	journal = {Journal of the Royal Statisitcal Society, Series B},
+  	volume = {47},
+  	title = {Recursive Estimation of Dynamic Linear Models},
+  	year = {1985},
+  	pages = {272-276}
 }
 
 @article{Taylor2003,
-  author = {Taylor, J. W.},
-  journal = {The Journal of the Operational Research Society},
-  volume = {54},
-  number = {8},
-  title = {Short-Term Electricity Demand Forecasting Using Double Seasonal Exponential Smoothing},
-  year = {2003},
-  pages = {799-805},
+  	author = {Taylor, J. W.},
+ 	journal = {The Journal of the Operational Research Society},
+ 	volume = {54},
+ 	number = {8},
+  	title = {Short-Term Electricity Demand Forecasting Using Double Seasonal Exponential Smoothing},
+  	year = {2003},
+  	pages = {799-805},
 }
 
 @article{Taylor2008,
-  author = {Taylor, J. W.},
-  journal = {International Journal of Forecasting},
-  volume = {24},
-  title = {An evaluation of methods for very short-term load forecasting using minute-by-minute British data},
-  year = {2008},
-  pages = {645-658},
+  	author = {Taylor, J. W.},
+  	journal = {International Journal of Forecasting},
+  	volume = {24},
+  	title = {An evaluation of methods for very short-term load forecasting using minute-by-minute British data},
+  	year = {2008},
+  	pages = {645-658},
 }
 
 @inproceedings{Tran2015,
-  author = {Tran, D. and Blei, D. and Airoldi, E. M},
-  editor = {Cortes, C. and Lawrence, N. D. and Lee, D. D. and Sugiyama, M. and Garnett, R.},
-  title = {Copula variational inference},
-  booktitle = {Advances in Neural Information Processing Systems 28},
-  year = {2015},
-  publisher = {Curran Associates, Inc.},
-  pages = {3564-3572}
+  	author = {Tran, D. and Blei, D. and Airoldi, E. M},
+ 	editor = {Cortes, C. and Lawrence, N. D. and Lee, D. D. and Sugiyama, M. and Garnett, R.},
+ 	title = {Copula variational inference},
+ 	booktitle = {Advances in Neural Information Processing Systems 28},
+ 	year = {2015},
+ 	publisher = {Curran Associates, Inc.},
+	pages = {3564-3572}
 }
 
 @article{Wainwright2008,
-  author = {Wainwright, M. J. and Jordan, M. I.},
-  journal = {Foundations and Trends in Machine Learning},
-  volume = {1},
-  number = {1-2},
-  year = {2008},
-  pages = {1-305},
-  title = {Graphical Models, Exponential Families, and Variational Inference}
+  	author = {Wainwright, M. J. and Jordan, M. I.},
+ 	journal = {Foundations and Trends in Machine Learning},
+  	volume = {1},
+ 	number = {1-2},
+ 	year = {2008},
+ 	pages = {1-305},
+ 	title = {Graphical Models, Exponential Families, and Variational Inference}
+}
+
+@article{Wang2013,
+	author = {Wang, C. and Blei, D.},
+	journal = {Journal of Machine Learning Research},
+	volume = {14},
+	number = {4},
+	pages = {1005-1031},
+	title = {Variational Inference in Nonconjugate Models},
+	year = {2013}
 }
 
 @article{Weron2014,
-  author = {Weron, R.},
-  journal = {International Journal of Forecasting},
-  volume = {30},
-  year = {2014},
-  pages = {1030-1081},
-  title = {Electricity price forecasting: A review of the start-of-the-art with a look into the future}
+	author = {Weron, R.},
+  	journal = {International Journal of Forecasting},
+  	volume = {30},
+  	year = {2014},
+  	pages = {1030-1081},
+  	title = {Electricity price forecasting: A review of the start-of-the-art with a look into the future}
 }
 
 
