@@ -159,12 +159,12 @@ p1dens = mutate(data.frame(support = seq(0.35, 1.15, length.out = 200)), density
 p2dens = mutate(data.frame(support = seq(-0.1, 0.55, length.out = 200)), density = dnorm(support, lambda[2], sqrt(Sigma[2,2])))
 sig2dens = mutate(data.frame(support = seq(0.501, 2, length.out = 150)), density = densigamma(support, lambda[6], lambda[7]))
 
-plot1 = ggplot() + geom_density(data = thetaKeep, aes(Phi1, y = ..density..)) + theme_bw()
-  #geom_line(data = p1dens, aes(support, density), colour = "blue") + theme_bw()
-plot2 = ggplot() + geom_density(data = thetaKeep, aes(Phi2, y = ..density..)) + theme_bw()
-  #geom_line(data = p2dens, aes(support, density), colour = "blue") + theme_bw()
-plot3 = ggplot() + geom_density(data = thetaKeep, aes(SigmaSquared, y = ..density..)) + theme_bw()
- # geom_line(data = sig2dens, aes(support, density), colour = "blue") + theme_bw()
+plot1 = ggplot() + geom_density(data = thetaKeep, aes(Phi1, y = ..density..), colour = "red") + 
+  geom_line(data = p1dens, aes(support, density), colour = "blue") + theme_bw() + labs(x = expression(phi[1]), y = "Density")
+plot2 = ggplot() + geom_density(data = thetaKeep, aes(Phi2, y = ..density..),  colour = "red") +
+  geom_line(data = p2dens, aes(support, density), colour = "blue") + theme_bw()+ labs(x = expression(phi[1]), y = "Density")
+plot3 = ggplot() + geom_density(data = thetaKeep, aes(SigmaSquared, y = ..density..),  colour = "red") + 
+  geom_line(data = sig2dens, aes(support, density), colour = "blue") + theme_bw() + labs(x = expression(sigma^2), y = "Density")
 
 p1p2 = expand.grid(sup1 = seq(0.35, 1.15, length.out = 200), sup2 = seq(-0.1, 0.55, length.out = 200))
 p1p2$density = apply(p1p2, 1, mvtnorm::dmvnorm, mean = lambda[1:2], sigma = Sigma) 
@@ -173,12 +173,12 @@ p1s2$density = apply(p1s2, 1, function(x) dnorm(x[1], lambda[1], sqrt(Sigma[1,1]
 p2s2 = expand.grid(sup1 = seq(-0.1, 0.55, length.out = 200), sup2 =seq(0.501, 2, length.out = 150))
 p2s2$density = apply(p2s2, 1, function(x) dnorm(x[1], lambda[2], sqrt(Sigma[2,2]))*densigamma(x[2], lambda[6], lambda[7]))
 
-plot4 = ggplot() + geom_density_2d(data=thetaKeep, aes(Phi1, Phi2), colour = "black") +  theme_bw()
-  #geom_contour(data=p1p2, aes(sup1, sup2, z = density)) +
-plot5 = ggplot() + geom_density_2d(data=thetaKeep, aes(Phi1, SigmaSquared), colour = "black") + theme_bw()
-  #geom_contour(data=p1s2, aes(sup1, sup2, z = density)) + theme_bw()
-plot6 = ggplot() + geom_density_2d(data=thetaKeep, aes(Phi2, SigmaSquared), colour = "black") + theme_bw()
-  #geom_contour(data=p2s2, aes(sup1, sup2, z = density)) 
+plot4 = ggplot() + geom_density_2d(data=thetaKeep, aes(Phi1, Phi2), colour = "red") + 
+  geom_contour(data=p1p2, aes(sup1, sup2, z = density), colour = "blue") + theme_bw() + labs(x = expresssion(phi[1]), y = expression(phi[2]))
+plot5 = ggplot() + geom_density_2d(data=thetaKeep, aes(Phi1, SigmaSquared), colour = "red") +
+  geom_contour(data=p1s2, aes(sup1, sup2, z = density), colour = "blue") + theme_bw() + labs(x = expresssion(phi[1]), y = expression(sigma^2))
+plot6 = ggplot() + geom_density_2d(data=thetaKeep, aes(Phi2, SigmaSquared), colour = "black") + 
+  geom_contour(data=p2s2, aes(sup1, sup2, z = density), colour = "blue") + theme_bw() + labs(x = expresssion(phi[2]), y = expression(sigma^2))
 
 grid.arrange(plot1, plot2, plot3, plot4, plot5, plot6, ncol = 3)
 
