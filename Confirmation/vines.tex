@@ -1,0 +1,86 @@
+\documentclass[12pt,a4paper]{article}%
+\usepackage[]{graphicx}\usepackage[]{color}
+%% maxwidth is the original width if it is less than linewidth
+%% otherwise use linewidth (to make sure the graphics do not exceed the margin)
+
+%2multibyte Version: 5.50.0.2960 CodePage: 1252
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage[centertags]{amsmath}
+\usepackage{graphicx}%
+\usepackage{natbib}
+\usepackage{color}
+\usepackage[dvipsnames,svgnames*]{xcolor}
+\usepackage{array}
+\usepackage[hidelinks]{hyperref}
+\usepackage[font=small,skip=5pt]{caption}
+\usepackage[aboveskip=2pt]{subcaption}
+\usepackage{amsmath}
+\usepackage[]{algorithm2e}
+\usepackage{amsthm}
+\usepackage{url}
+\usepackage{wasysym}
+\usepackage{ulem}
+\usepackage{tikz}
+\usetikzlibrary{bayesnet}
+\usepackage{afterpage}
+\usepackage{bbm}
+\setcounter{MaxMatrixCols}{30}
+\providecommand{\U}[1]{\protect\rule{.1in}{.1in}}
+\newtheorem{theorem}{Theorem}
+\newtheorem{acknowledgement}[theorem]{Acknowledgement}
+\newtheorem{axiom}[theorem]{Axiom}
+\newtheorem{case}[theorem]{Case}
+\newtheorem{claim}[theorem]{Claim}
+\newtheorem{conclusion}[theorem]{Conclusion}
+\newtheorem{condition}[theorem]{Condition}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{criterion}[theorem]{Criterion}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{exercise}[theorem]{Exercise}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{notation}[theorem]{Notation}
+\newtheorem{problem}[theorem]{Problem}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{solution}[theorem]{Solution}
+\newtheorem{summary}[theorem]{Summary}
+\setlength{\topmargin}{0in}
+\setlength{\oddsidemargin}{0.1in}
+\setlength{\evensidemargin}{0.1in}
+\setlength{\textwidth}{6.5in}
+\setlength{\textheight}{8.25in}
+\numberwithin{equation}{section}
+\title{Real Time Variational Density Forecasting}
+\author{Nathaniel Tomasetti, Catherine Forbes and Anastasios Panagiotelis}
+\begin{document}
+
+\begin{figure}[h]
+\centering
+\tikz{ %
+    \node[latent] (theta1) {$\theta_1$} ; %
+    \node[latent, right = of theta1] (theta2) {$\theta_2$} ; %
+    \node[latent, right = of theta2] (theta3) {$\theta_3$} ; %
+    \node[latent, below = of theta2] (theta4) {$\theta_4$} ; %
+    \edge [-] {theta1, theta3, theta4}  {theta2} ; %
+    %\edge{theta2} {theta3} ; %
+    %\edge{theta2} {theta4} ; %
+    
+    \node[latent, below = of theta4] (theta2theta3) {$\theta_2 \theta_3$} ; %
+    \node[latent, left = of theta2theta3] (theta1theta2) {$\theta_1 \theta_2$} ; %
+    \node[latent, right = of theta2theta3] (theta2theta4) {$\theta_2 \theta_4$} ; %
+    \edge [-] {theta1theta2, theta2theta4} {theta2theta3} ; %
+    %\edge{theta2theta3} {theta2theta4} ; %
+    
+    \node[latent, below = of theta1theta2] (t1t3t2) {$\theta_1 \theta_3 | \theta_2$} ; %
+    \node[latent, below = of theta2theta4] (t3t4t2) {$\theta_3 \theta_4 | \theta_2$} ; %
+    \edge [-] {t1t3t2} {t3t4t2} ;%
+    
+    \node[latent, below = of t1t3t2] (all) {$\theta_1, \theta_4 | \theta_2, \theta_3$} ; %
+}
+\end{figure}
+
+
+\end{document}

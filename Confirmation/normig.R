@@ -19,7 +19,7 @@ T = 100
 y = rnorm(T, mu, sig2)
 
 gamma = 0
-tau = 10
+tau = 1
 alpha = 1
 beta = 1
 
@@ -33,8 +33,8 @@ for(i in 1:100000){
   muMC[i] = rnorm(1, (tau * gamma + T * mean(y))/(tau+T), sqrt(sigMC[i] / (tau + T)))
 }
 
-sigsup = seq(0.8, 2.5, 0.01)
-musup = seq(1.5, 2.3, 0.01)
+sigsup = seq(0.5, 2.2, 0.01)
+musup = seq(1.6, 2.6, 0.01)
 
 sigtrue = densigamma(sigsup, alpha + T/2, vbarbar*sbarsq/2)
 mutrue = rep(0, length(musup))
