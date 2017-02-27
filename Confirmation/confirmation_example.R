@@ -25,7 +25,7 @@ gamma0 = sigma2 * (1-phi2) / ((1+phi2)*((1-phi2)^2 - phi1^2))
 gamma1 = sigma2 * phi1 / ((1+phi2)*((1-phi2)^2 - phi1^2))
 Sigma = matrix(c(gamma0, gamma1, gamma1, gamma0), 2)
 
-y[1:2] = rmvnorm(1, c(0, 0), Sigma)
+y = rmvnorm(1000, c(0, 0), Sigma)
 for(t in 3:(T+J)){
   y[t] = phi1*y[t-1] + phi2*y[t-2] + rnorm(1, sd = sqrt(sigma2))
 }
