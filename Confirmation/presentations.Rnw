@@ -1,0 +1,319 @@
+\documentclass{beamer}
+
+\makeatletter
+\def\maxwidth{ %
+  \ifdim\Gin@nat@width>\linewidth
+    \linewidth
+  \else
+    \Gin@nat@width
+  \fi
+}
+\makeatother
+
+
+
+\definecolor{shadecolor}{rgb}{.97, .97, .97}
+\definecolor{messagecolor}{rgb}{0, 0, 0}
+\definecolor{warningcolor}{rgb}{1, 0, 1}
+\definecolor{errorcolor}{rgb}{1, 0, 0}
+
+\usepackage{alltt}
+\usepackage{natbib}
+\usepackage{array}
+\usepackage[font=small,skip=5pt]{caption}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{dsfont}
+\usepackage[]{algorithm2e}
+\usepackage{amsthm}
+\usepackage{amsfonts}
+\usepackage{url}
+\usepackage{ulem}
+\usepackage{afterpage}
+\usepackage{bbm}
+\usepackage{tikz}
+\usepackage{amssymb}
+\usepackage{bm}
+
+\usetheme{Warsaw}
+\defbeamertemplate*{footline}{shadow theme}
+{%
+  \leavevmode%
+  \hbox{\begin{beamercolorbox}[wd=.5\paperwidth,ht=2.5ex,dp=1.125ex,leftskip=.3cm plus1fil,rightskip=.3cm]{author in head/foot}%
+    \usebeamerfont{author in head/foot}\insertframenumber\,/\,\inserttotalframenumber\hfill\insertshortauthor
+  \end{beamercolorbox}%
+  \begin{beamercolorbox}[wd=.5\paperwidth,ht=2.5ex,dp=1.125ex,leftskip=.3cm,rightskip=.3cm plus1fil]{title in head/foot}%
+    \usebeamerfont{title in head/foot}\insertshorttitle%
+  \end{beamercolorbox}}%
+  \vskip0pt%
+}
+
+\setbeamertemplate{headline}{%
+\leavevmode%
+  \hbox{%
+    \begin{beamercolorbox}[wd=\paperwidth,ht=2.5ex,dp=1.125ex]{palette quaternary}%
+    \insertsectionnavigationhorizontal{\paperwidth}{\hskip0pt plus1filll}{\hskip0pt plus1filll}
+    \end{beamercolorbox}%
+  }
+}
+
+\title[Real-Time Variational Density Forecasts]{Real-Time Variational Density Forecasts}
+\author[Nathaniel Tomasetti]{Nathaniel Tomasetti}
+\date{ }
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\begin{document}
+
+\begin{frame}
+\titlepage
+\centering
+Supervised by Catherine Forbes and Anastasios Panagiotelis
+\end{frame}
+
+\begin{frame}
+\section{Motivation}
+Motivation - Electricity 
+Motivation - MCMC/MFVB/SVB
+Motivation - Contributions
+\end{frame}
+
+\begin{frame}
+\section{Markov Chain Monte Carlo}
+\frametitle{Markov Chain Monte Carlo}
+
+\begin{itemize}
+\item Markov Chain Monte Carlo (MCMC) is a common method to sample from the true posterior.
+\item Adding more iterations allows any statistical error to become arbitarily small.
+\item Computation for complex models can be extremely slow
+\item A predictive density for the next data point may not be available before it is observed
+\end{itemize}
+
+\end{frame}
+\begin{frame}
+\frametitle{Deriving Gibbs Full Conditional Distributions}
+
+Let $y_i \sim \mathcal{N}(\mu, \sigma^2) \mbox{ for } i = 1, 2, \dots, N$, \newline $p(\sigma^2) \sim IG(\mbox{shape} = \alpha, \mbox{scale} = \beta)$ and $p(\mu | \sigma) \sim \mathcal{N}(\gamma, \sigma^2/\tau)$.
+
+Gibbs MCMC requires the distribution $p(\mu_{(i)} | \sigma^2_{(i-1)}, \textbf{y})$.
+
+\begin{itemize}
+\item Step One: Write the full log joint distribution
+\end{itemize}
+
+\begin{align}
+\log(p(\textbf{y}, \mu, \sigma^2)) &=  -(T/2 + \alpha + 2)\log(\sigma^2) - \frac{\sum_{i}(y_i - \mu)^2}{2\sigma^2} \nonumber \\
+&- \frac{\tau(\mu - \gamma)^2}{2\sigma^2} - \frac{\beta}{\sigma^2}  + c \nonumber 
+\end{align}
+
+\end{frame}
+\begin{frame}
+\frametitle{Deriving Gibbs Full Conditional Distributions}
+\begin{itemize}
+\item Step Two: Ignore components that do not depend on $\mu$ to form $\log(p(\mu | \sigma^2, \textbf{y}))$
+\begin{equation}
+\log(p(\mu | \textbf{y}, \sigma^2)) =  - \frac{\sum_{i}(y_i - \mu)^2}{2\sigma^2} - \frac{\tau(\mu - \gamma)^2}{2\sigma^2} + c \nonumber
+\end{equation}
+\item Step Three: Condition on the previous draw of $\sigma^2$ to form $\log(p(\mu_{(i)} | \sigma^2_{(i-1)}, \textbf{y}))$
+\begin{equation}
+\log(p(\mu_{(i)} | \sigma^2_{(i-1)}, \textbf{y})) = - \frac{\sum_{i}(y_i - \mu_{(i)})^2}{2\sigma_{(i-1)}^2} - \frac{\tau(\mu_{(i)} - \gamma)^2}{2\sigma_{(i-1)}^2}  + c \nonumber
+\end{equation}
+\item Step Four: Manipulate equation until a distribution kernel is recognised. If unrecognised, add a Metropolis-Hastings step.\
+\item Step Five: Repeat for $p(\sigma^2_{(i)} | \mu_{(i-1)}, \textbf{y})$
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}
+\section{Variational Bayes}
+\frametitle{Variational Bayes}
+\begin{itemize}
+\item Key Idea: Replace the intractable $p(\boldsymbol{\theta} | \textbf{y})$ with a tractable approximation $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$.
+\item Choose the $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ from a restricted class of distributions that minimises a well defined divergence between $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ and $p(\boldsymbol{\theta} | \textbf{y})$. 
+
+\item The classic choice is the Kullback-Leibler divergence \citep{Kullback1951} from $q$ to $p$,
+\begin{equation}
+\label{KL-def}
+KL[q(\boldsymbol{\theta} | \boldsymbol{\lambda})\hspace{.1cm}||\hspace{.1cm}p(\boldsymbol{\theta} | \textbf{y})] = \int q(\boldsymbol{\theta} | \boldsymbol{\lambda}) \ln \left( \frac{q(\boldsymbol{\theta} | \boldsymbol{\lambda})}{p(\boldsymbol{\theta} |\textbf{y})}\right) d\boldsymbol{\theta}.
+\end{equation}
+This is non-negative and equals zero if and only if $p(\boldsymbol{\theta} | \textbf{y}) = q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ almost everywhere \citep{Bishop2006}.
+\end{itemize}
+\end{frame}
+\begin{frame}
+\frametitle{The Evidence Lower Bound}
+Note that
+\begin{equation}
+\label{KL-ELBO}
+KL[q(\boldsymbol{\theta} | \boldsymbol{\lambda})\hspace{.1cm}||\hspace{.1cm}p(\boldsymbol{\theta} |\textbf{y})] = \ln(p(\textbf{y})) - \mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), \textbf{y}),
+\end{equation}
+where
+\begin{equation}
+\label{ELBO}
+\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), \textbf{y}) = \int q(\boldsymbol{\theta} | \boldsymbol{\lambda}) \ln (p(\textbf{y},\boldsymbol{\theta})) d\boldsymbol{\theta} -  \int q(\boldsymbol{\theta} | \boldsymbol{\lambda}) \ln (q(\boldsymbol{\theta} | \boldsymbol{\lambda})) d\boldsymbol{\theta}.
+\end{equation}
+is refered to as the Evidence Lower Bound (ELBO).
+\begin{itemize}
+\item Maximising the ELBO with respect to $q \iff$ Minimising the KL Divergence with respect to $q$.
+\item There are two tasks: 
+  \begin{enumerate}
+  \item Choose a functional form for $q$. 
+  \item Optimise parameters $\boldsymbol{\lambda}$. 
+  \end{enumerate}
+\end{itemize}
+
+
+
+\end{frame}
+
+\begin{frame}
+\subsection{Mean Field Variational Bayes}
+\frametitle{Mean Field Variational Bayes}
+Background - MFVB
+\end{frame}
+
+\begin{frame}
+\frametitle{Deriving $q$ distributions}
+
+Steps to find $q(\mu | \boldsymbol{\lambda}_1)$ are similar to finding $p(\mu_{(i)} | \sigma^2_{(i-1)}, \textbf{y})$
+
+\begin{itemize}
+\item Step One: Write the full log joint distribution
+\begin{align}
+\log(p(\textbf{y}, \mu, \sigma^2)) &= -(T/2 + \alpha + 2)\log(\sigma^2) - \frac{\sum_{i}(y_i - \mu)^2}{2\sigma^2} + c \nonumber \\
+&- \frac{\tau(\mu - \gamma)^2}{2\sigma^2} - \frac{\beta}{\sigma^2} + c \nonumber 
+\end{align}
+\item Step Two: Ignore components that do not depend on $\mu$ to form $\log(p(\mu | \sigma^2, \textbf{y}))$
+\begin{equation}
+\log(p(\mu | \textbf{y}, \sigma^2)) = - \frac{\sum_{i}(y_i - \mu)^2}{2\sigma^2} - \frac{\tau(\mu - \gamma)^2}{2\sigma^2} + c \nonumber
+\end{equation}
+\end{itemize}
+ 
+\end{frame}
+\begin{frame}
+\frametitle{Deriving $q$ distributions}
+
+\begin{itemize}
+\item Step Three: Take the expectation with respect to $q(\sigma^2 | \boldsymbol{\lambda}_2)$ to form $\log(q(\mu | \boldsymbol{\lambda}_1))$
+\begin{equation}
+\log(q(\mu | \boldsymbol{\lambda}_1)) = - 1/2 \mathbb{E}_{q(\sigma^2)} [\sigma^{-2}] \left( \sum_{i}(y_i - \mu)^2 + \tau(\mu - \gamma)^2 \right)  + c \nonumber
+\end{equation}
+\item Step Four: Manipulate equation until a distribution kernel is recognised. If unrecognised, add a secondary approximation.
+\item Step Five: Repeat for $q(\sigma^2 | \boldsymbol{\lambda}_2)$.
+\item In this case $q(\mu | \boldsymbol{\lambda}_1) \sim \mathcal{N}(\tilde{\gamma}, \tilde{\tau})$ and $q(\sigma^2 | \boldsymbol{\lambda}_2) \sim IG(\tilde{\alpha}, \tilde{\beta})$.
+\end{itemize}
+
+\end{frame}
+\begin{frame}
+\frametitle{Deriving $q$ distributions}
+
+$\boldsymbol{\lambda} = (\tilde{\gamma}, \tilde{\tau}, \tilde{\alpha}, \tilde{\beta})$, where
+\begin{align}
+\tilde{\gamma} &= \frac{\tau \gamma + \sum_{t=1}^{T} y_t}{T + \tau}  \label{mf5} \\ 
+\tilde{\tau} &= \left((T + \tau)\mathbb{E}_{q(\sigma^2)}[\sigma^{-2}]\right )^{-1} \label{mf6} \\
+\tilde{\alpha} &= (T+1)/2 + \alpha  \label{mf7} \\
+\tilde{\beta} &= \beta + 1/2\bigg((\tau + T)\mathbb{E}_{q(\mu)}[\mu^2 ]  \nonumber \\ 
+&- 2 \mathbb{E}_{q(\mu)}[\mu ]\left(\sum_{t=1}^{T}y_t + \tau\right) + \sum_{t=1}^{T} y_t^2 + \tau \gamma^2 \bigg). \label{mf8}
+\end{align}.
+
+\end{frame}
+\begin{frame}
+\frametitle{Deriving $q$ distributions}
+
+Substitute in expectations to (\ref{mf6}) and (\ref{mf8}):
+
+\begin{align}
+\tilde{\tau} &= \frac{\tilde{\beta}}{\tilde{\alpha}(T + \tau)} \label{mf9} \\
+\tilde{\beta} &= \beta + 1/2\left((\tau + T)(\tilde{\gamma}^2 + \tilde{\tau}) - 2 \tilde{\gamma}(\sum_{t=1}^{T}y_t + \tau) + \sum_{t=1}^{T} y_t^2 + \tau \gamma^2 \right)\label{mf10}
+\end{align}
+
+The circular dependence in (\ref{mf9}) and (\ref{mf10}) and can be resolved with a coordinate ascent algorithm.
+
+\end{frame}
+\begin{frame}
+\frametitle{Fit to simulated data}
+
+$100$ data points were simualted with $\mu = 2$ and $\sigma^2 = 1$ and both MCMC and MFVB are compared. Hyperparameters are $\gamma = 0, \tau = 1, \alpha = 1$ and $\beta = 1$. 
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.7\linewidth,height=\textheight,keepaspectratio]{norminvg}
+\caption{Marginal posterior densities for the Normal Inverse Gamma model. The true density is in black, the Monte Carlo sampler is red and the MFVB approximation is blue. MFVB converged in same time as required to take three MCMC samples of each parameter.}
+\label{fig:norminvg}
+\end{figure}
+
+\end{frame}
+\begin{frame}
+\subsection{Stochastic Variational Bayes}
+\frametitle{Stochastic Variational Bayes}
+
+\begin{itemize}
+\item \citet{Paisley2012} and \citet{Ranganath2014} adapted a gradient ascent algorithm for use in VB.
+\item The class of approximating distributions that can be used is broadened.
+\item Models no longer have to belong to the exponential family.
+\item We require Monte-Carlo estimates of 
+\begin{align}
+\label{SVB}
+\nabla_{\lambda}\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T}) &\approx \frac{1}{S}\sum_{s=1}^{S} \nabla_{\boldsymbol{\lambda}} [\ln(q(\boldsymbol{\theta}_s | \boldsymbol{\lambda})] \nonumber \\
+&\times \big(\ln (p(y_{1:T}, \boldsymbol{\theta}_s)) - \ln(q(\boldsymbol{\theta}_s | \boldsymbol{\lambda}))\big) 
+\end{align}
+where $\boldsymbol{\theta}_s$ is simulated from $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ for $s = 1, 2, \dots, S$. 
+\end{itemize}
+
+\end{frame}
+\begin{frame}
+\frametitle{Gradient Ascent}
+
+Make steps of the form
+\begin{equation}
+\lambda^{(m+1)} = \lambda^{(m)} + \rho^{(m)} \nabla_{\lambda} f(\lambda^{(m)})
+\end{equation}
+until $| f(\lambda^{(m+1)}) - f(\lambda^{(m)}) | < \epsilon$.
+
+\begin{figure}[h]
+\centering
+<<gradascent, out.width='0.4\\textwidth', error=FALSE, message=FALSE, warning=FALSE, echo=FALSE>>=
+x = rep(0, 20)
+x[1] = -2.5
+for(i in 1:19){
+  deriv = -x[i]*dnorm(x[i])
+  x[i+1] = x[i] + 23 * deriv / i
+}
+y2 = dnorm(x)
+library(ggplot2)
+xsup = seq(-3, 1.5, 0.01)
+y = dnorm(xsup, 0, 1)
+
+ggplot() + geom_line(aes(xsup, y)) + geom_path(aes(x, y2), colour = "red") + labs(y = "Gaussian Density", x = expression(lambda)) + theme_bw()
+@
+\caption{Red steps show the path a variable $\lambda^{(m)}$ took while maximising a standard normal distribution}
+\label{fig:GradAscent}
+\end{figure}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{The reparameterisation trick}
+\end{frame}
+
+\begin{frame}
+\section{Copula Modelling}
+Background - Copulas
+\end{frame}
+
+
+\begin{frame}
+Application - AR2
+Application - Updating rule
+
+Empirical - Background
+Empirical - Model
+\end{frame}
+
+
+\begin{frame}
+\bibliographystyle{asa}
+\bibliography{references}
+\end{frame}
+
+
+
+
+\end{document}

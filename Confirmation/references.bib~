@@ -165,11 +165,11 @@
  	year = {1999}
 }
 
-@article{Kingma2013,
+@article{Kingma2014,
   	author = {Kingma, D. P. and Welling, M.},
   	title = {Auto-Encoding Variational Bayes},
   	journal = {ArXiv e-prints},
-  	year = {2013},
+  	year = {2014},
   	month = {dec},
 }
 

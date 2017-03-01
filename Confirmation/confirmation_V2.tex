@@ -65,7 +65,7 @@ Bayesian methods are computationally complex as they require integration over th
 
 Alternatives to MCMC include Variational Bayes (VB) methods, where the aim is to replace the unknown true posterior distribution for a vector of unknowns with a parametric approximation. The Variational Bayes approach will be explored in the thesis, to determine if it is a viable alternative computation strategy to MCMC, in the context of modelling and short term forecasting of Victorian electricity load. In particular, we seek to understand the benefits gained in terms of the computational time required to obtain a VB approximate forecast distribution against the loss in statistical accuracy associated with the use of an approximate posterior forecast distribution. 
 
-The literature on Variational Bayes is dominated by two major implementations: Mean Field Variational Bayes (MFVB) and what we call Stochastic Variational Bayes (SVB). For either implementation we emphasise that there are two seperate tasks: Choose a functional form for the approximating distribution, and then optimise the parameters of this distribution to minimise a well defined divergence between the approximation and the true posterior. 
+The literature on Variational Bayes is dominated by two major implementations: Mean Field Variational Bayes (MFVB) and what we call Stochastic Variational Bayes (SVB). For either implementation we emphasise that there are two seperate tasks: Choose a functional form for the approximating distribution, and then optimise the parameters of this distribution to minimise a well defined divergence between the approximation and the true posterior. A recent review of Variational Bayes is provided by \citet{Blei2017}.
 
 Mean Field Variational Bayes (see \citet{Bishop2006} for an overview) can be applied to exponetial family models with conjugate priors, and restricts the class of approximating distributions to the factorisable family. MFVB provides both the optimal form of the approximating distribution within this class, and a computationally simple coordinate ascent algorithm is available to optimise parameters.
 Stochastic Variational Bayes (see \citet{Paisley2012} and \citet{Ranganath2014}) lifts both the restrictions for an exponential family model and the use of an approximating distribution that is factorisable. While parameter optimisation has a well developed gradient ascent algorithm, the determination of the functional form to be used is an active area of research.
@@ -150,27 +150,27 @@ q_i(\theta_i |\boldsymbol{\lambda_i}) \propto\exp( \mathbb{E}_{q_{\setminus i}} 
 We illustrate the implementation of MFVB with the model considered in Section (\ref{sec:MCMC}), where $y_t$ for $t = 1, \dots, T$ is generated independently from a $\mathcal{N}(\mu, \sigma^2)$ distribution, and prior distributions are given by $\mu \sim \mathcal{N}(\gamma, \sigma^2 / \tau)$ and $\sigma^2 \sim IG(\mbox{shape} = \alpha, \mbox{scale =}\beta)$. It can be shown that
 \begin{equation}
 \label{mf3}
-q(\mu | \boldsymbol{\lambda}_1) \propto \exp \left\{ \frac{-(T + \tau) \mathbb{E}_{q(\sigma^2)}(\sigma^{-2})}{2} \left( \mu - \frac{\tau \gamma + \sum_{t=1}^{T} y_t}{T + \tau} \right)^2 \right\}
+q(\mu | \boldsymbol{\lambda}_1) \propto \exp \left\{ \frac{-(T + \tau) \mathbb{E}_{q(\sigma^2)}[\sigma^{-2}]}{2} \left( \mu - \frac{\tau \gamma + \sum_{t=1}^{T} y_t}{T + \tau} \right)^2 \right\}
 \end{equation}
 and
 \begin{align}
 \label{mf4}
 q(\sigma^2 | \boldsymbol{\lambda}_2) &\propto \sigma^{-2((T+1)/2 + \alpha + 1)} \nonumber \\
-\times &\exp \left\{ \frac{ \beta + 1/2\left((\tau + T)\mathbb{E}_{q(\mu)}(\mu^2) - 2 \mathbb{E}_{q(\mu)}(\mu)(\sum_{t=1}^{T}y_t + \tau) + \sum_{t=1}^{T} y_t^2 + \tau \gamma^2\right)}{-\sigma^2} \right\}.
+\times &\exp \left\{ \frac{ \beta + 1/2\left((\tau + T)\mathbb{E}_{q(\mu)}[\mu^2] - 2 \mathbb{E}_{q(\mu)}[\mu ]\left(\sum_{t=1}^{T}y_t + \tau \right) + \sum_{t=1}^{T} y_t^2 + \tau \gamma^2\right)}{-\sigma^2} \right\}.
 \end{align}
 
 As the prior distributions used were conjugate to the likelihood, the Variational Bayes optimal distributions for $q(\mu |  \boldsymbol{\lambda}_1)$ and $q(\sigma^2 | \boldsymbol{\lambda}_2)$ are the same family as the prior distributions, and are denoted by $q(\mu | \boldsymbol{\lambda}_1) \sim \mathcal{N}(\tilde{\gamma}, \tilde{\tau})$ and $q(\sigma^2 | \boldsymbol{\lambda}_2) \sim IG(\tilde{\alpha}, \tilde{\beta})$. The vector $\boldsymbol{\lambda} = (\tilde{\gamma}, \tilde{\tau}, \tilde{\alpha}, \tilde{\beta})'$ is given by
 \begin{align}
 \tilde{\gamma} &= \frac{\tau \gamma + \sum_{t=1}^{T} y_t}{T + \tau}  \label{mf5} \\ 
-\tilde{\tau} &= \left((T + \tau)\mathbb{E}_{q(\sigma^2)}(\sigma^{-2})\right )^{-1} \label{mf6} \\
+\tilde{\tau} &= \left((T + \tau)\mathbb{E}_{q(\sigma^2)}[\sigma^{-2}]\right )^{-1} \label{mf6} \\
 \tilde{\alpha} &= (T+1)/2 + \alpha  \label{mf7} \\
-\tilde{\beta} &= \beta + 1/2\left((\tau + T)\mathbb{E}_{q(\mu)} - 2 \mathbb{E}_{q(\mu)}(\mu)(\sum_{t=1}^{T}y_t + \tau) + \sum_{t=1}^{T} y_t^2 + \tau \gamma^2 \right). \label{mf8}
+\tilde{\beta} &= \beta + 1/2\left((\tau + T)\mathbb{E}_{q(\mu)}[\mu^2 ]- 2 \mathbb{E}_{q(\mu)}[\mu ]\left(\sum_{t=1}^{T}y_t + \tau\right) + \sum_{t=1}^{T} y_t^2 + \tau \gamma^2 \right). \label{mf8}
 \end{align}.
 
 The expectations in (\ref{mf5}) - (\ref{mf8}) are available in a closed form for these distributions, and these are substituted in to derive the set of mean field equations:
 \begin{align}
 \tilde{\tau} &= \frac{\tilde{\beta}}{\tilde{\alpha}(T + \tau)} \label{mf9} \\
-\tilde{\beta} &= \beta + 1/2\left((\tau + T)(\tilde{\gamma}^2 + \tilde{\tau}) - 2 \tilde{\gamma}(\sum_{t=1}^{T}y_t + \tau) + \sum_{t=1}^{T} y_t^2 + \tau \gamma^2 \right)\label{mf10}
+\tilde{\beta} &= \beta + 1/2\left((\tau + T)(\tilde{\gamma}^2 + \tilde{\tau}) - 2 \tilde{\gamma}\left(\sum_{t=1}^{T}y_t + \tau\right) + \sum_{t=1}^{T} y_t^2 + \tau \gamma^2 \right)\label{mf10}
 \end{align}
 $\tilde{\gamma}$ and $\tilde{\alpha}$ are omitted from the mean field equations as their values do not depend on other $\boldsymbol{\lambda}$ parameters. 
 
@@ -285,7 +285,7 @@ Armed with an algorithm to find the Variational Bayes optimal parameters $\bolds
 f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}) = p^{-1}(\boldsymbol{\epsilon})
 \end{equation}
 
-almost everywhere, where $\epsilon \sim U(0, 1)$ and $p^{-1}$ denotes the inverse CDF of the true posterior, will yeild $q(\boldsymbol{\theta} | \boldsymbol{\lambda} = p(\boldsymbol{\theta} | y_{1:T}$ and thus minimise the KL divergence. Attempts to model a suitably flexible function $f(\cdot, \cdot)$ include heirarchical models \citep{Ranganath2016a}, neural networks (\citealp{Kingma2014}; \citealp{Rezende2014}; \citealp{Rezende2015}), and Gaussian processes \citep{Tran2016}.
+almost everywhere, where $\epsilon \sim U(0, 1)$ and $p^{-1}$ denotes the inverse CDF of the true posterior, will yeild $q(\boldsymbol{\theta} | \boldsymbol{\lambda} = p(\boldsymbol{\theta} | y_{1:T}$ and thus minimise the KL divergence. Attempts to model a suitably flexible function $f(\cdot, \cdot)$ include heirarchical models \citep{Ranganath2016a}, neural networks (\citealp{Kingma2014}; \citealp{Rezende2014}; \citealp{Rezende2015}; \citealp{Kingma2016}), and Gaussian processes \citep{Tran2016}.
 
 These approaches introduce a large number of parameters that would considerably slow computation of updates, so we follow \citet{Tran2015} and use copulas to flexibly model approximations to the true posterior distribution. The copula modelling class provides a flexible way to construct these distributions, as they allow the dependence structure between parameters to be fit independently from the marginal distributions. \citet{Sklar1959} proves that any joint probability distribution can be written as the product of the marginals and a copula function,
 \begin{equation}
@@ -487,6 +487,8 @@ Finally, there is a trade-off between the predictive accuracy of MCMC and the ab
 \bibliography{references}
 
 \end{document}
+\grid
+\grid
 \grid
 \grid
 \grid
