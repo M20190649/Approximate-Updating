@@ -25,13 +25,13 @@ gamma0 = sigma2 * (1-phi2) / ((1+phi2)*((1-phi2)^2 - phi1^2))
 gamma1 = sigma2 * phi1 / ((1+phi2)*((1-phi2)^2 - phi1^2))
 Sigma = matrix(c(gamma0, gamma1, gamma1, gamma0), 2)
 
-y = rmvnorm(1000, c(0, 0), Sigma)
+y = rmvnorm(1, c(0, 0), Sigma)
 for(t in 3:(T+J)){
   y[t] = phi1*y[t-1] + phi2*y[t-2] + rnorm(1, sd = sqrt(sigma2))
 }
 
 ##MCMC
-rep = 500000
+rep = 100000
 #T = 30
 igShape = T/2
 
@@ -44,8 +44,6 @@ accept1 = 0
 tune2 = 0.25
 accept2 = 0
 set.seed(3)
-
-
 
 for(i in 1:rep){
   #Phi 1 Metropolis Hastings
@@ -93,6 +91,7 @@ for(i in 1:rep){
   #Store draws
   theta[i, ] = c(phi, sig2)
 }
+
 accept1/rep
 accept2/rep
 
@@ -105,7 +104,7 @@ theta %>% as.data.frame() %>% cbind(rep = 1:rep) %>% gather(parameter, draw, -re
   ggplot() + geom_line(aes(rep, draw)) + facet_wrap(~parameter, scales = "free")
 
 
-thetaKeep = data.frame(theta[seq(50001, 500000, 200),])
+thetaKeep = data.frame(theta[seq(10001, 100000, 100),])
 effectiveSize(thetaKeep)
 ggpairs(thetaKeep)
 cov(thetaKeep)

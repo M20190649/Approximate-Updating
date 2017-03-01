@@ -227,14 +227,14 @@ where $\nabla_{\boldsymbol{\lambda}}\mathcal{L}(q(\boldsymbol{\theta} | \boldsym
 \citet{Ranganath2014} showed that a Monte Carlo estimate of the derivative of the ELBO can be given by
 \begin{equation}
 \label{SVB2}
-\nabla_{\lambda}\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)}), y_{1:T}) \approx \frac{1}{S}\sum_{s=1}^{S} \nabla_{\boldsymbol{\lambda}} [\ln(q(\boldsymbol{\theta}_s | \boldsymbol{\lambda}^{(m)}))] (\ln (p(y_{1:T}, \boldsymbol{\theta}_s)) - \ln(q(\boldsymbol{\theta}_s | \boldsymbol{\lambda}^{(m)})))
+\nabla_{\boldsymbol{\lambda}}\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)}), y_{1:T}) \approx \frac{1}{S}\sum_{s=1}^{S} \nabla_{\boldsymbol{\lambda}} [\ln(q(\boldsymbol{\theta}_s | \boldsymbol{\lambda}^{(m)}))] (\ln (p(y_{1:T}, \boldsymbol{\theta}_s)) - \ln(q(\boldsymbol{\theta}_s | \boldsymbol{\lambda}^{(m)})))
 \end{equation}
 where $s = 1, \dots, S$ indicates simulations from $q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)})$.
 
 \citet{Kingma2014} introduces the re-parameterisation trick, where an auxillary noise variable $\boldsymbol{\epsilon}$ and differentiable transformation $f(\cdot, \cdot)$ are introduced such that $\boldsymbol{\theta} = f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}$. Examples include a location scale transformation from a standard normal $\epsilon$ or an inverse-CDF transformation from a uniform$(0, 1) \epsilon$. In this case (\ref{SVB2}) can be replaced with a lower variance estimator,
 \begin{equation}
 \label{reparameterise}
-\nabla_{\lambda}\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)}), y_{1:T}) \approx \frac{1}{S}\sum_{s=1}^{S} \nabla_{\boldsymbol{\lambda}} \left( \ln (p(y_{1:T}, f(\boldsymbol{\epsilon}_s, \boldsymbol{\lambda}^{(m)})) - \ln(q(f(\boldsymbol{\epsilon}_s, \boldsymbol{\lambda}^{(m)})) \right)
+\nabla_{\boldsymbol{\lambda}}\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)}), y_{1:T}) \approx \frac{1}{S}\sum_{s=1}^{S} \nabla_{\boldsymbol{\lambda}} \left( \ln (p(y_{1:T}, f(\boldsymbol{\epsilon}_s, \boldsymbol{\lambda}^{(m)})) - \ln(q(f(\boldsymbol{\epsilon}_s, \boldsymbol{\lambda}^{(m)})) \right)
 \end{equation}
 where $s = 1, \dots, S$ now indicates simulations from $q(\boldsymbol{\epsilon})$. This transformation removes the restriction that $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ belong to a distribution where the score function can be evaluated.
 
