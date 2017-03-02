@@ -72,23 +72,29 @@ Supervised by Catherine Forbes and Anastasios Panagiotelis
 
 \begin{frame}
 \section{Motivation}
-Motivation - Electricity 
+\frametitle{Motivation}
+\begin{itemize}
+\item There is an increasing demand for forecasts to be of the entire predictive density of the variable of interest.
+\item Many time series of interest can operate on a very short time-frame.
+\item We aim to provide density forecasts for these high frequency time-series by updating posterior and predictive density estimates as each data point is observed.
+\item The algorithm use should scale to multivariate observations driven by complex models with large datasets.
+\end{itemize}
 \end{frame}
 
 
 \begin{frame}
-\section{Bayesian Computation Techniques}
+\frametitle{Bayesian Computation Techniques}
 A popular technique is to sample the posterior distribution with Markov Chain Monte Carlo (MCMC). MCMC:
 \begin{itemize}
-\item Converges to the true posterior.
-\item Can be very slow, and is not parallelisable.
+\item Converges in distribution to the posterior density with enough iterations.
+\item Can be very slow, and is hard to parallelise.
 \item Scales badly to large datasets.
 \end{itemize}
 Interest is developing in Bayesian approximations, such as Variational Bayes (VB). VB:
 \begin{itemize}
 \item Is typically orders of magnitude faster than MCMC.
 \item Scales very well to large datasets with subsampling and parallelisation.
-\item Has no theoretical guarantees to be close to the truth.
+\item Has no theoretical guarantee to converge to the posterior.
 \end{itemize}
 \end{frame}
 
@@ -153,14 +159,15 @@ Interest is developing in Bayesian approximations, such as Variational Bayes (VB
 \label{KL-def}
 KL[q(\boldsymbol{\theta} | \boldsymbol{\lambda})\hspace{.1cm}||\hspace{.1cm}p(\boldsymbol{\theta} | y_{1:T})] = \int q(\boldsymbol{\theta} | \boldsymbol{\lambda}) \ln \left( \frac{q(\boldsymbol{\theta} | \boldsymbol{\lambda})}{p(\boldsymbol{\theta} |y_{1:T})}\right) d\boldsymbol{\theta}.
 \end{equation}
-This is non-negative and equals zero if and only if $p(\boldsymbol{\theta} | y_{1:T}) = q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ almost everywhere.
+\item (\ref{KL-def}) is non-negative and equals zero if and only if $p(\boldsymbol{\theta} | y_{1:T}) = q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ almost everywhere.
 \end{itemize}
 \end{frame}
 
 
 \begin{frame}
 \frametitle{The Evidence Lower Bound}
-Rewrite (\ref{KL-def}) as
+\begin{itemize}
+\item Rewrite (\ref{KL-def}) as
 \begin{equation}
 \label{KL-ELBO}
 KL[q(\boldsymbol{\theta} | \boldsymbol{\lambda})\hspace{.1cm}||\hspace{.1cm}p(\boldsymbol{\theta} |y_{1:T})] = \ln(p(y_{1:T})) - \mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T}),
@@ -168,10 +175,9 @@ KL[q(\boldsymbol{\theta} | \boldsymbol{\lambda})\hspace{.1cm}||\hspace{.1cm}p(\b
 where
 \begin{equation}
 \label{ELBO}
-\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T}) = \int q(\boldsymbol{\theta} | \boldsymbol{\lambda}) \ln (p(y_{1:T},\boldsymbol{\theta})) d\boldsymbol{\theta} -  \int q(\boldsymbol{\theta} | \boldsymbol{\lambda}) \ln (q(\boldsymbol{\theta} | \boldsymbol{\lambda})) d\boldsymbol{\theta}.
+\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T}) = \mathbb{E}_{q} \left( \ln (p(y_{1:T},\boldsymbol{\theta})) - \ln (q(\boldsymbol{\theta} | \boldsymbol{\lambda})) \right).
 \end{equation}
-is refered to as the Evidence Lower Bound (ELBO).
-\begin{itemize}
+\item $\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T})$ is refered to as the Evidence Lower Bound (ELBO).
 \item Maximising the ELBO with respect to $q \iff$ Minimising the KL Divergence with respect to $q$.
 \item There are two tasks: 
   \begin{enumerate}
@@ -204,8 +210,8 @@ q_i(\theta_i |\boldsymbol{\lambda_i}) \propto\exp( \mathbb{E}_{\prod_{j \neq i} 
 
 \begin{frame}
 \frametitle{Deriving $q$ distributions}
-(\ref{mf2}) is applied to the Normal-Inverse Gamma model to find $q(\mu | \boldsymbol{\lambda}_1)$.
 \begin{itemize}
+\item (\ref{mf2}) is applied to the Normal-Inverse Gamma model to find $q(\mu | \boldsymbol{\lambda}_1)$.
 \item Step One: Write the full log joint distribution,
 \begin{align}
 \log(p(y_{1:T}, \mu, \sigma^2)) &= -(T/2 + \alpha + 2)\log(\sigma^2) - \frac{\sum_{t}(y_t - \mu)^2}{2\sigma^2} \nonumber \\
@@ -235,7 +241,8 @@ q_i(\theta_i |\boldsymbol{\lambda_i}) \propto\exp( \mathbb{E}_{\prod_{j \neq i} 
 
 \begin{frame}
 \frametitle{Deriving $q$ distributions}
-$\boldsymbol{\lambda} = (\tilde{\gamma}, \tilde{\tau}, \tilde{\alpha}, \tilde{\beta})$, where
+\begin{itemize}
+\item The auxillary parameter vector is $\boldsymbol{\lambda} = (\tilde{\gamma}, \tilde{\tau}, \tilde{\alpha}, \tilde{\beta})$, which maximises the ELBO when
 \begin{align}
 \tilde{\gamma} &= \frac{\tau \gamma + \sum_{t=1}^{T} y_t}{T + \tau}  \label{mf5} \\ 
 \tilde{\tau} &= \left((T + \tau)\mathbb{E}_{q(\sigma^2)}[\sigma^{-2}]\right )^{-1} \label{mf6} \\
@@ -243,17 +250,20 @@ $\boldsymbol{\lambda} = (\tilde{\gamma}, \tilde{\tau}, \tilde{\alpha}, \tilde{\b
 \tilde{\beta} &= \beta + 1/2\bigg((\tau + T)\mathbb{E}_{q(\mu)}[\mu^2 ]  \nonumber \\ 
 &- 2 \mathbb{E}_{q(\mu)}[\mu ]\left(\sum_{t=1}^{T}y_t + \tau\right) + \sum_{t=1}^{T} y_t^2 + \tau \gamma^2 \bigg). \label{mf8}
 \end{align}
+\end{itemize}
 \end{frame}
 
 
 \begin{frame}
 \frametitle{Deriving $q$ distributions}
-Substitute in expectations to (\ref{mf6}) and (\ref{mf8}):
+\begin{itemize}
+\item Substitute in expectations to (\ref{mf6}) and (\ref{mf8}):
 \begin{align}
 \tilde{\tau} &= \frac{\tilde{\beta}}{\tilde{\alpha}(T + \tau)} \label{mf9} \\
 \tilde{\beta} &= \beta + 1/2\left((\tau + T)(\tilde{\gamma}^2 + \tilde{\tau}) - 2 \tilde{\gamma}(\sum_{t=1}^{T}y_t + \tau) + \sum_{t=1}^{T} y_t^2 + \tau \gamma^2 \right)\label{mf10}
 \end{align}
-The circular dependence in (\ref{mf9}) and (\ref{mf10}) and can be resolved with a coordinate ascent algorithm.
+\item The circular dependence in (\ref{mf9}) and (\ref{mf10}) and can be resolved with a coordinate ascent algorithm.
+\end{itemize}
 \end{frame}
 
 
@@ -289,11 +299,13 @@ where $\boldsymbol{\theta}_s$ is simulated from $q(\boldsymbol{\theta} | \boldsy
 
 \begin{frame}
 \frametitle{Gradient Ascent}
-Make steps of the form
+\begin{itemize}
+\item Make steps of the form
 \begin{equation}
 \lambda^{(m+1)} = \lambda^{(m)} + \rho^{(m)} \nabla_{\lambda} f(\lambda^{(m)})
 \end{equation}
 until $| f(\lambda^{(m+1)}) - f(\lambda^{(m)}) | < \epsilon$.
+\end{itemize}
 \begin{figure}[h]
 \centering
 <<gradascent, out.width='0.4\\textwidth', error=FALSE, message=FALSE, warning=FALSE, echo=FALSE>>=
@@ -349,12 +361,35 @@ ggplot() + geom_line(aes(xsup, y)) + geom_path(aes(x, y2), colour = "red") + lab
 \begin{frame}
 \section{Empirical Application}
 \frametitle{Electricity Load Forecasting}
+Motivation - Electricity 
 \end{frame}
 
 
 
 \begin{frame}
 \frametitle{Exponential Smoothing}
+\begin{itemize}
+\item \citet{Taylor2008} provides evidence that a double-seasonal Holt-Winters exponential smoothing model performs better than common alternatives for very short term electricity load forecasting.
+\item \citet{Forbes2000} provides a Bayesian approach to estimating exponential smoothing models by Monte Carlo simulation.
+\item We slightly modify the Holt-Winters model to work within the Bayesian approach.
+\item Applying SVB will allow electricity load density forecasts to be made at a very short time-frame.
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Double Seasonal Holt-Winters Exponential Smoothing}
+\begin{itemize}
+\item We use the modified double seasonal Holt-Winters exponential smoothing model
+\begin{align}
+y_t &= l_{t-1} - \sum_{i = 1}^{m_1 - 1}d_{t-i} - \sum_{i = 1}^{m_2 - 1}w_{t-i} + e_t \label{ds-hw-rp1} \\
+l_t &= l_{t-1} + \alpha e_t \label{ds-hw-rp2} \\
+d_t &= - \sum_{i = 1}^{m_1 - 1}d_{t-i} + \delta e_t \label{ds-hw-rp3} \\
+w_t &= - \sum_{i = 1}^{m_2 - 1}w_{t-i} + \omega e_t \label{ds-hw-rp4}.
+\end{align}
+where $m_1$ is the length of the daily cycle, and $m_2$ is the length of the weekly cycle.
+\item (\ref{ds-hw-rp3}) and (\ref{ds-hw-rp4}) restrict the seasonality but allow us to avoid inverting a singular matrix in the Bayesian approach.
+\end{itemize}
 \end{frame}
 
 
@@ -364,9 +399,9 @@ ggplot() + geom_line(aes(xsup, y)) + geom_path(aes(x, y2), colour = "red") + lab
 \begin{itemize}
 \item Updating is worthwhile if the new data brings significant information on the parameters. State-space models are of interest as observation specific latent variables are more influenced by new data than global parameters.
 \item Existing online updating algorithms assume data is $iid$. We aim to develop an updating algorithm for dependent data.
+\item Our time-series context allows MCMC draws to guide the construction of $q$. We have no information on latent variables associated with new data and we must devise a way to include these in $q$.
 \item Statistical properties of the approximation are unknown and depend on the divergence measure used.
 \item The accuracy/computation time trade-off between MCMC and VB has not been thoroughly investigated.
-\item Our time-series context allows MCMC draws to guide the construction of $q$. We have no information on latent variables associated with new data and we must devise a way to include these in $q$.
 \end{itemize}
 \end{frame}
 
