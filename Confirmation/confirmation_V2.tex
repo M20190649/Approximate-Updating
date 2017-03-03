@@ -133,7 +133,7 @@ Since $\ln(p(y_{1:T}))$ is constant with respect to $q(\boldsymbol{\theta} | \bo
 
 \subsubsection{Mean Field Variational Bayes} \label{sec:mfvb}
 
-Mean Field Variational Bayes (MFVB) has origins in physics (\citealp{Amari1985}; \citealp{Chandler1987}) and has since developed a large literature in machine learning, notably developed in \citet{Jordan1999} and \citet{Ghahramani2000}. MFVB restricts the class of distributions from which to select $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ to the set of factorisable distributions,
+Mean Field Variational Bayes (MFVB) has origins in physics \citep{Peterson1987} and has since developed a large literature in machine learning, notably developed in \citet{Jordan1999} and \citet{Ghahramani2000}. MFVB restricts the class of distributions from which to select $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ to the set of factorisable distributions,
 \begin{equation}
 \label{mf1}
 q(\boldsymbol{\theta} | \boldsymbol{\lambda}) = \prod_{i=1}^k q_i(\theta_i | \boldsymbol{\lambda_i}).
