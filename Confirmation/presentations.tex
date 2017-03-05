@@ -105,6 +105,12 @@
   }
 }
 
+\newcounter{saveenumi}
+\newcommand{\seti}{\setcounter{saveenumi}{\value{enumi}}}
+\newcommand{\conti}{\setcounter{enumi}{\value{saveenumi}}}
+\resetcounteronoverlays{saveenumi}
+
+
 \title[Real-Time Variational Density Forecasts]{Real-Time Variational Density Forecasts}
 \author[Nathaniel Tomasetti]{Nathaniel Tomasetti}
 \date{ }
@@ -117,6 +123,11 @@
 \titlepage
 \centering
 Supervised by Catherine Forbes and Anastasios Panagiotelis
+\end{frame}
+
+
+\begin{frame}
+\tableofcontents
 \end{frame}
 
 
@@ -134,17 +145,19 @@ Supervised by Catherine Forbes and Anastasios Panagiotelis
 
 \begin{frame}
 \frametitle{Bayesian Computation Techniques}
-A popular technique is to sample the posterior distribution with Markov Chain Monte Carlo (MCMC). MCMC:
 \begin{itemize}
-\item Converges in distribution to the posterior density with enough iterations.
-\item Can be very slow, and is hard to parallelise.
+\item A popular technique is to sample the posterior distribution with Markov Chain Monte Carlo (MCMC). MCMC:
+\begin{enumerate}
+\item Converges to the posterior density.
+\item Can be very slow.
 \item Scales badly to large datasets.
-\end{itemize}
-Interest is developing in Bayesian approximations, such as Variational Bayes (VB). VB:
-\begin{itemize}
-\item Is typically orders of magnitude faster than MCMC.
-\item Scales very well to large datasets with subsampling and parallelisation.
+\end{enumerate}
+\item Interest is rapidly developing in approximations, such as Variational Bayes (VB). VB:
+\begin{enumerate}
+\item Is significantly faster than MCMC.
+\item Scales to large datasets.
 \item Has no theoretical guarantee to converge to the posterior.
+\end{enumerate}
 \end{itemize}
 \end{frame}
 
@@ -160,40 +173,27 @@ Interest is developing in Bayesian approximations, such as Variational Bayes (VB
 &\vdots \nonumber \\
 &p(\theta_k | \theta_1, \dots, \theta_{k-1}, y_{1:T}). \nonumber
 \end{align}
-\item Requires convergence, which can be extremely slow.
-\item A predictive density for the next data point may not be available before it is observed.
+\item MCMC often requires a large number of samples.
+\item The predictive density may be unavailable before more data is observed.
 \end{itemize}
 \end{frame}
 
 
 \begin{frame}
-\frametitle{Deriving Gibbs Full Conditional Distributions}
+\frametitle{Gibbs Full Conditional Distributions}
 \begin{itemize}
-\item Let $y_t \overset{iid}{\sim} \mathcal{N}(\mu, \sigma^2) \mbox{ for } t = 1, 2, \dots, T$. 
-\item Use priors $p(\sigma^2) \sim IG(\mbox{shape} = \alpha, \mbox{scale} = \beta), p(\mu | \sigma) \sim \mathcal{N}(\gamma, \sigma^2/\tau)$.
-\item Gibbs MCMC requires the distribution $p(\mu_{(i)} | \sigma^2_{(i)}, y_{1:T})$. 
-\item Step One: Write the full log joint distribution,
-\end{itemize}
-\begin{align}
-\log(p(y_{1:T}, \mu, \sigma^2)) &=  -(T/2 + \alpha + 2)\log(\sigma^2) - \frac{\sum_{t}(y_t - \mu)^2}{2\sigma^2} \nonumber \\
-&- \frac{\tau(\mu - \gamma)^2}{2\sigma^2} - \frac{\beta}{\sigma^2}  + c. \nonumber 
-\end{align}
-\end{frame}
-
-
-\begin{frame}
-\frametitle{Deriving Gibbs Full Conditional Distributions}
-\begin{itemize}
-\item Step Two: Ignore components that do not depend on $\mu$ to form $\log(p(\mu | \sigma^2, y_{1:T}))$,
-\begin{equation}
-\log(p(\mu | y_{1:T}, \sigma^2)) =  - \frac{\sum_{t}(y_t - \mu)^2}{2\sigma^2} - \frac{\tau(\mu - \gamma)^2}{2\sigma^2} + c. \nonumber
-\end{equation}
-\item Step Three: Condition on the previous draw of $\sigma^2$ to form $\log(p(\mu_{(i)} | \sigma^2_{(i)}, y_{1:T}))$,
-\begin{equation}
-\log(p(\mu_{(i)} | \sigma^2_{(i)}, y_{1:T})) = - \frac{\sum_{t}(y_t - \mu_{(i)})^2}{2\sigma_{(i)}^2} - \frac{\tau(\mu_{(i)} - \gamma)^2}{2\sigma_{(i)}^2}  + c. \nonumber
-\end{equation}
-\item Step Four: Manipulate equation until a distribution kernel is recognised. If unrecognised, add a Metropolis-Hastings step.\
-\item Step Five: Repeat for $p(\sigma^2_{(i)} | \mu_{(i-1)}, y_{1:T}).$
+\item Let $y_t \overset{iid}{\sim} \mathcal{N}\left(\mu, \sigma^2\right) \mbox{ for } t = 1, 2, \dots, T$. 
+\item Use priors
+\begin{enumerate}
+\item $\mu | \sigma \sim \mathcal{N}\left(\gamma, \sigma^2/\tau\right)$
+\item $\sigma^2 \sim IG\left(\mbox{shape} = \alpha, \mbox{scale} = \beta\right)$.
+\end{enumerate}
+\vspace{2mm}
+\item Gibbs MCMC samples the full conditional distributions,
+\begin{enumerate}
+\item $\mu | \sigma^2, y_{1:T} \sim \mathcal{N}\left(\bar{\gamma}, \sigma^2 / \bar{\tau}\right)$
+\item $\sigma^2 | \mu, y_{1:T} \sim IG \left(\mbox{shape} = \bar{\alpha}, \mbox{scale} = \bar{\beta} \right)$
+\end{enumerate}
 \end{itemize}
 \end{frame}
 
@@ -203,13 +203,13 @@ Interest is developing in Bayesian approximations, such as Variational Bayes (VB
 \frametitle{Variational Bayes}
 \begin{itemize}
 \item Key Idea: Replace the intractable $p(\boldsymbol{\theta} | y_{1:T})$ with a tractable approximation $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$.
-\item How: Choose the $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ from a restricted class of distributions that minimises a well defined divergence between $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ and $p(\boldsymbol{\theta} | y_{1:T})$. 
-\item The classic choice is the Kullback-Leibler divergence from $q$ to $p$,
+\item How: Choose the $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ from a restricted class of distributions is closest to $p(\boldsymbol{\theta} | y_{1:T})$ by some metric. 
+\item Typically minimise the Kullback-Leibler divergence from $q$ to $p$,
+
 \begin{equation}
 \label{KL-def}
-KL[q(\boldsymbol{\theta} | \boldsymbol{\lambda})\hspace{.1cm}||\hspace{.1cm}p(\boldsymbol{\theta} | y_{1:T})] = \int q(\boldsymbol{\theta} | \boldsymbol{\lambda}) \ln \left( \frac{q(\boldsymbol{\theta} | \boldsymbol{\lambda})}{p(\boldsymbol{\theta} |y_{1:T})}\right) d\boldsymbol{\theta}.
+KL[q(\boldsymbol{\theta} | \boldsymbol{\lambda})\hspace{.1cm}||\hspace{.1cm}p(\boldsymbol{\theta} | y_{1:T})] = \mathbb{E}_q  \left[ \ln \left( \frac{q(\boldsymbol{\theta} | \boldsymbol{\lambda})}{p(\boldsymbol{\theta} |y_{1:T})}\right) \right]
 \end{equation}
-\item (\ref{KL-def}) is non-negative and equals zero if and only if $p(\boldsymbol{\theta} | y_{1:T}) = q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ almost everywhere.
 \end{itemize}
 \end{frame}
 
@@ -225,10 +225,10 @@ KL[q(\boldsymbol{\theta} | \boldsymbol{\lambda})\hspace{.1cm}||\hspace{.1cm}p(\b
 where
 \begin{equation}
 \label{ELBO}
-\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T}) = \mathbb{E}_{q} \left( \ln (p(y_{1:T},\boldsymbol{\theta})) - \ln (q(\boldsymbol{\theta} | \boldsymbol{\lambda})) \right).
+\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T}) = \mathbb{E}_{q} \left[ \ln (p(y_{1:T},\boldsymbol{\theta})) - \ln (q(\boldsymbol{\theta} | \boldsymbol{\lambda})) \right].
 \end{equation}
-\item $\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T})$ is refered to as the Evidence Lower Bound (ELBO).
-\item Maximising the ELBO with respect to $q \iff$ Minimising the KL Divergence with respect to $q$.
+\item $\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T})$ is called the Evidence Lower Bound (ELBO).
+\item Maximising the ELBO $\iff$ Minimising the KL Divergence.
 \item There are two tasks: 
   \begin{enumerate}
   \item Choose a functional form for $q$. 
@@ -239,60 +239,66 @@ where
 
 
 \begin{frame}
-\frametitle{Mean Field Variational Bayes}
+\frametitle{Mean Field Variational Bayes - MFVB}
 \begin{itemize}
-\item Early Variational Bayes implementation pioneered by \citet{Jordan1999} and \citet{Ghahramani2000}.
+\item Early Variational Bayes implementation pioneered by Jordan \textit{et al.} (1999) and Ghahramani and Beal (2000).
 \item Restricts $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ to the factorisable family,
 \begin{equation}
 \label{mf1}
 q(\boldsymbol{\theta} | \boldsymbol{\lambda}) = \prod_{i=1}^k q_i(\theta_i | \boldsymbol{\lambda_i}).
 \end{equation}
-\item Restricts the model to the exponential family with conjugate priors.
-\item Provides the optimal distribution for each $q_i(\theta_i | \boldsymbol{\lambda_i})$.
-\item Maximise the ELBO by setting each factor to
+\item Maximise the ELBO by setting each marginal to
 \begin{equation}
 \label{mf2}
-q_i(\theta_i |\boldsymbol{\lambda_i}) \propto\exp( \mathbb{E}_{\prod_{j \neq i} q_i(\theta_i | \boldsymbol{\lambda_i})} [\ln(p(y_{1:T},\boldsymbol{\theta}))]).
+q_i(\theta_i |\boldsymbol{\lambda_i}) \propto\exp( \mathbb{E}_{q_{j \neq i}}[\ln(p(y_{1:T},\boldsymbol{\theta}))]).
 \end{equation}
+\item Solution only in closed form for exponential family models with limited prior choice.
 \end{itemize}
 \end{frame}
 
 
 \begin{frame}
-\frametitle{Deriving $q$ distributions}
+\frametitle{$q$ distributions for the Normal-Inverse Gamma model}
 \begin{itemize}
 \item (\ref{mf2}) is applied to the Normal-Inverse Gamma model to find $q(\mu | \boldsymbol{\lambda}_1)$.
-\item Step One: Write the full log joint distribution,
+\end{itemize}
+\begin{enumerate}
+\item Write 
 \begin{align}
 \log(p(y_{1:T}, \mu, \sigma^2)) &= -(T/2 + \alpha + 2)\log(\sigma^2) - \frac{\sum_{t}(y_t - \mu)^2}{2\sigma^2} \nonumber \\
 &- \frac{\tau(\mu - \gamma)^2}{2\sigma^2} - \frac{\beta}{\sigma^2} + c. \nonumber 
 \end{align}
-\item Step Two: Ignore components that do not depend on $\mu$ to form $\log(p(\mu | \sigma^2, y_{1:T})),$
+\item Ignore components without $\mu$
 \begin{equation}
 \log(p(\mu | y_{1:T}, \sigma^2)) = - \frac{\sum_{t}(y_t - \mu)^2}{2\sigma^2} - \frac{\tau(\mu - \gamma)^2}{2\sigma^2} + c. \nonumber
 \end{equation}
-\end{itemize}
+\seti
+\end{enumerate}
 \end{frame}
 
 
 \begin{frame}
-\frametitle{Deriving $q$ distributions}
-\begin{itemize}
-\item Step Three: Take the expectation with respect to $q(\sigma^2 | \boldsymbol{\lambda}_2)$ to form $\log(q(\mu | \boldsymbol{\lambda}_1)),$
+\frametitle{$q$ distributions for the Normal-Inverse Gamma model}
+\begin{enumerate}
+\conti
+\item Take the expectation with respect to $q(\sigma^2 | \boldsymbol{\lambda}_2)$
 \begin{equation}
 \log(q(\mu | \boldsymbol{\lambda}_1)) = - 1/2 \mathbb{E}_{q(\sigma^2)} [\sigma^{-2}] \left( \sum_{t}(y_t - \mu)^2 + \tau(\mu - \gamma)^2 \right)  + c. \nonumber
 \end{equation}
-\item Step Four: Manipulate equation until a distribution kernel is recognised. If unrecognised, add a secondary approximation.
-\item Step Five: Repeat for $q(\sigma^2 | \boldsymbol{\lambda}_2)$.
+\item Manipulate until a distribution kernel is recognised. 
+\item If unrecognised, add a secondary approximation.
+\item Repeat for $q(\sigma^2 | \boldsymbol{\lambda}_2)$.
+\end{enumerate}
+\begin{itemize}
 \item In this case $q(\mu | \boldsymbol{\lambda}_1) \sim \mathcal{N}(\tilde{\gamma}, \tilde{\tau})$ and $q(\sigma^2 | \boldsymbol{\lambda}_2) \sim IG(\tilde{\alpha}, \tilde{\beta})$.
 \end{itemize}
 \end{frame}
 
 
 \begin{frame}
-\frametitle{Deriving $q$ distributions}
+\frametitle{$\boldsymbol{\lambda}$ for the Normal-Inverse Gamma model}
 \begin{itemize}
-\item The auxillary parameter vector is $\boldsymbol{\lambda} = (\tilde{\gamma}, \tilde{\tau}, \tilde{\alpha}, \tilde{\beta})$, which maximises the ELBO when
+\item The ELBO maximising choice of $\boldsymbol{\lambda} = (\tilde{\gamma}, \tilde{\tau}, \tilde{\alpha}, \tilde{\beta})$ is:
 \begin{align}
 \tilde{\gamma} &= \frac{\tau \gamma + \sum_{t=1}^{T} y_t}{T + \tau}  \label{mf5} \\ 
 \tilde{\tau} &= \left((T + \tau)\mathbb{E}_{q(\sigma^2)}[\sigma^{-2}]\right )^{-1} \label{mf6} \\
@@ -305,14 +311,15 @@ q_i(\theta_i |\boldsymbol{\lambda_i}) \propto\exp( \mathbb{E}_{\prod_{j \neq i} 
 
 
 \begin{frame}
-\frametitle{Deriving $q$ distributions}
+\frametitle{$\boldsymbol{\lambda}$ for the Normal-Inverse Gamma model}
 \begin{itemize}
 \item Substitute in expectations to (\ref{mf6}) and (\ref{mf8}):
 \begin{align}
 \tilde{\tau} &= \frac{\tilde{\beta}}{\tilde{\alpha}(T + \tau)} \label{mf9} \\
-\tilde{\beta} &= \beta + 1/2\left((\tau + T)(\tilde{\gamma}^2 + \tilde{\tau}) - 2 \tilde{\gamma}(\sum_{t=1}^{T}y_t + \tau) + \sum_{t=1}^{T} y_t^2 + \tau \gamma^2 \right)\label{mf10}
+\tilde{\beta} &= \beta + 1/2\left((\tau + T)(\tilde{\gamma}^2 + \tilde{\tau}) - 2 \tilde{\gamma}\left(\sum_{t=1}^{T}y_t + \tau \right) + \sum_{t=1}^{T} y_t^2 + \tau \gamma^2 \right)\label{mf10}
 \end{align}
-\item The circular dependence in (\ref{mf9}) and (\ref{mf10}) and can be resolved with a coordinate ascent algorithm.
+\item Circular dependence in (\ref{mf9}) and (\ref{mf10}) 
+\item Requires a coordinate ascent algorithm.
 \end{itemize}
 \end{frame}
 
@@ -320,7 +327,8 @@ q_i(\theta_i |\boldsymbol{\lambda_i}) \propto\exp( \mathbb{E}_{\prod_{j \neq i} 
 \begin{frame}
 \frametitle{Fit to simulated data}
 \begin{itemize}
-\item Marginal posterior densities for the Normal Inverse Gamma model with $N = 100, \mu = 2$ and $\sigma^2 = 1$; hyperparameters are $\gamma = 0, \tau = 1, \alpha = 1$ and $\beta = 1$. 
+\item Marginal posterior densities for the Normal Inverse Gamma model with $T = 100, \mu = 2$ and $\sigma^2 = 1$.
+\item Hyperparameters are $\gamma = 0, \tau = 1, \alpha = 1$ and $\beta = 1$. 
 \end{itemize}
 \begin{figure}[h]
 \centering
@@ -332,9 +340,9 @@ q_i(\theta_i |\boldsymbol{\lambda_i}) \propto\exp( \mathbb{E}_{\prod_{j \neq i} 
 
 
 \begin{frame}
-\frametitle{Stochastic Variational Bayes}
+\frametitle{Stochastic Variational Bayes - SVB}
 \begin{itemize}
-\item \citet{Paisley2012} and \citet{Ranganath2014} adapted a gradient ascent algorithm to maximise the ELBO.
+\item Paisley \textit{et al.} (2012) and Ranganath \textit{et al.} (2014) adapted a gradient ascent algorithm to maximise the ELBO.
 \item Gradient ascent returns the optimal $\boldsymbol{\lambda}$ for a specified functional form $q$.
 \item Only requires Monte-Carlo estimates of $\nabla_{\boldsymbol{\lambda}}\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T})$,
 \begin{align}
@@ -352,9 +360,9 @@ where $\boldsymbol{\theta}_s$ is simulated from $q(\boldsymbol{\theta} | \boldsy
 \begin{itemize}
 \item Make steps of the form
 \begin{equation}
-\lambda^{(m+1)} = \lambda^{(m)} + \rho^{(m)} \nabla_{\lambda} f(\lambda^{(m)})
+\lambda^{(m+1)} = \lambda^{(m)} + \rho^{(m)} \nabla_{\lambda} f(\lambda) \bigg|_{\lambda = \lambda^{(m)}}
 \end{equation}
-until $| f(\lambda^{(m+1)}) - f(\lambda^{(m)}) | < \epsilon$, with $\rho^{(m)}, m = 1, 2, \dots$ that satisfies the \citet{Robbins1951} conditions.
+until $| f(\lambda^{(m+1)}) - f(\lambda^{(m)}) | < \epsilon$, with $\rho^{(m)}, m = 1, 2, \dots$ that satisfies the Robbins and Munro (1951) conditions.
 \end{itemize}
 \begin{figure}[h]
 \centering
@@ -366,10 +374,21 @@ until $| f(\lambda^{(m+1)}) - f(\lambda^{(m)}) | < \epsilon$, with $\rho^{(m)}, 
 
 
 \begin{frame}
+\frametitle{Choosing the $q$ distribution}
+\begin{itemize}
+\item Finding a good functional form for $q$ is an open problem.
+\item Approaches include heirarchical distributions and neural network transformations.
+\item $q$ on needs to be parsimonous to scale.
+\item We augment $q$ with a copula to model dependence separately to the margins.
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}
 \section{Copulas}
 \frametitle{Vine Copulas}
 \begin{itemize}
-\item Vine copulas allow distributions to be constructed where a flexible dependence structure is fit independently to the margins.
+\item Vine copulas increase the flexiblity of copula modelling.
 \vspace{3mm}
 \item Problem: There are $O(k!)$ ways to construct a vine copula for a $k-$dimensional parameter vector $\boldsymbol{\theta}$.
 \item Solution: Di{\ss}mann's algorithm generates a vine copula that fits a sample of data reasonably well.
@@ -411,34 +430,6 @@ until $| f(\lambda^{(m+1)}) - f(\lambda^{(m)}) | < \epsilon$, with $\rho^{(m)}, 
 \end{frame}
 
 
-
-\begin{frame}
-\frametitle{Exponential Smoothing}
-\begin{itemize}
-\item \citet{Taylor2008} provides evidence that a double-seasonal Holt-Winters exponential smoothing model performs better than common alternatives for very short term electricity load forecasting.
-\item \citet{Forbes2000} provides a Bayesian approach to estimating exponential smoothing models by Monte Carlo simulation.
-\item We slightly modify the Holt-Winters model to work within the Bayesian approach.
-\item Applying SVB will allow electricity load density forecasts to be made at a very short time-frame.
-\end{itemize}
-\end{frame}
-
-
-\begin{frame}
-\frametitle{Double Seasonal Holt-Winters Exponential Smoothing}
-\begin{itemize}
-\item We use the modified double seasonal Holt-Winters exponential smoothing model
-\begin{align}
-y_t &= l_{t-1} - \sum_{i = 1}^{m_1 - 1}d_{t-i} - \sum_{i = 1}^{m_2 - 1}w_{t-i} + e_t \label{ds-hw-rp1} \\
-l_t &= l_{t-1} + \alpha e_t \label{ds-hw-rp2} \\
-d_t &= - \sum_{i = 1}^{m_1 - 1}d_{t-i} + \delta e_t \label{ds-hw-rp3} \\
-w_t &= - \sum_{i = 1}^{m_2 - 1}w_{t-i} + \omega e_t \label{ds-hw-rp4}.
-\end{align}
-where $m_1$ is the length of the daily cycle, and $m_2$ is the length of the weekly cycle.
-\item (\ref{ds-hw-rp3}) and (\ref{ds-hw-rp4}) restrict the seasonality but allow us to avoid inverting a singular matrix in the Bayesian approach.
-\end{itemize}
-\end{frame}
-
-
 \begin{frame}
 \section{Discussion}
 \frametitle{Discussion}
@@ -463,14 +454,6 @@ where $m_1$ is the length of the daily cycle, and $m_2$ is the length of the wee
 \item Mid 2019: Finalise thesis for submission.
 \end{itemize}
 \end{frame}
-
-
-\begin{frame}
-\bibliographystyle{asa}
-\bibliography{references}
-\end{frame}
-
-
 
 
 \end{document}

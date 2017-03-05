@@ -86,15 +86,15 @@ Supervised by Catherine Forbes and Anastasios Panagiotelis
 \frametitle{Bayesian Computation Techniques}
 A popular technique is to sample the posterior distribution with Markov Chain Monte Carlo (MCMC). MCMC:
 \begin{itemize}
-\item Converges in distribution to the posterior density with enough iterations.
-\item Can be very slow, and is hard to parallelise.
+\item Converges to the posterior density.
+\item Can be very slow.
 \item Scales badly to large datasets.
 \end{itemize}
 Interest is developing in Bayesian approximations, such as Variational Bayes (VB). VB:
 \begin{itemize}
-\item Is typically orders of magnitude faster than MCMC.
-\item Scales very well to large datasets with subsampling and parallelisation.
-\item Has no theoretical guarantee to converge to the posterior.
+\item Significantly faster than MCMC.
+\item Scales to large datasets.
+\item No theoretical guarantee to converge to the posterior.
 \end{itemize}
 \end{frame}
 
@@ -110,7 +110,7 @@ Interest is developing in Bayesian approximations, such as Variational Bayes (VB
 &\vdots \nonumber \\
 &p(\theta_k | \theta_1, \dots, \theta_{k-1}, y_{1:T}). \nonumber
 \end{align}
-\item Requires convergence, which can be extremely slow.
+\item Requires many samples to converge, which can be extremely slow.
 \item A predictive density for the next data point may not be available before it is observed.
 \end{itemize}
 \end{frame}
