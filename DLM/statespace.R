@@ -113,14 +113,35 @@ effectiveSize(xdrawKeep)
 ggpairs(xdrawKeep[,1:5])
 apply(xdrawKeep[,1:5], 2, posterior.statistics)
 
+
 library(rstan)
 DLM_data = list(T = T, y = y)
-stanMCMC = stan(file = 'DLM.stan', data = DLM_data, iter = 10000, chains = 4)
+stanMCMC = stan(file = 'DLM.stan', data = DLM_data, iter = 50000, chains = 1)
 print(stanMCMC, digits = 3)
 
 model = stan_model('DLM.stan')
 stanMF = vb(model, data = DLM_data, algorithm = "meanfield")
 stanFull = vb(model, data = DLM_data, algorithm = "fullrank")
+
+#MVFB
+
+initialMean = apply(cbind(log(thetaKeep[,3:4]), thetaKeep[,1:2], xdrawKeep), 2, mean)
+initialSd = apply(cbind(log(thetaKeep[,3:4]), thetaKeep[,1:2], xdrawKeep), 2, sd)
+initialMean = rep(0, 55)
+initialSd = rep(0.2, 55)
+options(warn = -1)
+set.seed(3)
+MFVB = MFSGA(y, initialMean, initialSd, 1, 0.1, 200, TRUE)
+options(warn = 0)
+
+
+mean = initialMean
+sd = initialSd
+
+
+
+
+
 
 pobtheta = pobs(thetaKeep)
 pobx = pobs(xdrawKeep)
