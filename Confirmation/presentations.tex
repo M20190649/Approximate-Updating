@@ -138,7 +138,7 @@ Supervised by Catherine Forbes and Anastasios Panagiotelis
 \item There is an increasing demand for forecasts of the entire predictive density of the variable of interest.
 \item Many time series of interest can operate on a very short time-frame.
 \item We aim to provide density forecasts for these high frequency time-series by updating posterior and predictive density estimates as each data point is observed.
-\item The algorithm used should scale to multivariate observations driven by complex models with large datasets.
+\item The approach used should scale to multivariate time-series driven by complex models with large datasets.
 \end{itemize}
 \end{frame}
 
@@ -182,7 +182,7 @@ Supervised by Catherine Forbes and Anastasios Panagiotelis
 \begin{frame}
 \frametitle{Gibbs Full Conditional Distributions}
 \begin{itemize}
-\item Let $y_t \overset{iid}{\sim} \mathcal{N}\left(\mu, \sigma^2\right) \mbox{ for } t = 1, 2, \dots, T$. 
+\item Consider the Normal-Inverse Gamma model, where $y_t \overset{iid}{\sim} \mathcal{N}\left(\mu, \sigma^2\right) \mbox{ for } t = 1, 2, \dots, T$. 
 \item Use priors
 \begin{enumerate}
 \item $\mu | \sigma \sim \mathcal{N}\left(\gamma, \sigma^2/\tau\right)$
@@ -203,7 +203,7 @@ Supervised by Catherine Forbes and Anastasios Panagiotelis
 \frametitle{Variational Bayes}
 \begin{itemize}
 \item Key Idea: Replace the intractable $p(\boldsymbol{\theta} | y_{1:T})$ with a tractable approximation $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$.
-\item How: Choose the $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ from a restricted class of distributions is closest to $p(\boldsymbol{\theta} | y_{1:T})$ by some metric. 
+\item How: Choose the $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ that is the closest member of a restricted class to $p(\boldsymbol{\theta} | y_{1:T})$ by some metric. 
 \item Typically minimise the Kullback-Leibler divergence from $q$ to $p$,
 
 \begin{equation}
@@ -327,7 +327,7 @@ q_i(\theta_i |\boldsymbol{\lambda_i}) \propto\exp( \mathbb{E}_{q_{j \neq i}}[\ln
 \begin{frame}
 \frametitle{Fit to simulated data}
 \begin{itemize}
-\item Marginal posterior densities for the Normal Inverse Gamma model with $T = 100, \mu = 2$ and $\sigma^2 = 1$.
+\item Marginal posterior densities for the Normal-Inverse Gamma model with $T = 100, \mu = 2$ and $\sigma^2 = 1$.
 \item Hyperparameters are $\gamma = 0, \tau = 1, \alpha = 1$ and $\beta = 1$. 
 \end{itemize}
 \begin{figure}[h]
@@ -374,26 +374,47 @@ until $| f(\lambda^{(m+1)}) - f(\lambda^{(m)}) | < \epsilon$, with $\rho^{(m)}, 
 
 
 \begin{frame}
-\frametitle{Choosing the $q$ distribution}
+\section{Copulas}
+\frametitle{Choice of approximating functional form}
 \begin{itemize}
 \item Finding a good functional form for $q$ is an open problem.
-\item Approaches include heirarchical distributions and neural network transformations.
-\item $q$ on needs to be parsimonous to scale.
+\item $q$ should approximate the posterior well.
+\item $q$ needs to be parsimonous to scale.
 \item We augment $q$ with a copula to model dependence separately to the margins.
+\item From Sklar (1951), 
+\begin{equation}
+q(\boldsymbol{\theta} | \boldsymbol{\lambda}) = \prod_{i = 1}^{k} q(\theta_i | \boldsymbol{\lambda}_i) C(Q(\theta_1), \dots, Q(\theta_k | \boldsymbol{\lambda})),
+\end{equation}
+where $C$ is a copula, $q$ is a pdf and $Q$ is a cdf.
 \end{itemize}
 \end{frame}
 
 
 \begin{frame}
-\section{Copulas}
 \frametitle{Vine Copulas}
 \begin{itemize}
-\item Vine copulas increase the flexiblity of copula modelling.
+\item Vine copulas factorise a copula to increase flexibility.
 \vspace{3mm}
 \item Problem: There are $O(k!)$ ways to construct a vine copula for a $k-$dimensional parameter vector $\boldsymbol{\theta}$.
 \item Solution: Di{\ss}mann's algorithm generates a vine copula that fits a sample of data reasonably well.
-\item Implementation: Run MCMC and use Di{\ss}mann's algorithm to find a good vine copula to use as $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$. Run SVB to update this approximation as more data comes in.
+\item Implementation: 
+\begin{enumerate}
+\item Run MCMC and use Di{\ss}mann's algorithm to find a good vine copula to use in $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$. 
+\item Use model knowledge to force conditional independence where appropriate.
+\item Run SVB to update this approximation as more data comes in.
+\end{enumerate}
 \end{itemize}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Vine Copula for a Four Dimensional $\boldsymbol{\theta}$}
+\begin{figure}[h]
+\centering
+\includegraphics[scale = 0.4]{vines}
+\label{fig:vines}
+\caption{A Vine Copula split into three trees. Edges in trees represent bivariate copulas, nodes in trees represent edges in the previous tree.}
+\end{figure}
 \end{frame}
 
 
@@ -434,10 +455,10 @@ until $| f(\lambda^{(m+1)}) - f(\lambda^{(m)}) | < \epsilon$, with $\rho^{(m)}, 
 \section{Discussion}
 \frametitle{Discussion}
 \begin{itemize}
-\item Updating is worthwhile if the new data brings significant information on the parameters. State-space models are of interest as observation specific latent variables are more influenced by new data than global parameters.
+\item Updating is worthwhile if the new data brings significant information on the parameters.
 \item Existing online updating algorithms assume data is $iid$. We aim to develop an updating algorithm for dependent data.
-\item Our time-series context allows MCMC draws to guide the construction of $q$. We have no information on latent variables associated with new data and we must devise a way to include these in $q$.
-\item Statistical properties of the approximation are unknown and depend on the divergence measure used.
+\item Our time-series context allows MCMC draws to guide the construction of $q$. New data can be associated with variables not included in these draws.
+\item Statistical properties of the approximation are unknown, except that they depend on the divergence measure used.
 \item The accuracy/computation time trade-off between MCMC and VB has not been thoroughly investigated.
 \end{itemize}
 \end{frame}
@@ -445,14 +466,25 @@ until $| f(\lambda^{(m+1)}) - f(\lambda^{(m)}) | < \epsilon$, with $\rho^{(m)}, 
 
 \begin{frame}
 \frametitle{Timeline}
-\begin{itemize}
-\item Mid 2017: Complete electricity load forecasting application.
-\item End of 2017: Develop dependent online updating, apply to Stochastic Volatiltiy model with dependent latent variables.
-\item Compare approximations to the exact posterior to understand the efficiency trade-off.
-\item Mid 2018: Investigate statistical properties of other divergence measures such as Stein's discrepancy.
-\item End of 2018: Allow extra time as the literature is evolving rapidly and new research opportunities constantly appear.
-\item Mid 2019: Finalise thesis for submission.
-\end{itemize}
+\begin{tabular}{| l | l |}
+\hline
+ Mid 2017: & Complete electricity load forecasting application. \\
+ \hline
+ End of 2017: & Develop dependent online updating, \\
+ & apply to Stochastic Volatiltiy model with dependent \\
+ & latent variables. \\
+ & Compare approximations to the exact posterior to \\
+ &understand the efficiency trade-off. \\
+ \hline
+ Mid 2018: & Investigate statistical properties of other divergence \\
+ & measures such as Stein's discrepancy. \\
+ \hline
+ End of 2018: & Allow extra time as the literature is evolving rapidly \\
+ & and new research opportunities constantly appear. \\
+ \hline
+ Mid 2019: & Finalise thesis for submission.\\
+\hline
+\end{tabular}
 \end{frame}
 
 
