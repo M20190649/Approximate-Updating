@@ -1,15 +1,8 @@
 #!/home/nltom2/.virtualenvs/Python/bin/python3
-
-
 import edward as ed
 from edward.models import Normal, Uniform, InverseGamma
-import matplotlib.pyplot as plt
-#import matplotlib.gridspec as gridspec
 import numpy as np
-#import os
 import tensorflow as tf
-import numpy.random as rn
-
 
 #Setting up parameters for simulated data
 T = 50
@@ -21,18 +14,17 @@ ysdTrue = 1
 #Simulating data
 yData = np.empty(T)
 xData = np.empty(T+1)
-xData[0] = rn.normal(loc=0, scale=xsdTrue/np.sqrt(1 - arTrue**2))
+xData[0] = np.random.normal(loc=0, scale=xsdTrue/np.sqrt(1 - arTrue**2))
 for t in range(T):
-    xData[t+1] = rn.normal(loc=arTrue*xData[t], scale=xsdTrue)
-    yData[t] = rn.normal(loc=xData[t+1] + bTrue, scale=ysdTrue)
+    xData[t+1] = np.random.normal(loc=arTrue*xData[t], scale=xsdTrue)
+    yData[t] = np.random.normal(loc=xData[t+1] + bTrue, scale=ysdTrue)
 
-
-#Create Model
+#Prior distributions
 b = Normal(mu=0.0, sigma=5.0)
 ar = Uniform(-1.0, 1.0)
 xsd = InverseGamma(alpha=1.0, beta=1.0)
 ysd = InverseGamma(alpha=1.0, beta=1.0)
-
+#x and y via lists
 x = [0] * (T)
 y = [0] * (T)
 x0 = Normal(mu=0.0, sigma=xsd / tf.sqrt(1-ar**2))
