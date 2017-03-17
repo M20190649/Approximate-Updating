@@ -1,8 +1,8 @@
 #!/home/nltom2/.virtualenvs/Python/bin/python3
-from edward.models import Normal, InverseGamma
 import tensorflow as tf
 import edward as ed
 import numpy as np
+from edward.models import Normal, InverseGamma
 
 mu_true = 0.0
 beta_true = 0.9
@@ -22,7 +22,6 @@ x = [0] * T
 x[0] = Normal(mu=tf.ones([N])*mu, sigma=tf.ones([N])*10.0)
 for n in range(1, T):
     x[n] = Normal(mu=tf.ones([N])*mu + beta * x[n-1], sigma=tf.ones([N])*noise_proc)
-
 
 qmu = Normal(mu=tf.Variable(tf.random_normal([])),
              sigma=tf.nn.softplus(tf.Variable(tf.random_normal([]))))

@@ -34,31 +34,43 @@ xsd = InverseGamma(alpha=1.0, beta=1.0)
 ysd = InverseGamma(alpha=1.0, beta=1.0)
 
 x = [0] * (T)
+y = [0] * (T)
 x0 = Normal(mu=0.0, sigma=xsd / tf.sqrt(1-ar**2))
 for t in range(T):
     if(t == 0):
         x[t] = Normal(mu=ar*x0, sigma=xsd)
     else:
         x[t] = Normal(mu=ar*x[t-1], sigma=xsd)
-
-y = Normal(mu=x+b, sigma=ysd)
-
+    y[t] = Normal(mu=x[t]+b, sigma=ysd)
 
 #Set up approximation
-qar = Normal(mu = tf.Variable(tf.random_normal([1])),
-            sigma=tf.nn.softplus(tf.Variable(tf.random_normal([1]))))
-qb = Normal(mu = tf.Variable(tf.random_normal([1])),
-            sigma=tf.nn.softplus(tf.Variable(tf.random_normal([1]))))
-qysd = InverseGamma(
-    alpha=tf.nn.softplus(tf.Variable(tf.random_normal([1]))),
-    beta=tf.nn.softplus(tf.Variable(tf.random_normal([1]))))
-qxsd = InverseGamma(
-    alpha=tf.nn.softplus(tf.Variable(tf.random_normal([1]))),
-    beta=tf.nn.softplus(tf.Variable(tf.random_normal([1]))))
-qx0 = Normal(mu = tf.Variable(tf.random_normal([1])),
-            sigma=tf.nn.softplus(tf.Variable(tf.random_normal([1]))))
-qx = Normal(mu = tf.Variable(tf.random_normal([T])),
-            sigma=tf.nn.softplus(tf.Variable(tf.random_normal([T]))))
+qAr = Normal(mu = tf.Variable(tf.random_normal([])),
+            sigma=tf.nn.softplus(tf.Variable(tf.random_normal([]))))
+qB = Normal(mu = tf.Variable(tf.random_normal([])),
+            sigma=tf.nn.softplus(tf.Variable(tf.random_normal([]))))
+qYsd = InverseGamma(
+    alpha=tf.nn.softplus(tf.Variable(tf.random_normal([]))),
+    beta=tf.nn.softplus(tf.Variable(tf.random_normal([]))))
+qXsd = InverseGamma(
+    alpha=tf.nn.softplus(tf.Variable(tf.random_normal([]))),
+    beta=tf.nn.softplus(tf.Variable(tf.random_normal([]))))
+qX0 = Normal(mu = tf.Variable(tf.random_normal([])),
+            sigma=tf.nn.softplus(tf.Variable(tf.random_normal([]))))
+qX = [0] * (T)
+for t in range(T):
+    qX[t] = Normal(mu = tf.Variable(tf.random_normal([])),
+            sigma=tf.nn.softplus(tf.Variable(tf.random_normal([]))))
 
-inference = ed.KLqp({ar: qar, b: qb, xsd: qxsd, ysd: qysd, x0: qx0, x: qx}, data={y: yData})
-inference.run(n_iter=1000, n_samples=5)
+# Inference
+parameters = {
+    ar: qAr,
+    b: qB,
+    ysd: qYsd,
+    xsd: qXsd,
+    x0: qX0
+}
+states = {x: qX for x, qX in zip(x, qX)}
+parameters.update(states)
+data = {yt: yData for yt, yData in zip(y, yData)}
+inference = ed.KLqp(parameters, data)
+inference.run()
