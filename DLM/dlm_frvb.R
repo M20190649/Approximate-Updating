@@ -8,7 +8,7 @@ logjoint = function(y, params){
   x = params[5:(T+5)]
   T = length(y)
   logprior = log(1/2) + dnorm(theta[4], 0, sqrt(10), log = TRUE) -
-    theta[1] - 1 / exp(theta[1]) - theta[2] - 1 / exp(theta[2])
+    theta[1] -  exp(-theta[1]) - theta[2] -  exp(-theta[2])
   logstates = dnorm(x[1], 0, sqrt(exp(theta[2])/(1-theta[3]^2)), log = TRUE) + 
     sum(dnorm(x[2:(T+1)], theta[3]*x[1:T], sqrt(exp(theta[2])), log = TRUE))
   logy = sum(dnorm(y, x[2:(T+1)] + theta[4], sqrt(exp(theta[1])), log = TRUE))
@@ -16,7 +16,7 @@ logjoint = function(y, params){
 }
 
 logq = function(x, mean, L){
-  cons = -length(x)/2 * log(2*pi) + sum(log(diag(L)))
+  cons = -length(x)/2 * log(2*pi) -1/2 * log(det(L %*% t(L)))
   kernel = -1/2 * t(x - mean) %*% solve(L %*% t(L)) %*% (x - mean)
   cons + kernel
 }
@@ -34,12 +34,11 @@ simul = function(mean, L){
 
 ELBO = function(y, mean, L, n = 250){
   eval = 0
-  sigma = L %*% t(L)
   for(i in 1:n){
     sims = simul(mean, L)
     lj = logjoint(y, sims$normal)
     qcons = -length(x)/2 * log(2*pi) + sum(log(diag(L)))
-    qkernel = -1/2 * t(x - mean) %*% solve(L %*% t(L)) %*% (x - mean)
+    qkernel = -1/2 * t(sims$normal - mean) %*% solve(L %*% t(L)) %*% (sims$normal - mean)
     eval = eval + lj - (qcons + qkernel)
   }
   return(eval/n)
@@ -119,10 +118,8 @@ elboLDeriv = function(y, simulation, mean, L, i, j){
   return(dpdf*dfdl - dqdl)
 }
 
-FRSGA = function(y, mean, L, S, threshold, maxIter, meanfield = FALSE, adagrad = FALSE){
+FRSGA = function(y, mean, L, S, threshold, maxIter, stepsizeMean, stepsizeL, meanfield = FALSE, adagrad = FALSE){
   #ADAM tuning parameters
-  stepsizeMean = 0.1
-  stepsizeL = 0.1
   beta1 = 0.9
   beta2 = 0.999
   epsilon = 10^(-8)
@@ -139,7 +136,7 @@ FRSGA = function(y, mean, L, S, threshold, maxIter, meanfield = FALSE, adagrad =
   #Track last 10 ELBO values
   LB = rep(0, 10)
   #Break when mean change of past 10 values is lower than threshold, allow time for algorithm to get started
-  while(mean(abs(LB[2:10]-LB[1:9])) > threshold | t < 50){
+  while(mean(abs(LB[2:10]-LB[1:9])) > threshold | t < 20){
     t = t + 1
     if(t > maxIter){
       break
@@ -164,9 +161,12 @@ FRSGA = function(y, mean, L, S, threshold, maxIter, meanfield = FALSE, adagrad =
     if(adagrad){
       gMean = gMean + meanDeriv^2
       gL = gL + LDeriv^2
-      pMean = stepsizeMean * gMean^(-1/2)
-      pL = stepsizeL * gL^(-1/2)
       if(t >= 2){ #first step always has deriv and p cancel
+        pMean = stepsizeMean * gMean^(-1/2)
+        pL = stepsizeL * gL^(-1/2)
+        #Any parameter we do not estimate will have an observed gradient equal to zero and Pl equal to Inf 
+        #This will break the update, so set it to zero so the update only happens for parameters we care about.
+        pL[pL == Inf] = 0
         mean = mean + pMean * meanDeriv
         L = L + pL * LDeriv 
       }

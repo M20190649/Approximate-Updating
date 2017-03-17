@@ -127,10 +127,17 @@ stanFull = vb(model, data = DLM_data, algorithm = "fullrank")
 
 initialMean = apply(cbind(log(thetaKeep[,3:4]), thetaKeep[,1:2], xdrawKeep), 2, mean)
 initialSd = apply(cbind(log(thetaKeep[,3:4]), thetaKeep[,1:2], xdrawKeep), 2, sd)
-initialMean = rep(0, 55)
-initialSd = rep(0.2, 55)
+initialL = t(chol(cov(cbind(log(thetaKeep[,3:4]), thetaKeep[,1:2], xdrawKeep))))
 options(warn = -1)
 set.seed(3)
+VB = list()
+convergedLB = rep(0, 10)
+for(i in 1:10){
+  VB[[i]] = FRSGA(y, initialMean, initialL, 1, 0.2, 500, 0.1, 0.1, FALSE, TRUE)
+  convergedLB[i] = VB[[i]]$LB[10]
+}
+BestVB = VB[[which.max(convergedLB)]]
+FRVB = FRSGA
 MFVB = MFSGA(y, initialMean, initialSd, 1, 0.1, 200, TRUE)
 options(warn = 0)
 
