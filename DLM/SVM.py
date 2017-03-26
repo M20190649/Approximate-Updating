@@ -3,6 +3,8 @@ import edward as ed
 import numpy as np
 from edward.models import Normal
 
+a = tf.train.GradientDescentOptimizer
+a.compute_gradients()
 
 # Model Parameters
 T = 50
