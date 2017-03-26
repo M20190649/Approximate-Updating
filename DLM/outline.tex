@@ -1,0 +1,128 @@
+\documentclass[12pt,a4paper]{article}%
+\usepackage[]{graphicx}\usepackage[]{color}
+%% maxwidth is the original width if it is less than linewidth
+%% otherwise use linewidth (to make sure the graphics do not exceed the margin)
+
+%2multibyte Version: 5.50.0.2960 CodePage: 1252
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage[centertags]{amsmath}
+\usepackage{graphicx}%
+\usepackage{natbib}
+\usepackage{color}
+\usepackage[dvipsnames,svgnames*]{xcolor}
+\usepackage{array}
+\usepackage[hidelinks]{hyperref}
+\usepackage[font=small,skip=5pt]{caption}
+\usepackage[aboveskip=2pt]{subcaption}
+\usepackage{amsmath}
+\usepackage[]{algorithm2e}
+\usepackage{amsthm}
+\usepackage{url}
+\usepackage{wasysym}
+\usepackage{ulem}
+\usepackage{afterpage}
+\usepackage{bbm}
+\setcounter{MaxMatrixCols}{30}
+\providecommand{\U}[1]{\protect\rule{.1in}{.1in}}
+\newtheorem{theorem}{Theorem}
+\newtheorem{acknowledgement}[theorem]{Acknowledgement}
+\newtheorem{axiom}[theorem]{Axiom}
+\newtheorem{case}[theorem]{Case}
+\newtheorem{claim}[theorem]{Claim}
+\newtheorem{conclusion}[theorem]{Conclusion}
+\newtheorem{condition}[theorem]{Condition}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{criterion}[theorem]{Criterion}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{exercise}[theorem]{Exercise}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{notation}[theorem]{Notation}
+\newtheorem{problem}[theorem]{Problem}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{solution}[theorem]{Solution}
+\newtheorem{summary}[theorem]{Summary}
+\setlength{\topmargin}{0in}
+\setlength{\oddsidemargin}{0.1in}
+\setlength{\evensidemargin}{0.1in}
+\setlength{\textwidth}{6.5in}
+\setlength{\textheight}{8.25in}
+\numberwithin{equation}{section}
+\begin{document}
+
+\section{Introduction}
+
+\begin{itemize}
+\item Compare MCMC methods with variational methods for forecasting a Dynamic Linear Model and a Stochastic Volatility Model. 
+\item Use a range of different updating methods to adjust forecasts as new data is observed.
+\item Compare compuation time and forecast accuracy for all approaches.
+\end{itemize}
+
+\section{Approaches Considered}
+
+\textbf{MCMC Methods}
+\begin{itemize}
+\item Gibbs + Metropolis-Hastings MCMC.
+\item Hamiltonian Monte Carlo.
+\item Particle Filtering / QMLE / Extended Kalman Filter / Whatever else is used for SV.
+\end{itemize}
+\textbf{Updating for MCMC}
+\begin{itemize}
+\item Full updating - rerun MCMC after each new observation for best possible result.
+\item No updating - just use multi step ahead forecasts via filtering.
+\end{itemize}
+\textbf{Variational Methods}
+\begin{itemize}
+\item Independent Gaussian - Transform parameters to real line eg. $\log(\sigma^2)$.
+\item Full Rank Gaussian with real line transformation.
+\item Sampling informed distributions - Copula model from Di{\ss}mann's algorithm.
+\item Neural Network transform of $N(\boldsymbol{0}, I)$ posterior.
+\item Stochastic Recurrent Neural Networks - SV Model only.
+\item Alternative divergence measures eg. Expectation Propogation.
+\end{itemize}
+\textbf{Updating for VB}
+\begin{itemize}
+\item Update all parameters and latent variables.
+\item Update global parameters and latent variables for new data - Hold previous latent variables fixed.
+\item Do not update, just use filtering and multi step ahead forecasts.
+\end{itemize}
+
+\section{Simulation Results}
+
+Simulate each estimation/update combination many times, calculate cumulative scores of new observations as well as compuation time for initial fit and each update.
+
+\subsection{Dynamic Linear Model}
+
+\begin{align}
+y_t &= \mu + \beta x_t + \sigma_y \epsilon_t \\
+x_t &= \gamma + \phi x_{t-1} + \sigma_x \nu_t
+\end{align}
+
+$\epsilon_t$ and $\nu_t \sim Z$
+
+\subsection{Stochastic Volatility Model}
+
+\begin{align}
+y_t &= \exp\left(\alpha_t/2\right) \epsilon_t \\
+\alpha_t &= \gamma + \phi \alpha_{t-1} + \sigma \nu_t
+\end{align}
+
+$\epsilon_t$ and $\nu_t \sim Z$.
+Alternatively transform to another representaiton if that works better for filtering/QMLE etc.
+
+\section{Empirical Application}
+\begin{itemize}
+\item DLM: Find something
+\item SV: Intraday stock prices? 
+\item Possibly have a multivariate $\textbf{y}_t$
+\end{itemize}
+
+\bibliographystyle{asa}
+\bibliography{references}
+
+\section{Discussion}
+
+\end{document}

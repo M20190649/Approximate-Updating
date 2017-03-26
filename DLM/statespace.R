@@ -20,11 +20,12 @@ alphaX = 1
 betaX = 1
 muBar = 0
 muVar = 10
+J = 50
 
 x0 = rnorm(1, 0, sqrt(sigmaSqX))
-x = rep(0, T)
-y = rep(0, T)
-for(t in 1:T){
+x = rep(0, T+J)
+y = rep(0, T+J)
+for(t in 1:(T+J)){
   if(t == 1){
     x[t] = phi*x0 + rnorm(1, 0, sqrt(sigmaSqX)) 
   } else {
@@ -112,6 +113,18 @@ colnames(xdrawKeep) = paste0("X", 0:T)
 effectiveSize(xdrawKeep)
 ggpairs(xdrawKeep[,1:5])
 apply(xdrawKeep[,1:5], 2, posterior.statistics)
+
+
+
+MCMCdraws = DLM_MCMC(y, 100000)
+chainLength = seq(1000, 100000, length.out=100)
+ySupport = seq(min(y)-1, max(y)+1, length.out=100)
+MCMCForecast = ForecastEvalMCMC(y[(T+1):(T+J)], chainLength, MCMCdraws$x, MCMCdraws$theta, ySupport, 0.2)
+
+
+
+
+
 
 
 library(rstan)
