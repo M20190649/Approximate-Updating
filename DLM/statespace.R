@@ -7,32 +7,53 @@ library(fitdistrplus)
 library(mixtools)
 library(QRM)
 library(pscl)
+library(tidyr)
+
+logScoreMCMC = function(T, J, M, chainLength){
+  mu = 2
+  phi = 0.5
+  sigmaSqY = 1
+  sigmaSqX = 1
+  alphaY = 1
+  betaY = 1
+  alphaX = 1
+  betaX = 1
+  muBar = 0
+  muVar = 10
+  
+  x0 = rnorm(1, 0, sqrt(sigmaSqX))
+  x = rep(0, T+J)
+  y = rep(0, T+J)
+  for(t in 1:(T+J)){
+    if(t == 1){
+      x[t] = phi*x0 + rnorm(1, 0, sqrt(sigmaSqX)) 
+    } else {
+      x[t] = phi*x[t-1] + rnorm(1, 0, sqrt(sigmaSqX))
+    }
+    y[t] = mu + x[t] + rnorm(1, 0, sqrt(sigmaSqY))
+  }
+  MCMCdraws = DLM_MCMC(y[1:T], max(chainLength))
+  ySupport = seq(min(y)-1, max(y)+1, length.out=200)
+  logScores = ForecastEvalMCMC(y, chainLength, MCMCdraws$x, MCMCdraws$theta, ySupport, 0.2, T, J, M)
+  
+  return(logScores)
+}
 
 set.seed(2)
-T = 50
-mu = 2
-phi = 0.5
-sigmaSqY = 1
-sigmaSqX = 1
-alphaY = 1
-betaY = 1
-alphaX = 1
-betaX = 1
-muBar = 0
-muVar = 10
-J = 50
+chainLength = c(1000, 5000, 25000, 50000, 100000)
+logScores = replicate(500, logScoreMCMC(50, 50, 1000, chainLength))
 
-x0 = rnorm(1, 0, sqrt(sigmaSqX))
-x = rep(0, T+J)
-y = rep(0, T+J)
-for(t in 1:(T+J)){
-  if(t == 1){
-    x[t] = phi*x0 + rnorm(1, 0, sqrt(sigmaSqX)) 
-  } else {
-    x[t] = phi*x[t-1] + rnorm(1, 0, sqrt(sigmaSqX))
-  }
-  y[t] = mu + x[t] + rnorm(1, 0, sqrt(sigmaSqY))
-}
+meanLogScores = data.frame(apply(logScores, 1:2, mean))
+colnames(meanLogScores) = chainLength
+meanLogScores$time = 1:J
+
+meanLogScoresl = gather(meanLogScores,  length, logscore, -time, factor_key = TRUE)
+ggplot(meanLogScoresl, aes(time, logscore, colour = length)) + geom_line()
+
+
+
+
+
 
 FFBS = function(y, theta){
   T = length(y)
@@ -113,16 +134,6 @@ colnames(xdrawKeep) = paste0("X", 0:T)
 effectiveSize(xdrawKeep)
 ggpairs(xdrawKeep[,1:5])
 apply(xdrawKeep[,1:5], 2, posterior.statistics)
-
-
-
-MCMCdraws = DLM_MCMC(y, 100000)
-chainLength = seq(1000, 100000, length.out=100)
-ySupport = seq(min(y)-1, max(y)+1, length.out=100)
-MCMCForecast = ForecastEvalMCMC(y[(T+1):(T+J)], chainLength, MCMCdraws$x, MCMCdraws$theta, ySupport, 0.2)
-
-
-
 
 
 

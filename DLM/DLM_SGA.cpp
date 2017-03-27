@@ -8,8 +8,6 @@ using namespace Rcpp;
 using namespace arma;
 using namespace std;
 
-#define Pi 3.14159265358979
-
 class Distribution{
 public:
   virtual void set_values(int, int) {};
@@ -25,10 +23,10 @@ public:
     mean = m;
     variance = v;
   }
-  void increase_values(double m, double st){
+  void increase_values(double m, double sd){
     mean += m;
-    if(sqrt(variance) > -st){
-      variance = pow(sqrt(variance) + st, 2);
+    if(sqrt(variance) > -sd){
+      variance = pow(sqrt(variance) + sd, 2);
     }
   }
   double logdens (double x) {
@@ -121,7 +119,7 @@ void updateQ (Distribution* qLatent[], mat increase, int p){
     dynamic_cast<Normal*>(qLatent[i])->increase_values(increase(i, 0), increase(i, 1));
   }
 }
-  
+
 double ELBO(Distribution* Y[], vec y, Distribution* pLatent[], Distribution* qLatent[], int T, int p, int n = 100){
   mat latentSims = qSim(qLatent, n, p);
   double value = 0;
@@ -130,6 +128,27 @@ double ELBO(Distribution* Y[], vec y, Distribution* pLatent[], Distribution* qLa
     value += pdens(Y, y, pLatent, latentSims.row(i), T, p) - qdens(qLatent, latentSims.row(i), p);
   }
   return value / n;
+}
+
+// [[Rcpp::export]]
+double testELBO(vec y, mat values, int n){
+  int T = 50;
+  Distribution *Y[T];
+  Distribution *pLatent[T+5];
+  Distribution *qLatent[T+5];
+  pLatent[0] = new InverseGamma(1, 1); qLatent[0] = new Normal(values(0, 0), values(0, 1));
+  pLatent[1] = new InverseGamma(1, 1); qLatent[1] = new Normal(values(1, 0), values(1, 1));
+  pLatent[2] = new Normal(0, 0.25); qLatent[2] = new Normal(values(2, 0), values(2, 1));
+  pLatent[3] = new Normal(0, 5); qLatent[3] = new Normal(values(3, 0), values(3, 1));
+  pLatent[4] = new Normal(0, 5); qLatent[4] = new Normal(values(4, 0), values(4, 1));
+  for(int t = 0; t < T; ++t){
+    pLatent[t+5] = new Normal(0, 1);
+    Y[t] = new Normal(0, 1);
+    qLatent[t+5] = new Normal(values(t+5, 0), values(t+5, 1));
+  }
+  double LB = ELBO(Y, y, pLatent, qLatent, T, T+5, n);
+  return LB;
+  
 }
 
 double logjointDeriv (vec y, rowvec latent, int T, int i){
@@ -178,18 +197,29 @@ rowvec elboDeriv (vec y, Distribution* qLatent[], rowvec latent, int T, int i){
 }
 
 // [[Rcpp::export]]
-mat DLM_SGA (vec y, int S, int maxIter){
+mat DLM_SGA (vec y, int S, int maxIter, double threshold, mat values, bool initial){
   int T = y.n_elem;
   mat partials(T+5, 2);
   mat Gt(T+5, 2, fill::zeros);
   mat Pt(T+5, 2);
   double eta = 0.1;
   double iter = 0;
-  double threshold = 0.01;
   double diff = threshold + 1;
   Distribution *Y[T];
   Distribution *pLatent[T+5];
   Distribution *qLatent[T+5];
+  if(initial){
+    pLatent[0] = new InverseGamma(1, 1); qLatent[0] = new Normal(values(0, 0), values(0, 1));
+    pLatent[1] = new InverseGamma(1, 1); qLatent[1] = new Normal(values(1, 0), values(1, 1));
+    pLatent[2] = new Normal(0, 0.25); qLatent[2] = new Normal(values(2, 0), values(2, 1));
+    pLatent[3] = new Normal(0, 5); qLatent[3] = new Normal(values(3, 0), values(3, 1));
+    pLatent[4] = new Normal(0, 5); qLatent[4] = new Normal(values(4, 0), values(4, 1));
+    for(int t = 0; t < T; ++t){
+      pLatent[t+5] = new Normal(0, 1);
+      Y[t] = new Normal(0, 1);
+      qLatent[t+5] = new Normal(values(t+5, 0), values(t+5, 1));
+    }
+  } else {
   pLatent[0] = new InverseGamma(1, 1); qLatent[0] = new Normal(0, 1);
   pLatent[1] = new InverseGamma(1, 1); qLatent[1] = new Normal(0, 1);
   pLatent[2] = new Normal(0, 0.25); qLatent[2] = new Normal(0, 1);
@@ -199,6 +229,7 @@ mat DLM_SGA (vec y, int S, int maxIter){
     pLatent[t+5] = new Normal(0, 1);
     Y[t] = new Normal(0, 1);
     qLatent[t+5] = new Normal(0, 1);
+  }
   }
   double LBold;
   double LBnew = ELBO(Y, y, pLatent, qLatent, T, T+5);

@@ -7,6 +7,33 @@ using namespace Rcpp;
 using namespace arma;
 using namespace std;
 
+//// [[Rcpp::export]]
+rowvec FFcpp(vec y, double phi, double mu, double sigmaSqY, double sigmaSqX, int T, int J){
+  y -= mu;
+  vec att(T+J, fill::ones); //0 - (T-1) -> x1 - xT
+  vec ptt(T+J, fill::ones);
+  vec at(T+J);
+  vec pt(T+J);
+  rowvec draws(T+J+1); //0 - T -> x0 - xT
+  at[0] = 0;
+  pt[0] = pow(phi, 2)*sigmaSqX + sigmaSqX;
+  double vt = y[0];
+  att[0] = pt[0] * vt / (pt[0] + sigmaSqY);
+  ptt[0] = pt[0] - pow(pt[0], 2) / (pt[0] + sigmaSqY);
+  for(int t = 1; t < T+J; ++t){
+    at[t] = phi*att[t-1];
+    pt[t] = pow(phi, 2)*ptt[t-1] + sigmaSqX;
+    vt = y[t] - at[t];
+    att[t] = at[t] + pt[t] * vt / (pt[t] + sigmaSqY);
+    ptt[t] = pt[t] - pow(pt[t], 2) / (pt[t] + sigmaSqY);
+  }   
+  rowvec filtered(J);
+  for(int t = 0; t < J; ++t){
+    filtered[t] = at[t+T] + sqrt(pt[t+T]) * randn<vec>(1)[0];
+  }
+  return filtered;
+}
+
 // [[Rcpp::export]]
 rowvec FFBScpp(vec y, rowvec theta){
   int T = y.size();
@@ -54,8 +81,8 @@ rowvec FFBScpp(vec y, rowvec theta){
 Rcpp::List DLM_MCMC(vec y, int reps){
   int T = y.n_elem;
   mat theta(reps, 4);
-  mat x(reps, T+1);
-  rowvec initial = {0, 0, 1, 1};
+  mat x(reps, T+1, fill::zeros);
+  rowvec initial = {1, 1, 0, 0};
   theta.row(0) = initial;
   
   double sigmaSqYShape = T/2 + 1;
@@ -66,11 +93,9 @@ Rcpp::List DLM_MCMC(vec y, int reps){
   double meanPhiDenom;
   double meanMuNumer;
   double meanMuDenom;
-  double draw;
-  bool stationary;
-  
+
   for(int i = 1; i < reps; ++i){
-    x.row(0) = FFBScpp(y, theta.row(i-1));
+    x.row(i) = FFBScpp(y, theta.row(i-1));
     
     //sigmaSqY ~ IG(shape, scale)
     sigmaSqYScale = 1;
@@ -92,14 +117,7 @@ Rcpp::List DLM_MCMC(vec y, int reps){
       meanPhiNumer += x(i, t) * x(i, t+1);
       meanPhiDenom += pow(x(i, t), 2);
     }
-    stationary = FALSE;
-    while(!stationary){
-      draw = (meanPhiNumer/meanPhiDenom + sqrt(theta(i, 1)/meanPhiDenom) * randn<vec>(1))[0];
-      if(draw > -1 & draw < 1){
-        stationary = TRUE;
-        theta(i, 2) = draw;
-      }
-    }
+    theta(i, 2) = (meanPhiNumer/meanPhiDenom + sqrt(theta(i, 1)/meanPhiDenom) * randn<vec>(1))[0];
     
     //mu ~ Normal(mean, var)
     meanMuNumer = 0;
@@ -110,7 +128,7 @@ Rcpp::List DLM_MCMC(vec y, int reps){
     theta(i, 3) = (meanMuNumer/meanMuDenom + sqrt(10*theta(i, 0)/meanMuDenom) * randn<vec>(1))[0];
   }
   
-  return Rcpp::List::create(theta = theta, x = x);
+  return Rcpp::List::create(Rcpp::Named("theta") = theta, Rcpp::Named("x") = x);
 }
 
 double normDens(double x, double mu, double sigmaSq){
@@ -125,49 +143,50 @@ double normDens(double x, double mu, double sigmaSq){
 // ySupport is a sequence of values to evaluate the density at
 // burnRatio supplies the proportion of draws to be discarded
 // [[Rcpp::export]]
-mat ForecastEvalMCMC(vec y, vec chainLength, mat x, mat theta, vec ySupport, double burnRatio){
-  int J = y.n_elem;
+mat ForecastEvalMCMC(vec y, vec chainLength, mat x, mat theta, vec ySupport, double burnRatio, int T, int J, int M){
   int N = chainLength.n_elem;
-  int M = 100;
   int P = ySupport.n_elem;
   mat output(J, N);
   
   // For different MCMC chain lengths
   for(int i = 0; i < N; ++i){ 
     int reps = chainLength[i];
-    mat xfuture(M, J);
-    // and J many forecast samples
+    // draw filtered states M times
+    mat filtered(M, J);
+    for(int m = 0; m < M; ++m){
+      // Draw random samples from posterior, ignoring first 20% of draws
+      int u = rand() % reps*(1-burnRatio) + burnRatio*reps;
+      double sigmaSqY = theta(u, 0);
+      u = rand() % reps*(1-burnRatio)+ burnRatio*reps;
+      double sigmaSqX = theta(u, 1);
+      u = rand() % reps*(1-burnRatio) + burnRatio*reps;
+      double phi = theta(u, 2);
+      u = rand() % reps*(1-burnRatio) + burnRatio*reps;
+      double mu = theta(u, 3);
+      filtered.row(m) = FFcpp(y, phi, mu, sigmaSqY, sigmaSqX, T, J);
+    }
+    
+    
+    // now for J many forecast samples
     for(int t = 0; t < J; ++t){ 
       vec forecastDensity(P, fill::zeros);
       int yDensityIndex;
-      // draw M many posterior forecast evaluations
+      // draw M many posterior forecast evaluations of y
       for(int m = 0; m < M; ++m){
-        double xT;
-        
         // Draw random samples from posterior, ignoring first 20% of draws
         int u = rand() % reps*(1-burnRatio) + burnRatio*reps;
         double sigmaSqY = theta(u, 0);
         u = rand() % reps*(1-burnRatio)+ burnRatio*reps;
-          double sigmaSqX = theta(u, 1);
+        double sigmaSqX = theta(u, 1);
         u = rand() % reps*(1-burnRatio) + burnRatio*reps;
-          double phi = theta(u, 2);
+        double phi = theta(u, 2);
         u = rand() % reps*(1-burnRatio) + burnRatio*reps;
-          double mu = theta(u, 3);
-        // X_T+1 based off XT
-        if(t == 0){ 
-          u = rand() % reps*(1-burnRatio) + burnRatio*reps;
-          xT = x(u, x.n_cols - 1);
-        // X_T+j from X_T+j-1
-        } else {
-          u = rand() % M;
-          xT = xfuture(u, t-1);
-        }
-        
-        double x_Tj = phi*xT + sqrt(sigmaSqX) * randn<vec>(1)[0];
-        
+        double mu = theta(u, 3);
+        u = rand() % M;
+        double xTj = filtered(u, t);
         // Now evaluate the forecast density over a range of values in the support of y
         for(int p = 0; p < P; ++p){
-          forecastDensity[p] += normDens(ySupport[p], x_Tj+mu, sigmaSqY)/P;
+          forecastDensity[p] += normDens(ySupport[p], xTj + mu, sigmaSqY)/P;
         }
       }
       
@@ -178,14 +197,20 @@ mat ForecastEvalMCMC(vec y, vec chainLength, mat x, mat theta, vec ySupport, dou
           break;
         }
       }
-      // Linear interpolation between the two forecast density points 
-      double linearInterpolate = forecastDensity[yDensityIndex] + (y[t] - ySupport[yDensityIndex]) *
+      // Linear interpolation between the two forecast density points
+      double linearInterpolate;
+      // handle boundary cases
+      if(yDensityIndex == M | yDensityIndex == 0){
+        linearInterpolate = forecastDensity[yDensityIndex];
+      } else {
+        linearInterpolate = forecastDensity[yDensityIndex] + (y[t] - ySupport[yDensityIndex]) *
           (forecastDensity[yDensityIndex+1] - forecastDensity[yDensityIndex]) / (ySupport[yDensityIndex+1] - ySupport[yDensityIndex]);
+      }
       
-      // Finally save the log score for the t'th forecast and the i'th chain length
+      // Finally save the cumulative log score for the t'th forecast and the i'th chain length
       output(t, i) = log(linearInterpolate);
+      
     }
   }
   return output;
-  
 }
