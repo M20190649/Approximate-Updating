@@ -1,0 +1,175 @@
+\documentclass[12pt,a4paper]{article}%
+\usepackage[]{graphicx}\usepackage[]{color}
+%% maxwidth is the original width if it is less than linewidth
+%% otherwise use linewidth (to make sure the graphics do not exceed the margin)
+
+%2multibyte Version: 5.50.0.2960 CodePage: 1252
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage[centertags]{amsmath}
+\usepackage{graphicx}%
+\usepackage{natbib}
+\usepackage{color}
+\usepackage[dvipsnames,svgnames*]{xcolor}
+\usepackage{array}
+\usepackage[hidelinks]{hyperref}
+\usepackage[font=small,skip=5pt]{caption}
+\usepackage[aboveskip=2pt]{subcaption}
+\usepackage{amsmath}
+\usepackage[]{algorithm2e}
+\usepackage{amsthm}
+\usepackage{url}
+\usepackage{wasysym}
+\usepackage{ulem}
+\usepackage{afterpage}
+\usepackage{bbm}
+\setcounter{MaxMatrixCols}{30}
+\providecommand{\U}[1]{\protect\rule{.1in}{.1in}}
+\newtheorem{theorem}{Theorem}
+\newtheorem{acknowledgement}[theorem]{Acknowledgement}
+\newtheorem{axiom}[theorem]{Axiom}
+\newtheorem{case}[theorem]{Case}
+\newtheorem{claim}[theorem]{Claim}
+\newtheorem{conclusion}[theorem]{Conclusion}
+\newtheorem{condition}[theorem]{Condition}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{criterion}[theorem]{Criterion}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{exercise}[theorem]{Exercise}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{notation}[theorem]{Notation}
+\newtheorem{problem}[theorem]{Problem}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{solution}[theorem]{Solution}
+\newtheorem{summary}[theorem]{Summary}
+\setlength{\topmargin}{0in}
+\setlength{\oddsidemargin}{0.1in}
+\setlength{\evensidemargin}{0.1in}
+\setlength{\textwidth}{6.5in}
+\setlength{\textheight}{8.25in}
+\numberwithin{equation}{section}
+
+\begin{document}
+
+\section{Introduction}
+
+
+Consider a high frequency time series with observed values $y_{1}, \dots, y_{T}$, denoted by $y_{1:T}$, with a forecaster interested in density forecasts for the unknown future values $y_{T+1:T+J}$. Many models of interest contain a set of global parameters $\boldsymbol{\theta}$ and a observation specific dependent latent variables $\textbf{x}_{1:T}$ such that $\textbf{x}_t$ is dependent on $\textbf{x}_{t-1}$. In this case, forecasts of $y_{T+J} | y_{T}$ where $J > 1$ depend on estimates of the posterior distribution of $\textbf{x}_{T+1:T+J} | \theta, y_{1:T}, \textbf{x}_{1:T}$, which can be greatly improved by observation of $y_{T+1:T+J-1}$. With certain restrictions on the model, updated estimates of the latent states after observing more data can be easily obtained via filtering techniques such as the Kalman filter, however in many cases these restrictions are unsuitable and a computationally costly re-estimation of parameters and latent states must be undertaken.
+
+One of the most common computational techniques for models with latent states is Markov Chain Monte Carlo (MCMC), which involves iterative sampling from a Markov Chain designed to converge to the true posterior distribution. MCMC can have slow convergence rates and generally does not admit parallel processing so that updating the forecast distribution of $y_{T+J} | y_{1:T}$ to $y_{T+J} | y_{1:T+J-1}$ after observation of $y_{T+1}, \dots, y_{T+J-1}$ may not be available before $y_{T+J}$ is observed.
+
+This paper explores the use of Variational Bayes to approximate the posterior distribution of several common time-series models with dependent latent states, and compares the increased speed of estimation with the decreased statistical accuracy associated with using an approximation to the posterior distribution. We compare several different functional forms of the approximating distribution that are commonly used in the machine learning literature and explore the use of MCMC samples to inform the design of the functional form.
+
+\section{Variational Bayes}
+
+
+Variational Bayes posits a divergence function between the true posterior distribution $p(\boldsymbol{\theta}, \textbf{x}_{1:T} | y_{1:T}$ and some approximating distribution $q(\boldsymbol{\theta}, \textbf{x} | \boldsymbol{\lambda})$, choosing the parameters $\boldsymbol{\lambda}$ for a given functional form $q$ that minimises the divergence function.
+
+We follow the traditional approach, where the divergence function is the Kullback-Leibler (KL) divergence (Kullback and Leibler, 1951) from $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ the true posterior $p(\boldsymbol{\theta} | y_{1:T})$. The KL divergence is defined by
+\begin{equation}
+\label{KL-def}
+KL[q(\boldsymbol{\theta} | \boldsymbol{\lambda})\hspace{.1cm}||\hspace{.1cm}p(\boldsymbol{\theta} | y_{1:T})] = \int q(\boldsymbol{\theta} | \boldsymbol{\lambda}) \ln \left( \frac{q(\boldsymbol{\theta} | \boldsymbol{\lambda})}{p(\boldsymbol{\theta} |y_{1:T})}\right) d\boldsymbol{\theta}
+\end{equation}
+
+and can alternatively be expressed as
+\begin{equation}
+\label{KL-ELBO}
+KL[q(\boldsymbol{\theta} | \boldsymbol{\lambda})\hspace{.1cm}||\hspace{.1cm}p(\boldsymbol{\theta} | y_{1:T})] = \ln(p(y_{1:T})) - \mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T})
+\end{equation}
+where $\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T})$ is referred to as the Evidence Lower Bound (ELBO), as it provides a lower bound on the unknown constant $\ln(p(y_{1:T}))$.  $\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T})$ is defined by
+\begin{equation}
+\label{ELBO}
+\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T}) = \int q(\boldsymbol{\theta} | \boldsymbol{\lambda}) \ln (p(y_{1:T},\boldsymbol{\theta})) d\boldsymbol{\theta} -  \int q(\boldsymbol{\theta} | \boldsymbol{\lambda}) \ln (q(\boldsymbol{\theta} | \boldsymbol{\lambda})) d\boldsymbol{\theta}.
+\end{equation}
+
+and maximising (\ref{ELBO}) with respect to $\boldsymbol{\lambda}$ is equivalent to minimising (\ref{KL-def}). (\ref{ELBO}) can be maximised by gradient ascent, where we iteratively apply the following update step until (\ref{ELBO}) converges within some pre-specified tolerance:
+\begin{equation}
+\label{GradAscent}
+\boldsymbol{\lambda}^{(m+1)} = \boldsymbol{\lambda}^{(m)} + \rho^{(m)} \nabla_{\boldsymbol{\lambda}} \mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)}), y_{1:T}).
+\end{equation}
+$\nabla_{\boldsymbol{\lambda}}\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)}), y_{1:T})$ is the vector of partial derivatives of $\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)}), y_{1:T})$ with respect to each element of $\boldsymbol{\lambda}$. This update requires some initial values $\boldsymbol{\lambda}^{(0)}$ and a sequence $\rho^{(m)}, m = 1, 2, \dots$ known as the learning rate. If $\rho^{(m)}$ is chosen to satisfy the following conditions the algorithm is guaranteed to converge to a local maximum (Robbins and Munro, 1951).
+\begin{align}
+&\sum_{m=1}^{\infty} \rho^{(m)} =  \infty \\
+&\sum_{m=1}^{\infty} (\rho^{(m)})^2 <  \infty.
+\end{align}
+
+Ranganath, Gerrish and Blei (2014) showed that a Monte Carlo estimate of the derivative of the ELBO can be given by
+\begin{equation}
+\label{ScoreDeriv}
+\nabla_{\boldsymbol{\lambda}}\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)}), y_{1:T}) \approx \frac{1}{S}\sum_{s=1}^{S} \nabla_{\boldsymbol{\lambda}} [\ln(q(\boldsymbol{\theta}_s | \boldsymbol{\lambda}^{(m)}))] (\ln (p(y_{1:T}, \boldsymbol{\theta}_s)) - \ln(q(\boldsymbol{\theta}_s | \boldsymbol{\lambda}^{(m)})))
+\end{equation}
+where $s = 1, \dots, S$ indicates simulations from $q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)})$.
+
+The estimator in (\ref{ScoreDeriv}) has a large variance which requires a large value of $S$, slowing computation. The variance can be reduced by the reparameterisation trick of Kingma and Welling (2014), which introduces parameter free noise variables $\boldsymbol{\epsilon}$ and an invertable transform $f$ such that
+
+\begin{equation}
+\label{Reparam}
+\boldsymbol{\theta} = f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}.
+\end{equation}
+
+Examples of $f$ include a location-scale transform of a standard normal noise variable and an inverse-CDF transform of a uniform noise variable. In this case
+
+\begin{equation}
+\label{ReparamDist}
+\log(q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)})) = \log(|J|) + \log(q(\boldsymbol{\epsilon}))
+\end{equation}
+
+where $J$ is the Jacobian Matrix of the transformation $f$, a function of $\boldsymbol{\lambda}$ and $\boldsymbol{\epsilon}$. The derivative of (\ref{ELBO}) can be estimated by
+
+\begin{equation}
+\label{ReparamDeriv}
+\nabla_{\boldsymbol{\lambda}}\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)}), y_{1:T}) \approx \frac{1}{S}\sum_{s=1}^{S} \nabla_{\boldsymbol{\lambda}} \ln (p(y_{1:T}, f(\boldsymbol{\lambda}, \boldsymbol{\epsilon}_s))) - \nabla_{\boldsymbol{\lambda}}\log(|J(\boldsymbol{\lambda}, \boldsymbol{\epsilon}_s)|),
+\end{equation}
+where simulations of $\boldsymbol{\theta}$ are replaced by simulations of $\boldsymbol{\epsilon}$ from $q(\boldsymbol{\epsilon})$. The variance of this estimator is often orders of magnitude lower than in (\ref{ScoreDeriv}) and in many cases $S=1$ is sufficient.
+
+\section{The Dynamic Linear Model}
+
+We begin with the Dynamic Linear Model, which fulfills the neccesary conditions for the Kalman filter to be applicable: (\ref{DLM:Measure}) and (\ref{DLM:Transition}) are linear with gaussian errors.
+
+\begin{align}
+y_t &= \mu + x_t + \sigma_y \epsilon_t \label{DLM:Measure}\\
+x_t &= \phi x_{t-1} + \sigma_x \nu_t \label{DLM:Transition}
+\end{align}
+
+where $\epsilon_t$ and $\nu_t$ are independently drawn from $\mathcal{N}(0, 1).$
+
+We use the priors
+
+\begin{align}
+\mu &\sim \mathcal{N}(\bar{\mu}, \tau) \\
+\phi &\sim U(-1, 1) \\
+\sigma^2_y &\sim \mathcal{IG}(\mbox{shape = }\alpha_y, \mbox{scale = }\beta_y) \\
+\sigma^2_x &\sim \mathcal{IG}(\mbox{shape = }\alpha_x, \mbox{scale = }\beta_x) \\
+x_0 &\sim \mathcal{N}(0, \sigma^2_x(1 - \phi^2)^{-1})
+\end{align}
+
+where $\mathcal{IG}(\mbox{shape}, \mbox{ scale})$ denotes the inverse of a Gamma (shape, rate) distribution.
+
+We transform $\sigma^2_y$ and $\sigma^2_x$ so that $\boldsymbol{\theta} = \{\mu, \phi, \log(\sigma^2_y), \log(\sigma^2_x) \} \in \mathbb{R}^4$ and consider four different functional forms for the approximating distribution $q(\boldsymbol{\theta}, \textbf{x} | \boldsymbol{\lambda})$:
+\begin{enumerate}
+\item $q(\boldsymbol{\theta}, \textbf{x} | \boldsymbol{\lambda}) = \mathcal{N}(\boldsymbol{\psi}, \textbf{V})$, where $\textbf{V}$ is a diagonal matrix.
+\item $q(\boldsymbol{\theta}, \textbf{x} | \boldsymbol{\lambda}) = \mathcal{N}(\boldsymbol{\psi}, \boldsymbol{\Sigma})$, where $\boldsymbol{\Sigma}$ allows non-zero off-diagonal terms.
+\item $q(\boldsymbol{\theta}, \textbf{x} | \boldsymbol{\lambda})$ is an Inverse Autoregressive flow (Kingma, Salimans, Jozefowicz, Chen, Sutskever and Welling, 2016).
+\item  $q(\boldsymbol{\theta}, \textbf{x} | \boldsymbol{\lambda}) = \prod \left(q(\theta_i) q(x_{it})\right) c(\boldsymbol{\theta}, \textbf{x})$ where the form of the copula $c$ and marginals are informed by an out of date MCMC sample.
+\end{enumerate}
+The first three functional forms are transformation of standard normal noise variables while the fourth is a transformation of uniform noise variables.
+
+We use two approaches for updating forecasts with MCMC,
+\begin{enumerate}
+\item Use the Kalman filter to update $\textbf{x}_{T+1:T+J}$ as $y_{T+1:T+J}$ is observed using $\boldsymbol{\theta}$ from $p(\boldsymbol{\theta}, \textbf{x}_{1:T} | y_{1:T}$
+\item Run the full MCMC for $\boldsymbol{\theta}$ and $\textbf{x}_{1:T+J}$ after observing each additional $y$.
+\end{enumerate}
+The second strategy has a high computational cost but is required to give us the true forecast distribution for comparision with other methods.
+
+We use three approaches for updating forecasts with VB,
+\begin{enumerate}
+\item Use the Kalman filter to update $\textbf{x}_{T+1:T+J}$ as $y_{T+1:T+J}$ is observed using $\boldsymbol{\theta}$ from $q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda})$.
+\item Hold elements of $\boldsymbol{\lambda}$ for $x_{1:T+h-1}$ fixed and maximise (\ref{ELBO}) with respect to the elements of $\boldsymbol{\lambda}$ for $\boldsymbol{\theta}$ and $x_{T+h}$ after observation of $y_{T+h}$.
+\item Maximise (\ref{ELBO}) with respect to all elements of $\boldsymbol{\lambda}$
+\end{enumerate}
+
+
+\end{document}
