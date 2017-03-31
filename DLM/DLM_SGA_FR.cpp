@@ -131,12 +131,10 @@ class InverseGamma: public Distribution{
     scale = sc;
   }
   double logdens (double x) {
-    // I use log(sigmaSq) instead of sigmaSq so this has to include the jacobian term for transform
     // the input x should be log(sigmaSq)
-    double logDetJacobian = x; //det(jacobian) = sigma^2
     double constant = shape * log(scale) - log(tgamma(shape));
     double kernel = -(shape + 1) * x - scale / exp(x);
-    return logDetJacobian + constant + kernel;
+    return constant + kernel;
   }
   vec sample (int n_samples){
     // The sampler returns sigmaSq instead of log(sigmaSq)
