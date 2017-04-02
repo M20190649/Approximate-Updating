@@ -46,6 +46,9 @@ public:
   double XDeriv(double x){
     return (mean - x) / variance;
   }
+  double epsilon(double x){
+    return (x - mean)/sqrt(variance);
+  }
 };
 
 Normal::Normal(double m, double v){
@@ -54,24 +57,29 @@ Normal::Normal(double m, double v){
 }
 
 class InverseGamma: public Distribution{
-public:
+  // The distribution for 1/x  where x ~ gamma(shape, rate)
   double shape, scale;
+public:
   InverseGamma(double, double);
   void set_values(double sh, double sc){
     shape = sh;
     scale = sc;
   }
   double logdens (double x) {
-    double cons = shape * log(scale) - log(tgamma(shape));
-    double kernel = -(shape + 1) * log(x) - scale / x;
-    return cons + kernel;
+    // the input x should be log(sigmaSq)
+    double constant = shape * log(scale) - log(tgamma(shape));
+    double kernel = -(shape + 1) * x - scale / exp(x);
+    return constant + kernel;
   }
   vec sample (int n_samples){
+    // The sampler returns sigmaSq instead of log(sigmaSq)
+    // We only need the sampler if q ~ IG, and in this case we don't need the log transform
+    // I don't need this but it's here
     return 1.0 / randg<vec>(n_samples, distr_param(shape, 1/scale));
   }
 };
 
-InverseGamma::InverseGamma(double sh, double sc){
+InverseGamma::InverseGamma (double sh, double sc){
   shape = sh;
   scale = sc;
 }
@@ -80,9 +88,6 @@ mat qSim (Distribution* qLatent[], int n_samples, int p){
   mat output(n_samples, p);
   for(int i = 0; i < p; ++i){
     output.col(i) = qLatent[i]->sample(n_samples);
-    if(i < 2){
-      output.col(i) = exp(output.col(i));
-    }
   }
   return output;
 }
@@ -109,8 +114,8 @@ double qdens (Distribution* qLatent[], rowvec latent, int p){
   
 void updateP (Distribution* Y[], Distribution* pLatent[], rowvec latent, int T){
   for(int t = 0; t < T; ++t){
-    dynamic_cast<Normal*>(pLatent[t+5])->set_values(latent[2] * latent[t+4], latent[1]);
-    dynamic_cast<Normal*>(Y[t])->set_values(latent[3] + latent[t+5], latent[0]);
+    dynamic_cast<Normal*>(pLatent[t+5])->set_values(latent[2] * latent[t+4], exp(latent[1]));
+    dynamic_cast<Normal*>(Y[t])->set_values(latent[3] + latent[t+5], exp(latent[0]));
   }
 } 
 
@@ -153,6 +158,8 @@ double testELBO(vec y, mat values, int n){
 
 double logjointDeriv (vec y, rowvec latent, int T, int i){
   double dpdf = 0;
+  latent[0] = exp(latent[0]);
+  latent[1] = exp(latent[1]);
   if(i == 0){ //sigmaSqY
     dpdf = -(T/2 + 2)/latent[i] + 1/pow(latent[i], 2);
     for(int t = 0; t < T; ++t){
@@ -187,12 +194,17 @@ double logjointDeriv (vec y, rowvec latent, int T, int i){
 rowvec elboDeriv (vec y, Distribution* qLatent[], rowvec latent, int T, int i){
   double dpdf = logjointDeriv(y, latent, T, i);
   double dfdlMu = 1;
+  double dqdMu = 0;
+  double dfdlSigma = dynamic_cast<Normal*>(qLatent[i])->epsilon(latent[i]);
+  double dqdSigma = -1/sqrt(dynamic_cast<Normal*>(qLatent[i])->variance);
   if(i < 2){
     dfdlMu = latent[i];
+    dfdlSigma *= latent[i];
+    dqdMu = -1;
+    dqdSigma -= dynamic_cast<Normal*>(qLatent[i])->epsilon(latent[i]);
   }
-  double dfdlSigma = sqrt(dynamic_cast<Normal*>(qLatent[i])->variance);
-  double dqdSigma = 1/sqrt(dynamic_cast<Normal*>(qLatent[i])->variance);
-  rowvec Derivs  = {dfdlMu * dpdf, dfdlSigma * dpdf - dqdSigma};
+ 
+  rowvec Derivs  = {dfdlMu * dpdf - dqdMu, dfdlSigma * dpdf - dqdSigma};
   return Derivs;
 }
 
