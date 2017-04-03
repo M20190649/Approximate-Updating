@@ -13,27 +13,23 @@ using namespace std;
 // Find out how to add distribution code as a header to reduce amount of code in one file
 // Make phi have a truncated normal marginal so I can fix the x0 prior variance 
 // Can repeatedly sample from the MVN until we get a draw in (-1, 1) but I'd like to avoid while loops when the mean of phi can go way outside (-1, 1). Could restrict the mean?
-// Find out why lambda values it goes all over the place. Mean of Mu seems to be going to the right place but everything else does it's own thing.
-// Find out how to avoid dynamic casting -> makes it easier to implement new models but if I'm sticking with DLM's for a while it doesn't really matter
+// Find out how to avoid dynamic casting to make it easier to implement new models, but if I'm sticking with DLM's for a while this is not a problem yet
 
 class Distribution{
   // This is the base class for the distributions, and exists so I can have Normal and Inverse Gamma pointers in the same array
-  public:
-  // These functions are only really here so I can call the member function versions
+public:
+  // This function is only here so I can call any of the subclass versions.
   // The code won't compile unless I have a Distribution member function and the subclass member function.
-  // There should be a way around this, I can use dynamic cast to tell the compiler I want to explicitly use a normal sampler for example
+  // There should be a way around this, I can use dynamic cast to tell the compiler I want to explicitly use a normal logdens for example
   // But without the dynamic casting it doesn't know what version of the distribution I want to use, so I need something here
   // It gets overwritten by the subclass version anyway.
   // Mostly I just haven't figured out enough c++ to get this working without dynamic casts
-  virtual void set_values(int, int) {};
   virtual double logdens(double x) {return -99.99;};
-  virtual vec sample (int n_samples) {return zeros<vec>(n_samples);};
 };
 
 class Normal: public Distribution{
   // This just provides methods for the single variate normal distribution
-  public:
-  // I don't use some of these member functions, but they're written in case I might later
+public:
   double mean, variance;
   Normal(double, double);
   void set_values(double m, double v){
@@ -48,23 +44,8 @@ class Normal: public Distribution{
   }
   double logdens (double x) {
     return -0.5 * log(2*3.141593*variance) - pow(x - mean, 2) / (2 * variance);}
-  vec sample (int n_samples){
-    return  mean + sqrt(variance) * randn<vec>(n_samples);
-  }
-  double MeanDeriv(double x){
-    return (x - mean) / variance;
-  }
-  double VarDeriv(double x){
-    return (pow(x - mean, 2)/(2*pow(variance, 2)) - 1 / (2*variance));
-  }
-  double StdDeriv(double x){
-    return pow(x - mean, 2)/(pow(variance, 1.5)) - 1 / sqrt(variance); 
-  }
-  double XDeriv(double x){
-    return (mean - x) / variance;
-  }
-  double epsilon(double x){
-    return (x - mean)/sqrt(variance);
+  double transform_epsilon(double x){
+    return mean + sqrt(variance) * x;
   }
 };
 
@@ -74,9 +55,7 @@ Normal::Normal (double m, double v){
 }
 
 class MultiNormal: public Distribution{
-  // This provides methods for the multivariate normal distribution
-  // I don't have an explicit sampler as I like to keep the epsilon and theta = f(epsilon) separate
-  // Provides a method to transform a draw of N(0, I) to N(mu, L * L.t())
+  // This provides methods for the multivariate normal distribution parameterised with the lower triangular cholesky decomposition for variance
 public:
   vec mean;
   mat chol;
@@ -124,23 +103,21 @@ MultiNormal::MultiNormal(vec m, mat ch){
 class InverseGamma: public Distribution{
   // The distribution for 1/x  where x ~ gamma(shape, rate)
   double shape, scale;
-  public:
-    InverseGamma(double, double);
+public:
+  InverseGamma(double, double);
   void set_values(double sh, double sc){
     shape = sh;
     scale = sc;
+  }
+  void increase_values(double sh, double sc){
+    shape += sh;
+    scale += sc;
   }
   double logdens (double x) {
     // the input x should be log(sigmaSq)
     double constant = shape * log(scale) - log(tgamma(shape));
     double kernel = -(shape + 1) * x - scale / exp(x);
     return constant + kernel;
-  }
-  vec sample (int n_samples){
-    // The sampler returns sigmaSq instead of log(sigmaSq)
-    // We only need the sampler if q ~ IG, and in this case we don't need the log transform
-    // I don't need this but it's here
-    return 1.0 / randg<vec>(n_samples, distr_param(shape, 1/scale));
   }
 };
 
@@ -152,7 +129,8 @@ InverseGamma::InverseGamma (double sh, double sc){
 cube qSim (MultiNormal* qLatent, int n_samples, int p){
   // We want to return the matrix of epsilons (treat each row as a different realisation of a p-dimensional N(0, I))
   // We also want the transformed matrix of variables
-  // Easier to store epsilon the whole way instead of transforming back from theta in the MVN case
+  // Does not apply the exp transform, the algorithm is storing it as log sigma squared. exp is only applied to evaluate log(p(theta, x, y))
+  // Maths is written as if we had a distribution for sigma squared instead of log sigma squared.
   cube output(n_samples, p, 2);
   mat epsilon = randn<mat>(n_samples, p);   
   mat theta (n_samples, p);
@@ -285,7 +263,7 @@ void updateQ (MultiNormal* qLatent, mat updates, int p){
 }
 
 // [[Rcpp::export]]
-Rcpp::List DLM_SGA(vec y, int S, int maxIter, double alpha, double beta1 = 0.9, double beta2 = 0.999, double threshold = 0.01){
+Rcpp::List DLM_SGA(vec y, int S, int maxIter, double threshold, double alpha, double beta1 = 0.9, double beta2 = 0.999, bool Adam = true){
   // Initialise everything we are going to need
   int T = y.n_elem;
   mat e(T+5, T+6);
@@ -294,9 +272,10 @@ Rcpp::List DLM_SGA(vec y, int S, int maxIter, double alpha, double beta1 = 0.9, 
   mat Vt(T+5, T+6, fill::zeros);
   mat MtHat;
   mat VtHat;
+  mat Gt(T+5, T+6, fill::zeros);
+  mat Pt(T+5, T+6, fill::zeros);
   mat partials(T+5, T+6); // Partials will be reset to zero at the start of every iteration
-  //mat Gt(T+5, T+6, fill::zeros);
-  //mat Pt(T+5, T+6, fill::zeros);
+
   
   // Set up distribution objects. We will use the pointers to these as arguments for the functions SGA_DLM calls.
   Normal* Y[T];
@@ -317,7 +296,7 @@ Rcpp::List DLM_SGA(vec y, int S, int maxIter, double alpha, double beta1 = 0.9, 
   
   // Controls the while loop
   int iter = 0;
-  vec LB(maxIter+1);
+  vec LB(maxIter+1, fill::zeros);
   LB[0] = ELBO(Y, y, pLatent, qLatent, T, T+5);
   double diff = threshold + 1;
   
@@ -344,29 +323,35 @@ Rcpp::List DLM_SGA(vec y, int S, int maxIter, double alpha, double beta1 = 0.9, 
       }
     }
     // ADAM Updating
-    Mt = beta1*Mt + (1-beta1)*partials;
-    Vt = beta2*Vt + (1-beta2)*pow(partials, 2);
-    MtHat = Mt / (1 - pow(beta1, iter));
-    VtHat = Vt / (1 - pow(beta2, iter));
-    updateQ(qLatent, alpha * MtHat / (sqrt(VtHat) + e), T+5);
-   
+    if(Adam){
+      Mt = beta1*Mt + (1-beta1)*partials;
+      Vt = beta2*Vt + (1-beta2)*pow(partials, 2);
+      MtHat = Mt / (1 - pow(beta1, iter));
+      VtHat = Vt / (1 - pow(beta2, iter));
+      updateQ(qLatent, alpha * MtHat / (sqrt(VtHat) + e), T+5);
+    } else {
     // AdaGrad Updating
-    //Gt += pow(partials, 2);
-    //for(int i = 0; i < T+5; ++i){
-    //  for(int j = 0; j <= i+1; ++j){
-    //    Pt(i, j) = eta * pow(Gt(i, j), -0.5);
-    //  }
-    //}
-    //updateQ(qLatent, Pt % partials, T+5);
+      Gt += pow(partials, 2);
+      for(int i = 0; i < T+5; ++i){
+        for(int j = 0; j <= i+1; ++j){
+          Pt(i, j) = alpha * pow(Gt(i, j), -0.5);
+        }
+      }
+      updateQ(qLatent, Pt % partials, T+5);
+    }
     LB[iter] = ELBO(Y, y, pLatent, qLatent, T, T+5);
     diff = abs(LB[iter] - LB[iter-1]);
     
   } // End of while loop
+  vec LBout(iter);
+  for(int i = 0; i < iter; ++i){
+    LBout[i] = LB[i];
+  }
   Rcpp::Rcout << "Number of iterations: " << iter << std::endl;
   Rcpp::Rcout << "Final ELBO: " << LB[iter-1] << std::endl;
   Rcpp::Rcout << "Final Change in ELBO: " << diff << std::endl;
   return Rcpp::List::create(Rcpp::Named("Mu") = qLatent->mean,
                             Rcpp::Named("L") = qLatent->chol,
-                            Rcpp::Named("ELBO") = LB,
+                            Rcpp::Named("ELBO") = LBout,
                             Rcpp::Named("Iter") = iter-1);
 }

@@ -56,41 +56,39 @@
 
 \section{Introduction}
 
+Consider a high frequency time series with observed values $y_{1}, \dots, y_{T}$, collectively denoted by $y_{1:T}$, with a forecaster interested in the density forecast of the unknown future value $y_{T+S+h}$, where $S \geq 1$. Assuming that a forecast of $p(y_{T+S+h} | y_{1:T})$ is available, uncertainty in the forecast can be reduced by observating and conditioning on the realisations of $y_{T+1:T+S}$ to produce $p(y_{T+S+h} | y_{T+S})$. 
 
-Consider a high frequency time series with observed values $y_{1}, \dots, y_{T}$, denoted by $y_{1:T}$, with a forecaster interested in density forecasts for the unknown future values $y_{T+1:T+J}$. Many models of interest contain a set of global parameters $\boldsymbol{\theta}$ and a observation specific dependent latent variables $\textbf{x}_{1:T}$ such that $\textbf{x}_t$ is dependent on $\textbf{x}_{t-1}$. In this case, forecasts of $y_{T+J} | y_{T}$ where $J > 1$ depend on estimates of the posterior distribution of $\textbf{x}_{T+1:T+J} | \theta, y_{1:T}, \textbf{x}_{1:T}$, which can be greatly improved by observation of $y_{T+1:T+J-1}$. With certain restrictions on the model, updated estimates of the latent states after observing more data can be easily obtained via filtering techniques such as the Kalman filter, however in many cases these restrictions are unsuitable and a computationally costly re-estimation of parameters and latent states must be undertaken.
+Many models of interest contain a set of global parameters $\boldsymbol{\theta}$ and observation specific latent variables $\textbf{x}_{1:T}$ such that $\textbf{x}_t$ is assumed to follow a Markovian structure. In this case $y_{T+S+h}$ depends on the latent variables $\textbf{x}_{T+1:T+S+h}$, and the forecast uncertainty in $y_{T+S+h}$ can be reduced by first incorporating information contained in realisations of $y_{T+1:T+S}$ to form the posterior densities of $\textbf{x}_{T+1:T+S+h} | \textbf{x}_{1:T}, \boldsymbol{\theta}, y_{1:T+S}$. With certain restrictions on the model, the additional information can be easily included via filtering techniques such as the Kalman filter, however in many cases these restrictions are unsuitable and a computationally costly re-estimation of posterior densities of parameters and latent states must be undertaken.
 
-One of the most common computational techniques for models with latent states is Markov Chain Monte Carlo (MCMC), which involves iterative sampling from a Markov Chain designed to converge to the true posterior distribution. MCMC can have slow convergence rates and generally does not admit parallel processing so that updating the forecast distribution of $y_{T+J} | y_{1:T}$ to $y_{T+J} | y_{1:T+J-1}$ after observation of $y_{T+1}, \dots, y_{T+J-1}$ may not be available before $y_{T+J}$ is observed.
+One of the most common computational techniques for models with latent states is Markov Chain Monte Carlo (MCMC), which involves iterative sampling from a Markov Chain designed to converge to the true posterior distribution. MCMC can have slow convergence rates and generally does not admit parallel processing so that updating the forecast distribution of $y_{T+S+h} | y_{1:T}$ to $y_{T+S+h} | y_{1:T+S}$ after observation of $y_{T+1}, \dots, y_{T+S}$ may not be available before $y_{T+S+h}$ is observed.
 
-This paper explores the use of Variational Bayes to approximate the posterior distribution of several common time-series models with dependent latent states, and compares the increased speed of estimation with the decreased statistical accuracy associated with using an approximation to the posterior distribution. We compare several different functional forms of the approximating distribution that are commonly used in the machine learning literature and explore the use of MCMC samples to inform the design of the functional form.
+This paper explores the use of Variational Bayes to approximate the posterior distribution of several common time-series models with dependent latent states, and compares the increased speed of computation with the decreased statistical accuracy associated with using an approximation to the posterior distribution. We compare several different functional forms of the approximating distribution that are commonly used in the machine learning literature and explore the use of MCMC samples to inform the design of the functional form.
 
 \section{Variational Bayes}
 
-
 Variational Bayes posits a divergence function between the true posterior distribution $p(\boldsymbol{\theta}, \textbf{x}_{1:T} | y_{1:T}$ and some approximating distribution $q(\boldsymbol{\theta}, \textbf{x} | \boldsymbol{\lambda})$, choosing the parameters $\boldsymbol{\lambda}$ for a given functional form $q$ that minimises the divergence function.
 
-We follow the traditional approach, where the divergence function is the Kullback-Leibler (KL) divergence (Kullback and Leibler, 1951) from $q(\boldsymbol{\theta} | \boldsymbol{\lambda})$ the true posterior $p(\boldsymbol{\theta} | y_{1:T})$. The KL divergence is defined by
+We follow the traditional approach, where the divergence function is the Kullback-Leibler (KL) divergence (Kullback and Leibler, 1951) from $q(\boldsymbol{\theta}, \textbf{x}_{1:T}| \boldsymbol{\lambda})$ to the true posterior $p(\boldsymbol{\theta}, \textbf{x}_{1:T} | y_{1:T})$. The KL divergence is defined by
 \begin{equation}
 \label{KL-def}
-KL[q(\boldsymbol{\theta} | \boldsymbol{\lambda})\hspace{.1cm}||\hspace{.1cm}p(\boldsymbol{\theta} | y_{1:T})] = \int q(\boldsymbol{\theta} | \boldsymbol{\lambda}) \ln \left( \frac{q(\boldsymbol{\theta} | \boldsymbol{\lambda})}{p(\boldsymbol{\theta} |y_{1:T})}\right) d\boldsymbol{\theta}
+KL[q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda})\hspace{.1cm}||\hspace{.1cm}p(\boldsymbol{\theta}, \textbf{x}_{1:T} | y_{1:T})] = \int q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda}) \ln \left( \frac{q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda})}{p(\boldsymbol{\theta}, \textbf{x}_{1:T} |y_{1:T})}\right) d\boldsymbol{\theta} d\textbf{x}_{1:T}
 \end{equation}
-
 and can alternatively be expressed as
 \begin{equation}
 \label{KL-ELBO}
-KL[q(\boldsymbol{\theta} | \boldsymbol{\lambda})\hspace{.1cm}||\hspace{.1cm}p(\boldsymbol{\theta} | y_{1:T})] = \ln(p(y_{1:T})) - \mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T})
+KL[q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda})\hspace{.1cm}||\hspace{.1cm}p(\boldsymbol{\theta}, \textbf{x}_{1:T} | y_{1:T})] = \ln(p(y_{1:T})) - \mathcal{L}(q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda}), y_{1:T})
 \end{equation}
-where $\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T})$ is referred to as the Evidence Lower Bound (ELBO), as it provides a lower bound on the unknown constant $\ln(p(y_{1:T}))$.  $\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T})$ is defined by
+where $\mathcal{L}(q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda}), y_{1:T})$ is referred to as the Evidence Lower Bound (ELBO), as it provides a lower bound on the unknown constant $\ln(p(y_{1:T}))$.  $\mathcal{L}(q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda}), y_{1:T})$ is defined by
 \begin{equation}
 \label{ELBO}
-\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}), y_{1:T}) = \int q(\boldsymbol{\theta} | \boldsymbol{\lambda}) \ln (p(y_{1:T},\boldsymbol{\theta})) d\boldsymbol{\theta} -  \int q(\boldsymbol{\theta} | \boldsymbol{\lambda}) \ln (q(\boldsymbol{\theta} | \boldsymbol{\lambda})) d\boldsymbol{\theta}.
+\mathcal{L}(q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda}), y_{1:T}) = \int q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda}) \ln \left( \frac{p(y_{1:T},\boldsymbol{\theta}, \textbf{x}_{1:T})}{q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda})} \right) d\boldsymbol{\theta}d\textbf{x}_{1:T},
 \end{equation}
-
-and maximising (\ref{ELBO}) with respect to $\boldsymbol{\lambda}$ is equivalent to minimising (\ref{KL-def}). (\ref{ELBO}) can be maximised by gradient ascent, where we iteratively apply the following update step until (\ref{ELBO}) converges within some pre-specified tolerance:
+and as $\ln(p(y_{1:T}))$ is constant with respect to $\boldsymbol{\lambda}$, maximising (\ref{ELBO}) with respect to $\boldsymbol{\lambda}$ is equivalent to minimising (\ref{KL-def}). Equation (\ref{ELBO}) can be maximised using a gradient ascent approach, where we iteratively apply the following update step until (\ref{ELBO}) converges within some pre-specified tolerance:
 \begin{equation}
 \label{GradAscent}
-\boldsymbol{\lambda}^{(m+1)} = \boldsymbol{\lambda}^{(m)} + \rho^{(m)} \nabla_{\boldsymbol{\lambda}} \mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)}), y_{1:T}).
+\boldsymbol{\lambda}^{(m+1)} = \boldsymbol{\lambda}^{(m)} + \rho^{(m)} \nabla_{\boldsymbol{\lambda}} \mathcal{L}(q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda}^{(m)}), y_{1:T}).
 \end{equation}
-$\nabla_{\boldsymbol{\lambda}}\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)}), y_{1:T})$ is the vector of partial derivatives of $\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)}), y_{1:T})$ with respect to each element of $\boldsymbol{\lambda}$. This update requires some initial values $\boldsymbol{\lambda}^{(0)}$ and a sequence $\rho^{(m)}, m = 1, 2, \dots$ known as the learning rate. If $\rho^{(m)}$ is chosen to satisfy the following conditions the algorithm is guaranteed to converge to a local maximum (Robbins and Munro, 1951).
+$\nabla_{\boldsymbol{\lambda}}\mathcal{L}(q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda}^{(m)}), y_{1:T})$ is the vector of partial derivatives of $\mathcal{L}(q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda}^{(m)}), y_{1:T})$ with respect to each element of $\boldsymbol{\lambda}$ evaluated at $\boldsymbol{\lambda}^{(m)}$. This update requires some initial values $\boldsymbol{\lambda}^{(0)}$ and a sequence $\rho^{(m)}, m = 1, 2, \dots$ known as the learning rate. If $\rho^{(m)}$ is chosen to satisfy the following conditions the algorithm is guaranteed to converge to a local maximum (Robbins and Munro, 1951).
 \begin{align}
 &\sum_{m=1}^{\infty} \rho^{(m)} =  \infty \\
 &\sum_{m=1}^{\infty} (\rho^{(m)})^2 <  \infty.
@@ -99,42 +97,52 @@ $\nabla_{\boldsymbol{\lambda}}\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\l
 Ranganath, Gerrish and Blei (2014) showed that a Monte Carlo estimate of the derivative of the ELBO can be given by
 \begin{equation}
 \label{ScoreDeriv}
-\nabla_{\boldsymbol{\lambda}}\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)}), y_{1:T}) \approx \frac{1}{S}\sum_{s=1}^{S} \nabla_{\boldsymbol{\lambda}} [\ln(q(\boldsymbol{\theta}_s | \boldsymbol{\lambda}^{(m)}))] (\ln (p(y_{1:T}, \boldsymbol{\theta}_s)) - \ln(q(\boldsymbol{\theta}_s | \boldsymbol{\lambda}^{(m)})))
+\nabla_{\boldsymbol{\lambda}}\mathcal{L}(q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda}^{(m)}), y_{1:T}) \approx \frac{1}{S}\sum_{s=1}^{S} \nabla_{\boldsymbol{\lambda}} [\ln(q(\boldsymbol{\theta}_s, \textbf{x}_{1:T, s} | \boldsymbol{\lambda}^{(m)}))] \ln \left(\frac{p(y_{1:T}, \boldsymbol{\theta}_s, \textbf{x}_{1:T, s})}{q(\boldsymbol{\theta}_s, \textbf{x}_{1:T, s} | \boldsymbol{\lambda}^{(m)})} \right) 
 \end{equation}
-where $s = 1, \dots, S$ indicates simulations from $q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)})$.
+where $s = 1, \dots, S$ indicates simulations from $q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda}^{(m)})$. 
+The terms in the sum in (\ref{ScoreDeriv}) can have large variances, and in practice a large value of $S$ is required to ensure a precise estimate of the gradient of the ELBO is obtained, slowing computation. 
 
-The estimator in (\ref{ScoreDeriv}) has a large variance which requires a large value of $S$, slowing computation. The variance can be reduced by the reparameterisation trick of Kingma and Welling (2014), which introduces parameter free noise variables $\boldsymbol{\epsilon}$ and an invertable transform $f$ such that
-
+The variance can be reduced by the reparameterisation trick of Kingma and Welling (2014), which introduces parameter free noise variables $\boldsymbol{\epsilon}$ and a differentiable transform $f$ such that
 \begin{equation}
 \label{Reparam}
-\boldsymbol{\theta} = f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}).
+\boldsymbol{\theta}, \textbf{x}_{1:T} = f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}).
 \end{equation}
-
-Examples of $f$ include a location-scale transform of a standard normal noise variable and an inverse-CDF transform of a uniform noise variable. In this case
-
+Kingma and Welling (2014) show that an $f$ exists to transform $\boldsymbol{\epsilon}$ to any continuous random variable, with examples including a location-scale transform of a standard normal noise variable and an inverse-CDF transform of a uniform noise variable. Transforming the variables using
+\begin{equation}
+\label{changevar}
+\int q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda}) g(\boldsymbol{\theta}, \textbf{x}_{1:T})  d\boldsymbol{\theta}d\textbf{x}_{1:T} = \int q(\boldsymbol{\epsilon}) g ( f (\epsilon, \boldsymbol{\lambda})) d\boldsymbol{\epsilon})
+\end{equation}
+and noting that
 \begin{equation}
 \label{ReparamDist}
-\log(q(\boldsymbol{\theta} | \boldsymbol{\lambda}) = \log(|J|) + \log(q(\boldsymbol{\epsilon}))
+\ln(q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda})) = \ln(q(\boldsymbol{\epsilon})) - \ln(|J|),
 \end{equation}
+where $J$ is the Jacobian Matrix of the transformation $f$, allows (\ref{ELBO}) to be rewritten as
+\begin{align}
+\label{reparamELBO}
+\mathcal{L}(q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda}), y_{1:T}) &=  \int  q(\boldsymbol{\epsilon}) \ln \left( \frac{p(y_{1:T}, f (\epsilon, \boldsymbol{\lambda}))}{q( f (\epsilon, \boldsymbol{\lambda}) | \boldsymbol{\lambda})} \right) d\boldsymbol{\epsilon} \nonumber \\
+&= \int  q(\boldsymbol{\epsilon}) \big( \ln (p(y_{1:T}, f (\epsilon, \boldsymbol{\lambda})) - \ln(q(\boldsymbol{\epsilon})) + \ln(|J|) \big) d\boldsymbol{\epsilon} \nonumber \\
+&= \mathcal{L}(\boldsymbol{\lambda}, y_{1:T}).
+\end{align}
 
-where $J$ is the Jacobian Matrix of the transformation $f$, which may depend on $\boldsymbol{\lambda}$ and $\boldsymbol{\epsilon}$. The derivative of (\ref{ELBO}) can be estimated by
-
+The derivative of (\ref{reparamELBO}) can be estimated by
 \begin{equation}
 \label{ReparamDeriv}
-\nabla_{\boldsymbol{\lambda}}\mathcal{L}(q(\boldsymbol{\theta} | \boldsymbol{\lambda}^{(m)}), y_{1:T}) \approx \frac{1}{S}\sum_{s=1}^{S} \nabla_{\boldsymbol{\lambda}} \ln (p(y_{1:T}, f(\boldsymbol{\lambda}, \boldsymbol{\epsilon}_s))) - \nabla_{\boldsymbol{\lambda}}\log(|J(\boldsymbol{\lambda}, \boldsymbol{\epsilon}_s)|),
+\nabla_{\boldsymbol{\lambda}}\mathcal{L}(\boldsymbol{\lambda}^{(m)}, y_{1:T}) \approx \frac{1}{S}\sum_{s=1}^{S} \nabla_{\boldsymbol{\lambda}} \ln (p(y_{1:T}, f(\boldsymbol{\lambda}^{(m)}, \boldsymbol{\epsilon}_s))) + \nabla_{\boldsymbol{\lambda}}\ln(|J(\boldsymbol{\lambda}^{(m)}, \boldsymbol{\epsilon}_s)|),
 \end{equation}
-where simulations of $\boldsymbol{\theta}$ are replaced by simulations of $\boldsymbol{\epsilon}$ from $q(\boldsymbol{\epsilon})$. The variance of this estimator is often orders of magnitude lower than the estimator in (\ref{ScoreDeriv}), often $S=1$ is sufficient.
+where simulations of $\boldsymbol{\theta}$ and $\textbf{x}_{1:t}$ are replaced by simulations of $\boldsymbol{\epsilon}$ from $q(\boldsymbol{\epsilon})$. The variance of the terms in the sum of this estimator is often orders of magnitude lower than the estimator in (\ref{ScoreDeriv}); often $S = 1$ provides a precise enough estimate of the gradient for fast convergence.
+
+\section{MCMC Informed Variational Bayes}
 
 \section{The Dynamic Linear Model}
 
-We begin with the Dynamic Linear Model, which fulfills the neccesary conditions for the Kalman filter to be applicable: (\ref{DLM:Measure}) and (\ref{DLM:Transition}) are linear with gaussian errors.
+We begin with the Dynamic Linear Model, which fulfills the neccesary conditions for the Kalman filter to be applicable: (\ref{DLM:Measure}) and (\ref{DLM:Transition}) are linear with Gaussian errors.
 
 \begin{align}
 y_t &= \gamma + x_t + \sigma_y \epsilon_t \label{DLM:Measure}\\
 x_t &= \phi x_{t-1} + \sigma_x \nu_t \label{DLM:Transition}
 \end{align}
-
-where $\epsilon_t$ and $\nu_t$ are independently drawn from $\mathcal{N}(0, 1).$
+where $\epsilon_t$ and $\nu_t$ are independent $\mathcal{N}(0, 1)$ random variables.
 
 We use the priors
 
@@ -145,10 +153,9 @@ We use the priors
 \sigma^2_x &\sim \mathcal{IG}(\mbox{shape = }\alpha_x, \mbox{scale = }\beta_x) \\
 x_0 &\sim \mathcal{N}(0, \sigma^2_x(1 - \phi^2)^{-1})
 \end{align}
-
 where $\mathcal{IG}(\mbox{shape}, \mbox{ scale})$ denotes the inverse of a Gamma (shape, rate) distribution.
 
-We transform $\sigma^2_y$ and $\sigma^2_x$ so that $\boldsymbol{\theta} = \{\gamma, \phi, \log(\sigma^2_y), \log(\sigma^2_x) \} \in \mathbb{R}^4$ and consider four different functional forms for the approximating distribution $q(\boldsymbol{\theta}, \textbf{x} | \boldsymbol{\lambda})$:
+We transform $\sigma^2_y$ and $\sigma^2_x$ so that $\boldsymbol{\theta} = \{\gamma, \phi, \ln(\sigma^2_y), \ln(\sigma^2_x) \} \in \mathbb{R}^4$ and consider four different functional forms for the approximating distribution $q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda})$:
 \begin{enumerate}
 \item $q(\boldsymbol{\theta}, \textbf{x} | \boldsymbol{\lambda}) = \mathcal{N}(\boldsymbol{\psi}, \textbf{V})$, where $\textbf{V}$ is a diagonal matrix.
 \item $q(\boldsymbol{\theta}, \textbf{x} | \boldsymbol{\lambda}) = \mathcal{N}(\boldsymbol{\psi}, \boldsymbol{\Sigma})$, where $\boldsymbol{\Sigma}$ allows non-zero off-diagonal terms.
@@ -157,19 +164,20 @@ We transform $\sigma^2_y$ and $\sigma^2_x$ so that $\boldsymbol{\theta} = \{\gam
 \end{enumerate}
 The first three functional forms are transformation of standard normal noise variables while the fourth is a transformation of uniform noise variables.
 
-We use two approaches for updating forecasts with MCMC,
+As additional data $y_{T+1:T+J-1}$ are observed, we can incorporate this information to improve forecasts of the future value of $y_{T+J}$. We use two MCMC based approaches for updating this forecast,
 \begin{enumerate}
-\item Use the Kalman filter to update $\textbf{x}_{T+1:T+J}$ as $y_{T+1:T+J}$ is observed using $\boldsymbol{\theta}$ from $p(\boldsymbol{\theta}, \textbf{x}_{1:T} | y_{1:T}$
-\item Run the full MCMC for $\boldsymbol{\theta}$ and $\textbf{x}_{1:T+J}$ after observing each additional $y$.
+\item Use the Kalman filter to update $\textbf{x}_{T+1:T+J}$ as $y_{T+1:T+J}$ is observed using $\boldsymbol{\theta}$ from $p(\boldsymbol{\theta}, \textbf{x}_{1:T} | y_{1:T})$. This method is computationally simple, but does not allow the posterior distribution of $\boldsymbol{\theta}$ to be conditioned on new observations.
+\item Run the full MCMC for $\boldsymbol{\theta}$ and $\textbf{x}_{1:T+J}$ after observing each additional $y$. This strategy has a high computational cost, but does condition $\boldsymbol{\theta}$ on $y_{T+1:T+J-1}$, and results in the forecast distribution with the least uncertainty.
 \end{enumerate}
-The second strategy has a high computational cost but is required to give us the true forecast distribution for comparision with other methods.
 
-We use three approaches for updating forecasts with VB,
+We use three approaches for updating forecasts with VB, listed in increasing computational complexity:
 \begin{enumerate}
 \item Use the Kalman filter to update $\textbf{x}_{T+1:T+J}$ as $y_{T+1:T+J}$ is observed using $\boldsymbol{\theta}$ from $q(\boldsymbol{\theta}, \textbf{x}_{1:T} | \boldsymbol{\lambda})$.
 \item Hold elements of $\boldsymbol{\lambda}$ for $x_{1:T+h-1}$ fixed and maximise (\ref{ELBO}) with respect to the elements of $\boldsymbol{\lambda}$ for $\boldsymbol{\theta}$ and $x_{T+h}$ after observation of $y_{T+h}$.
 \item Maximise (\ref{ELBO}) with respect to all elements of $\boldsymbol{\lambda}$
 \end{enumerate}
+
+Forecast densities of VB and MCMC can be compared by a numeric calculation of the Kullback-Leibler divergence of samples from both $q$ and $p$, and different updating strategies can be compared by the log-score of a held out $y_{T+J}$ value. 
 
 \section{Appendix}
 
@@ -178,17 +186,17 @@ We use three approaches for updating forecasts with VB,
 The joint distribution $p(y_{1:T}, \boldsymbol{\theta}, x_{1:T})$ for the Dynamic Linear Model is given by
 
 \begin{align}
-p(y_{1:T}, \boldsymbol{\theta}, x_{1:T}) &= \prod_{t=1}^{T} \left( \mathcal{N}(y_t | x_t + \gamma, \sigma^2_y) \mathcal{N}(x_t | \phi x_{t-1}, \sigma^2_x) \right) \mathcal{N}(x_0 | 0, \sigma^2_x (1 - \phi^2)^{-1}) \nonumber \\
+p(y_{1:T}, \boldsymbol{\theta}, x_{1:T}) &= \prod_{t=1}^{T} \bigg( \mathcal{N}(y_t | x_t + \gamma, \sigma^2_y) \mathcal{N}(x_t | \phi x_{t-1}, \sigma^2_x) \bigg) \mathcal{N}(x_0 | 0, \sigma^2_x (1 - \phi^2)^{-1}) \nonumber \\
 &\mathcal{N}(\gamma | \bar{\gamma}, \sigma^2_{\gamma}) \mathcal{U}(\phi | -1, 1) \mathcal{IG}(\sigma^2_y | \alpha_y, \beta_y)\mathcal{IG}(\sigma^2_x | \alpha_x, \beta_x) 
 \end{align}
 with 
 \begin{align}
-\log(p(y_{1:T}, \boldsymbol{\theta}, x_{1:T})) &= -(T/2 + \alpha_y + 1) \log(\sigma_y^2) -(T/2 + \alpha_x + 3/2) \log(\sigma_x^2) \nonumber \\
+\ln(p(y_{1:T}, \boldsymbol{\theta}, x_{1:T})) &= -(T/2 + \alpha_y + 1) \ln(\sigma_y^2) -(T/2 + \alpha_x + 3/2) \ln(\sigma_x^2) \nonumber \\
 &- \frac{\sum_{t=1}^{T}(y_t - \gamma - x_t)^2}{2 \sigma^2_y} - \frac{x_0^2(1 -\phi^2) + \sum_{t=1}^{T}(x_t - \phi x_{t-1})^2}{2 \sigma^2_x} \nonumber \\
 &- \frac{(\gamma - \bar{\gamma})^2}{2 \sigma^2_{\gamma}} - \frac{\beta_y}{\sigma^2_y} - \frac{\beta_x}{\sigma^2_x} + c \label{logjoint}. 
 \end{align}
 
-We use Kingma and Welling's (2014) reparameterised approach to the variational approximation in all of our applications.
+We use Kingma and Welling's (2014) reparameterised approach to the variational approximation in all of our applications, with the transforms detailed in Sections 4.1.1 - 4.1.3.
 
 \subsubsection{The Multivariate Normal Approximations}
 
@@ -205,10 +213,10 @@ The approximation is parameterised by $\boldsymbol{\lambda} = \{ \boldsymbol{\mu
 The log determinant of the Jacobian is given by
 \begin{equation}
 \label{logdetjac}
-\log(|J|) = - \left(\sum_{i = 1}^{i = T+5} \log(L_{ii}) + \mu_1 + L_{11} \epsilon_1 + \mu_2 + L_{21} \epsilon_1 + L_{22} \epsilon_2\right).  
+\ln(|J|) = \left(\sum_{i = 1}^{i = T+5} \ln(L_{ii}) + \mu_1 + L_{11} \epsilon_1 + \mu_2 + L_{21} \epsilon_1 + L_{22} \epsilon_2\right).  
 \end{equation}
 
-Derivatives of (\ref{logjoint}) with respect to $\boldsymbol{\theta}$ and $x_{0:T}$, as well as derivatives of (\ref{transform1}) - (\ref{logdetjac}) with respect to $\boldsymbol{\mu}$ and $\textbf{L}$ are easily obtained for use in estimating the gradient of the ELBO.
+Derivatives of (\ref{logjoint}) with respect to $\boldsymbol{\theta}$ and $\textbf{x}_{0:T}$, as well as derivatives of (\ref{transform1}) - (\ref{logdetjac}) with respect to $\boldsymbol{\mu}$ and $\textbf{L}$ are easily obtained for use in estimating the gradient of the ELBO.
 
 
 

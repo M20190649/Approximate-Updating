@@ -1,181 +1,51 @@
-library(ggplot2)
-library(GGally)
-library(coda)
-library(truncnorm)
+library(Rcpp)
+library(RcppArmadillo)
 library(VineCopula)
-library(fitdistrplus)
-library(mixtools)
-library(QRM)
-library(pscl)
-library(tidyr)
+mu = 2
+phi = 0.5
+sigmaSqY = 1
+sigmaSqX = 1
+alphaY = 1
+betaY = 1
+alphaX = 1
+betaX = 1
+muBar = 0
+muVar = 10
+T = 50
+J = 50
+set.seed(5)
 
-logScoreMCMC = function(T, J, M, chainLength){
-  mu = 2
-  phi = 0.5
-  sigmaSqY = 1
-  sigmaSqX = 1
-  alphaY = 1
-  betaY = 1
-  alphaX = 1
-  betaX = 1
-  muBar = 0
-  muVar = 10
-  
-  x0 = rnorm(1, 0, sqrt(sigmaSqX))
-  x = rep(0, T+J)
-  y = rep(0, T+J)
-  for(t in 1:(T+J)){
-    if(t == 1){
-      x[t] = phi*x0 + rnorm(1, 0, sqrt(sigmaSqX)) 
-    } else {
-      x[t] = phi*x[t-1] + rnorm(1, 0, sqrt(sigmaSqX))
-    }
-    y[t] = mu + x[t] + rnorm(1, 0, sqrt(sigmaSqY))
+x0 = rnorm(1, 0, sqrt(sigmaSqX))
+x = rep(0, T+J)
+y = rep(0, T+J)
+for(t in 1:(T+J)){
+  if(t == 1){
+    x[t] = phi*x0 + rnorm(1, 0, sqrt(sigmaSqX)) 
+  } else {
+    x[t] = phi*x[t-1] + rnorm(1, 0, sqrt(sigmaSqX))
   }
-  MCMCdraws = DLM_MCMC(y[1:T], max(chainLength))
-  ySupport = seq(min(y)-1, max(y)+1, length.out=200)
-  logScores = ForecastEvalMCMC(y, chainLength, MCMCdraws$x, MCMCdraws$theta, ySupport, 0.2, T, J, M)
-  
-  return(logScores)
+  y[t] = mu + x[t] + rnorm(1, 0, sqrt(sigmaSqY))
 }
-
-set.seed(2)
-chainLength = c(1000, 5000, 25000, 50000, 100000)
-logScores = replicate(500, logScoreMCMC(50, 50, 1000, chainLength))
-
-meanLogScores = data.frame(apply(logScores, 1:2, mean))
-colnames(meanLogScores) = chainLength
-meanLogScores$time = 1:J
-
-meanLogScoresl = gather(meanLogScores,  length, logscore, -time, factor_key = TRUE)
-ggplot(meanLogScoresl, aes(time, logscore, colour = length)) + geom_line()
-
-
-
-
-
-
-FFBS = function(y, theta){
-  T = length(y)
-  phi = theta[1]
-  mu = theta[2]
-  sigmaSqY = theta[3]
-  sigmaSqX = theta[4]
-  att = rep(0, T)
-  ptt = rep(0, T)
-  y = y - mu
-  at = 0
-  pt = phi^2*sigmaSqX + sigmaSqX
-  vt = y[1] 
-  att[1] = pt*vt/(pt + sigmaSqY)
-  ptt[1] = pt - pt^2/(pt + sigmaSqY)
-  for(t in 2:T){
-    at = phi*att[t-1]
-    pt = phi^2*ptt[t-1] + sigmaSqX
-    vt = y[t] - at
-    att[t] = at + pt*vt/(pt + sigmaSqY)
-    ptt[t] = pt - pt^2/(pt + sigmaSqY)
-  }
-  
-  alpha = rep(0, T)
-  alpha[T] = rnorm(1, att[T], sqrt(ptt[T]))
-  for(t in (T-1):1){
-    vstar = alpha[t+1] - phi*att[t]
-    fstar = phi^2*ptt[t] + sigmaSqX
-    mstar = ptt[t]*phi
-    atT = att[t] + mstar*vstar/fstar
-    ptT = ptt[t] - mstar^2/fstar
-    alpha[t] = rnorm(1, atT, sqrt(ptT))
-  }
-  a0T = phi*alpha[1]/(phi^2+1)
-  p0T = sigmaSqX/(phi^2 + 1)
-  alpha0 = rnorm(1, a0T, sqrt(p0T))
-  return(c(alpha0, alpha))
-}
-
-posterior.statistics = function(x){
-  l95 = quantile(x, probs = 0.025)
-  mean = mean(x)
-  median = median(x)
-  u95 = quantile(x, probs = 0.975)
-  return(c(l95, mean, median, u95))
-}
-
-rep = 100000
-xdraw = matrix(0, nrow = rep, ncol = T+1)
-theta = matrix(0, ncol = 4, nrow = rep) #phi, mu, sigmaSqY, sigmaSqX
-
-theta[1,] = c(phi, mu, sigmaSqY, sigmaSqX)
-
-for(i in 2:rep){
-  #states from the Kalman Filter
-  xdraw[i, ] = FFBS(y, theta[i-1, ])
-  #phi from trunc normal
-  meanPhi = sum(xdraw[i,1:T]*xdraw[i,2:(T+1)]) / sum(xdraw[i,1:T]^2)
-  varPhi = theta[i-1, 4] / sum(xdraw[i,1:T]^2)
-  theta[i, 1] = rtruncnorm(1, -1, 1, meanPhi, sqrt(varPhi))
-  #mu from normal
-  meanMu = (theta[i-1, 3]*muBar + muVar*(sum(y - xdraw[i, 2:(T+1)]))) / (muVar*T + theta[i-1, 3])
-  varMu = muVar*theta[i-1, 3] / (muVar*T + theta[i-1, 3])
-  theta[i, 2] = rnorm(1, meanMu, sqrt(varMu))
-  #sigmaSqY from invG
-  theta[i, 3] = 1/rgamma(1, shape = T/2 + alphaY, rate = betaY + sum((y - xdraw[i, 2:(T+1)] - theta[i, 2])^2)/2)
-  #sigmaSqX from invG
-  theta[i, 4] = 1/rgamma(1, shape = (T+1)/2 + alphaX, rate = betaX + (xdraw[i, 1]^2 + sum((xdraw[i, 2:(T+1)] - xdraw[i, 1:T]*theta[i, 1])^2)/2))
-}
-
-thetaKeep = theta[seq(0.2*rep + 1, rep, length.out = 1000),]
-colnames(thetaKeep) = c("Phi", "Mu", "SigY", "SigX")
-effectiveSize(thetaKeep)
-ggpairs(thetaKeep)
-apply(thetaKeep, 2, posterior.statistics)
-xdrawKeep = xdraw[seq(0.2*rep + 1, rep, length.out = 1000),]
-colnames(xdrawKeep) = paste0("X", 0:T)
-effectiveSize(xdrawKeep)
-ggpairs(xdrawKeep[,1:5])
-apply(xdrawKeep[,1:5], 2, posterior.statistics)
-
-
-
-
-library(rstan)
-DLM_data = list(T = T, y = y)
-stanMCMC = stan(file = 'DLM.stan', data = DLM_data, iter = 50000, chains = 1)
-print(stanMCMC, digits = 3)
-
-model = stan_model('DLM.stan')
-stanMF = vb(model, data = DLM_data, algorithm = "meanfield")
-stanFull = vb(model, data = DLM_data, algorithm = "fullrank")
-
+sourceCpp("DLM_MCMC.cpp")
+MCMCdraws = DLM_MCMC(y[1:T], 50000)
+thetaKeep = MCMCdraws$theta[25001:50000,]
+xdrawKeep = MCMCdraws$x[25001:50000,]
 #MVFB
 
-initialMean = apply(cbind(log(thetaKeep[,3:4]), thetaKeep[,1:2], xdrawKeep), 2, mean)
-initialSd = apply(cbind(log(thetaKeep[,3:4]), thetaKeep[,1:2], xdrawKeep), 2, sd)
-initialL = t(chol(cov(cbind(log(thetaKeep[,3:4]), thetaKeep[,1:2], xdrawKeep))))
-options(warn = -1)
-set.seed(3)
-VB = list()
-convergedLB = rep(0, 10)
-for(i in 1:10){
-  VB[[i]] = FRSGA(y, initialMean, initialL, 1, 0.2, 500, 0.1, 0.1, FALSE, TRUE)
-  convergedLB[i] = VB[[i]]$LB[10]
-}
-BestVB = VB[[which.max(convergedLB)]]
-FRVB = FRSGA
-MFVB = MFSGA(y, initialMean, initialSd, 1, 0.1, 200, TRUE)
-options(warn = 0)
+initialMean = apply(cbind(log(thetaKeep[,1:2]), thetaKeep[,3:4], xdrawKeep), 2, mean)
+initialSd = apply(cbind(log(thetaKeep[,1:2]), thetaKeep[,3:4], xdrawKeep), 2, sd)
+
+sourceCpp("DLM_SGA.cpp")
+MFVB = DLM_SGA(y[1:T], 5, 5000, 0.05, cbind(initialMean, initialSd), TRUE)
 
 
-mean = initialMean
-sd = initialSd
+sourceCpp("DLM_SGA_FR.cpp")
+FRVBadam = DLM_SGA(y[1:T], 1, 5000, 0.01, 0.001)
 
 
 
-
-
-
-pobtheta = pobs(thetaKeep)
-pobx = pobs(xdrawKeep)
+pobtheta = pobs(thetaKeep[sample(1:25000, 1000),])
+pobx = pobs(xdrawKeep[sample(1:25000, 1000),])
 
 VineMatrix = matrix(0, T+5, T+5)
 VineMatrix[T+5, ] = 1
