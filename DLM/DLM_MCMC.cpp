@@ -7,14 +7,13 @@ using namespace Rcpp;
 using namespace arma;
 using namespace std;
 
-//// [[Rcpp::export]]
-rowvec FFcpp(vec y, double phi, double mu, double sigmaSqY, double sigmaSqX, int T, int J){
-  y -= mu;
+// [[Rcpp::export]]
+rowvec FFcpp(vec y, double phi, double gamma, double sigmaSqY, double sigmaSqX, int T, int J){
+  y -= gamma;
   vec att(T+J, fill::ones); //0 - (T-1) -> x1 - xT
   vec ptt(T+J, fill::ones);
   vec at(T+J);
   vec pt(T+J);
-  rowvec draws(T+J+1); //0 - T -> x0 - xT
   at[0] = 0;
   pt[0] = pow(phi, 2)*sigmaSqX + sigmaSqX;
   double vt = y[0];
@@ -33,6 +32,33 @@ rowvec FFcpp(vec y, double phi, double mu, double sigmaSqY, double sigmaSqX, int
   }
   return filtered;
 }
+
+// [[Rcpp::export]]
+vec FFUpdatercpp(vec y, double phi, double gamma, double sigmaSqY, double sigmaSqX, double XT){
+  int J = y.n_elem;
+  y -= gamma;
+  vec at(J);
+  vec pt(J);
+  vec att(J);
+  vec ptt(J);
+  at[0] = phi*XT;
+  pt[0] = sigmaSqX;
+  double vt = y[0] - at[0];
+  att[0] = at[0] + pt[0] * vt / (pt[0] + sigmaSqY);
+  ptt[0] = pt[0] - pow(pt[0], 2) / (pt[0] + sigmaSqY);
+  for(int t = 1; t < J; ++t){
+    at[t] = phi*att[t-1];
+    pt[t] = pow(phi, 2)*ptt[t-1] + sigmaSqX;
+    vt = y[t] - at[t];
+    att[t] = at[t] + pt[t] * vt / (pt[t] + sigmaSqY);
+    ptt[t] = pt[t] - pow(pt[t], 2) / (pt[t] + sigmaSqY);
+  }
+  vec output = {att[J-1], ptt[J-1]};
+  
+  return output;
+}
+
+
 
 // [[Rcpp::export]]
 rowvec FFBScpp(vec y, rowvec theta){
@@ -91,8 +117,8 @@ Rcpp::List DLM_MCMC(vec y, int reps){
   double sigmaSqXScale;
   double meanPhiNumer;
   double meanPhiDenom;
-  double meanMuNumer;
-  double meanMuDenom;
+  double meanGammaNumer;
+  double meanGammaDenom;
 
   for(int i = 1; i < reps; ++i){
     x.row(i) = FFBScpp(y, theta.row(i-1));
@@ -119,13 +145,13 @@ Rcpp::List DLM_MCMC(vec y, int reps){
     }
     theta(i, 2) = (meanPhiNumer/meanPhiDenom + sqrt(theta(i, 1)/meanPhiDenom) * randn<vec>(1))[0];
     
-    //mu ~ Normal(mean, var)
-    meanMuNumer = 0;
-    meanMuDenom = 10*T + theta(i, 0);
+    //gamma ~ Normal(mean, var)
+    meanGammaNumer = 0;
+    meanGammaDenom = 10*T + theta(i, 0);
     for(int t = 0; t < T; ++t){
-      meanMuNumer += 10 * y[t] - x(i, t+1);
+      meanGammaNumer += 10 * y[t] - x(i, t+1);
     }
-    theta(i, 3) = (meanMuNumer/meanMuDenom + sqrt(10*theta(i, 0)/meanMuDenom) * randn<vec>(1))[0];
+    theta(i, 3) = (meanGammaNumer/meanGammaDenom + sqrt(10*theta(i, 0)/meanGammaDenom) * randn<vec>(1))[0];
   }
   
   return Rcpp::List::create(Rcpp::Named("theta") = theta, Rcpp::Named("x") = x);
