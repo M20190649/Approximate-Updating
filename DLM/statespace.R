@@ -1,6 +1,7 @@
 library(Rcpp)
 library(RcppArmadillo)
 library(VineCopula)
+library(ggplot2)
 mu = 2
 phi = 0.5
 sigmaSqY = 1
@@ -40,11 +41,12 @@ xdrawKeep = MCMCdraws$x[25001:50000,]
 ysupport = seq(min(y)-1, max(y)+1, length.out=1000)
 ydens = rep(0, 1000)
 for(i in 1:10000){
-  gammaDraw = thetaKeep[sample(25000, 1), 4]
-  phiDraw = thetaKeep[sample(25000, 1), 3]
-  sigxDraw = thetaKeep[sample(25000, 1), 2]
-  sigyDraw = thetaKeep[sample(25000, 1), 1]
-  xTDraw = xdrawKeep[sample(25000, 1), T+1]
+  u = sample(25000, 1)
+  gammaDraw = thetaKeep[u, 4]
+  phiDraw = thetaKeep[u, 3]
+  sigxDraw = thetaKeep[u, 2]
+  sigyDraw = thetaKeep[u, 1]
+  xTDraw = xdrawKeep[u, T+1]
   phiprod = rep(1, J+1)
   for(i in 2:(J+1)){
     phiprod[i] = phiDraw * phiprod[i-1]
@@ -55,11 +57,12 @@ for(i in 1:10000){
 # One step ahead forecast using y_{T+1:T+J}, not updating thetas
 ydens2 = rep(0, 1000)
 for(i in 1:10000){
-  gammaDraw = thetaKeep[sample(25000, 1), 4]
-  phiDraw = thetaKeep[sample(25000, 1), 3]
-  sigxDraw = thetaKeep[sample(25000, 1), 2]
-  sigyDraw = thetaKeep[sample(25000, 1), 1]
-  xTDraw = xdrawKeep[sample(25000, 1), T+1]
+  u = sample(25000, 1)
+  gammaDraw = thetaKeep[u, 4]
+  phiDraw = thetaKeep[u, 3]
+  sigxDraw = thetaKeep[u, 2]
+  sigyDraw = thetaKeep[u, 1]
+  xTDraw = xdrawKeep[u, T+1]
   XTS = FFUpdatercpp(y[(T+1):(T+J)], phiDraw, gammaDraw, sigyDraw, sigxDraw, xTDraw)
   ydens2 = ydens2 + dnorm(ysupport, gammaDraw + phiDraw*XTS[1], sqrt(sigyDraw + phi^2 * XTS[2] + sigxDraw))/10000
 }
@@ -71,11 +74,12 @@ xdrawUpdateKeep = MCMCupdate$x[25001:50000,]
 
 ydens3 = rep(0, 1000)
 for(i in 1:10000){
-  gammaDraw = thetaUpdateKeep[sample(25000, 1), 4]
-  phiDraw = thetaUpdateKeep[sample(25000, 1), 3]
-  sigxDraw = thetaUpdateKeep[sample(25000, 1), 2]
-  sigyDraw = thetaUpdateKeep[sample(25000, 1), 1]
-  xTDraw = xdrawUpdateKeep[sample(25000, 1), T+J+1]
+  u = sample(25000, 1)
+  gammaDraw = thetaUpdateKeep[u, 4]
+  phiDraw = thetaUpdateKeep[u, 3]
+  sigxDraw = thetaUpdateKeep[u, 2]
+  sigyDraw = thetaUpdateKeep[u, 1]
+  xTDraw = xdrawUpdateKeep[u, T+J+1]
   ydens3 = ydens3 + dnorm(ysupport, gammaDraw + phiDraw*xTDraw, sqrt(sigyDraw + sigxDraw))/10000
 }
 
@@ -86,21 +90,44 @@ ggplot() + geom_line(aes(ysupport, ydens), colour = "red") +geom_line(aes(ysuppo
 
 # Variational Bayes
 
-initialMean = apply(cbind(log(thetaKeep[,1:2]), thetaKeep[,3:4], xdrawKeep), 2, mean)
-initialSd = apply(cbind(log(thetaKeep[,1:2]), thetaKeep[,3:4], xdrawKeep), 2, sd)
-
 sourceCpp("DLM_SGA_FR.cpp")
-FRVB = DLM_SGA(y=y[1:T], S=1, maxIter=5000, threshold=0.01, alpha=0.001)
-MFVB = DLM_SGA(y=y[1:T], S=1, maxIter=5000, threshold=0.01, alpha=0.001, meanfield=TRUE)
+set.seed(1)
+FRVB = list()
+FinalElbo = rep(0, 10)
+for(i in 1:10){
+  FRVB[[i]] = DLM_SGA(y=y[1:T], S=T, M=1, maxIter=5000, initialM = rep(0, 55), initialL = diag(0.1, 55))
+  FinalElbo[i] = tail(FRVB[[i]]$ELBO, 1)
+}
+FRVBInit = FRVB[[which.max(FinalElbo)]]
+UpdateM = c(FRVBInit$Mu, rep(0, J))
+UpdateL = diag(0.1, T+J+5)
+UpdateL[1:(T+5), 1:(T+5)] = FRVBInit$L
+FRVBU = list()
+UpdateElbo = rep(0, 10)
+for(i in 1:10){
+  FRVBU[[i]] = DLM_SGA(y=y[1:(T+J)], S=J, M=1, maxIter=5000, initialM=UpdateM, initialL=UpdateL)
+  UpdateElbo[i] = tail(FRVBU[[i]]$ELBO, 1)
+}
+FRVBUpdate = FRVBU[[which.max(UpdateElbo)]]
 
-DLMfit = list()
-for(i in 1:100){
-  DLMfit[[i]] = DLM_SGA(y[1:50], 1, 5000, 0.01, 0.01)
+MFVB = list()
+FinalElbo = rep(0, 10)
+for(i in 1:10){
+  MFVB[[i]] = DLM_SGA(y=y[1:T], S=T, M=1, maxIter=5000, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE)
+  FinalElbo[i] = tail(MFVB[[i]]$ELBO, 1)
 }
-ELBO = rep(0, 100)
-for(i in 1:100){
-  ELBO[i] = tail(DLMfit[[i]]$ELBO, 1)
+MFVBInit = MFVB[[which.max(FinalElbo)]]
+UpdateM = c(MFVBInit$Mu, rep(0, J))
+UpdateL = diag(0.1, T+J+5)
+UpdateL[1:(T+5), 1:(T+5)] = MFVBInit$L
+MFVBU = list()
+UpdateElbo = rep(0, 10)
+for(i in 1:10){
+  MFVBU[[i]] = DLM_SGA(y=y[1:(T+J)], S=J, M=1, maxIter=5000, initialM=UpdateM, initialL=UpdateL, meanfield=TRUE)
+  UpdateElbo[i] = tail(MFVBU[[i]]$ELBO, 1)
 }
+MFVBUpdate = MFVBU[[which.max(UpdateElbo)]]
+
 
 
 # Vine Copula

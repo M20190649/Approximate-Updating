@@ -8,7 +8,6 @@ using namespace Rcpp;
 using namespace arma;
 using namespace std;
 
-
 // TODO:
 // Find out how to add distribution code as a header to reduce amount of code in one file
 // Make phi have a truncated normal marginal so I can fix the x0 prior variance 
@@ -19,19 +18,18 @@ class Distribution{
   // This is the base class for the distributions, and exists so I can have Normal and Inverse Gamma pointers in the same array
 public:
   // This function is only here so I can call any of the subclass versions.
-  // The code won't compile unless I have a Distribution member function and the subclass member function.
-  // There should be a way around this, I can use dynamic cast to tell the compiler I want to explicitly use a normal logdens for example
-  // But without the dynamic casting it doesn't know what version of the distribution I want to use, so I need something here
   // It gets overwritten by the subclass version anyway.
-  // Mostly I just haven't figured out enough c++ to get this working without dynamic casts
   virtual double logdens(double x) {return -99.99;};
 };
+
+// All distribution subclass objects have parameters, a constructor, a set_value and increase_value function, a logdensity function
+// and in the normal distribution case a transform from epsilon function
 
 class Normal: public Distribution{
   // This just provides methods for the single variate normal distribution
 public:
-  double mean, variance;
-  Normal(double, double);
+  double mean, variance; // Parameters
+  Normal(double, double); // Constructor
   void set_values(double m, double v){
     mean = m;
     variance = v;
@@ -49,7 +47,7 @@ public:
   }
 };
 
-Normal::Normal (double m, double v){
+Normal::Normal (double m, double v){ // Constructor
   mean = m;
   variance = v;
 }
@@ -144,6 +142,7 @@ cube qSim (MultiNormal* qLatent, int n_samples, int p){
 }
 
 double pdens (Normal* Y[], vec y, Distribution* pLatent[], rowvec latent, int T, int p){
+  // Evaluates sum(log(p(yt|xt, theta))) + sum(log(p(xt | xt-1, theta))) + sum(log(p(theta))) 
   double priorDens = 0;
   // as the IG logdens function takes log(sigmaSq) as an input we keep the input as latent instead of exp(latent)
   for(int i = 0; i < p; ++i){
@@ -152,6 +151,7 @@ double pdens (Normal* Y[], vec y, Distribution* pLatent[], rowvec latent, int T,
   }
   double dataDens = 0;
   for(int t = 0; t < T; ++t){
+    // This is the loglikelihood function for yt | xt, theta
     dataDens += Y[t]->logdens(y[t]);
   }
   return priorDens + dataDens;
@@ -165,14 +165,15 @@ void updateP (Normal* Y[], Distribution* pLatent[], rowvec latent, int T){
   // The true value of phi is 0.5, which gives x0 a variance of 4*sigmaSqX, so use it until I can fix the phi sampler 
   for(int t = 0; t < T; ++t){
     // Despite the set_values function in Distribution being overwritten with the version in Normal,
-    // unless I explicitly say to use the Normal version (via dynamic cast) this was using the distribution version of set_values
+    // unless I explicitly say to use the Normal version (via dynamic cast) this was using the distribution version of set_values (now removed)
     dynamic_cast<Normal*>(pLatent[t+5])->set_values(latent[2] * latent[t+4], exp(latent[1])); //X_t ~ N(phi*x_t-1, sigmaSqX)
-    // Y is a Normal* object not a Distribution* object so it avoids the problem
+    // Y is a Normal* object not a Distribution* object so it avoids the problem as the compiler knows to use Normal::logdens
     Y[t]->set_values(latent[3] + latent[t+5], exp(latent[0])); //Y_t ~N(mu + x_t, sigmaSqY)
   }
 } 
 
 double ELBO (Normal* Y[], vec y, Distribution* pLatent[], MultiNormal* qLatent, int T, int p, int n = 250){
+  // Evaluates the ELBO as an expectation over n simulations of theta & x
   // sample theta - don't need epsilon for this so only keep the theta slice
   mat latentSims = qSim(qLatent, n, p).slice(0);
   double value = 0;
@@ -182,7 +183,7 @@ double ELBO (Normal* Y[], vec y, Distribution* pLatent[], MultiNormal* qLatent, 
     // Evaluate ELBO for that sample
     value += pdens(Y, y, pLatent, latentSims.row(i), T, p) - qLatent->logdens(latentSims.row(i)); 
   }
-  // Average over n realisations of theta ~ q
+  // Average over n realisations of q(x, theta)
   return value / n;
 }
 
@@ -292,7 +293,7 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
   int T = y.n_elem;
   if(S > T){
     // This would imply that the original MCMC is based on data up to y_{T-S < 0}
-    Rcpp::Rcout << "S must be equal to or less than the length of y" << std::endl;
+    Rcpp::Rcout << "Error: S must be equal to or less than the length of y" << std::endl;
     return Rcpp::List::create();
   }
   mat e(T+5, T+6);
@@ -383,8 +384,13 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
     LB[iter] = ELBO(Y, y, pLatent, qLatent, T, T+5); // Calculate ELBO with new values
     diff = abs(LB[iter] - LB[iter-1]); // Check difference after one extra iteration.
   } // End of while loop
-  
-  LB = LB.head(iter+1); // The LB vector has length maxIter+1, extract the part we actually used (+1 to include initial LB).
+  if(iter <= maxIter){
+    LB = LB.head(iter+1); 
+  } else {
+    LB = LB.head(iter);
+  }
+  // The LB vector has length maxIter+1, extract the part we actually used (+1 to include initial LB).
+  // If the ELBO didn't converge, the loop will add one to iter before checking iter > MaxIter, so don't do +1 in this case
   // Print some useful information to the console
   Rcpp::Rcout << "Number of iterations: " << iter << std::endl;
   Rcpp::Rcout << "Final ELBO: " << LB.tail(1) << std::endl; 
