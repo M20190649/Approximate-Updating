@@ -284,18 +284,23 @@ void updateQ (MultiNormal* qLatent, mat updates, int p, bool meanfield){
 }
 
 // [[Rcpp::export]]
-Rcpp::List DLM_SGA(vec y, int S, int maxIter, double threshold, double alpha, double beta1 = 0.9, double beta2 = 0.999, 
-                   bool Adam = true, bool meanfield = false){
+Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL, double threshold=0.01, 
+                   double alpha=0.01, double beta1=0.9, double beta2=0.999, bool Adam=true, bool meanfield=false){
   // Initialise everything we are going to need
+  // T is treated as the total length of y, which is T+S in the written report.
+  // So we use data up to y_{T-S} then update using y_{T-S+1:T} instead of data up to y_{T} then update to y_{T+S}
   int T = y.n_elem;
+  if(S > T){
+    // This would imply that the original MCMC is based on data up to y_{T-S < 0}
+    Rcpp::Rcout << "S must be equal to or less than the length of y" << std::endl;
+    return Rcpp::List::create();
+  }
   mat e(T+5, T+6);
   e.fill(pow(10, -8));
-  mat Mt(T+5, T+6, fill::zeros);
-  mat Vt(T+5, T+6, fill::zeros);
+  mat Mt(T+5, T+6, fill::zeros); // doubles as AdaGrad's Gt
+  mat Vt(T+5, T+6, fill::zeros); // doubles as AdaGrad's Pt
   mat MtHat;
   mat VtHat;
-  mat Gt(T+5, T+6, fill::zeros);
-  mat Pt(T+5, T+6, fill::zeros);
   mat partials(T+5, T+6); // Partials will be reset to zero at the start of every iteration
   
   // Set up distribution objects. We will use the pointers to these as arguments for the functions SGA_DLM calls.
@@ -311,17 +316,17 @@ Rcpp::List DLM_SGA(vec y, int S, int maxIter, double threshold, double alpha, do
     Y[i] = new Normal(0, 1);
     pLatent[i+5] = new Normal(0, 1);
   }
-  vec qmu(T+5, fill::zeros);
-  mat qch(T+5, T+5, fill::eye); // Should use the lower triangle of the initial Sigma, but as the diagonal is 1, L = Sigma so we skip that step.
-  qLatent = new MultiNormal(qmu, qch);
+  qLatent = new MultiNormal(initialM, initialL);
   
   // Controls the while loop
   int iter = 0;
+  // Vector of ELBO value for each iteration
   vec LB(maxIter+1, fill::zeros);
+  // ELBO for initial values
   LB[0] = ELBO(Y, y, pLatent, qLatent, T, T+5);
   double diff = threshold + 1;
   
-  // Repeat until convergence, make sure it doesnt just stop after one.
+  // Repeat until convergence, make sure it doesnt just stop after one - 20 is pretty arbitary but small enough to not matter
   while((diff > threshold) | (iter < 20)){
     iter += 1;
     if(iter > maxIter){
@@ -330,67 +335,76 @@ Rcpp::List DLM_SGA(vec y, int S, int maxIter, double threshold, double alpha, do
     // Reset partial derivatives
     partials.fill(0);
     // Simulate S times from q
-    cube Sims = qSim(qLatent, S, T+5);
+    cube Sims = qSim(qLatent, M, T+5);
     // It is easier to split the cube into two matrices now, as calling a row of a matrix of a cube via Sims.slice(i).row(j) doesn't work. 
     // Subcube views can extract the row but it will be stored as a cube object instead of a row vector.
     // This is a bit redundant memory wise but S usually equals 1 so these are not large objects anyway.                                                            
     mat latentSims = Sims.slice(0); 
     mat epsilon = Sims.slice(1);
-    // Derivatives are an average of our samples
-    for(int s = 0; s < S; ++s){
-      updateP(Y, pLatent, latentSims.row(s), T);
-      for(int i = 0; i < T+5; ++i){
-        partials.row(i) += reparamDeriv(y, qLatent, latentSims.row(s), epsilon.row(s), T, i, meanfield)/S;
+    // Derivatives are an average of our M samples
+    for(int m = 0; m < M; ++m){ 
+      updateP(Y, pLatent, latentSims.row(m), T); // Update p distribution parameters based on simulation results
+      for(int i = 0; i < 4; ++i){ // Calculate Partial Derivatives wrt global parameters
+        partials.row(i) += reparamDeriv(y, qLatent, latentSims.row(m), epsilon.row(m), T, i, meanfield)/M;
+      }
+      if(S == T){ // If S=T, then we want to estimate all T states AND x0. We can do T-S+5 to start at X_{T-S}, but when
+                  // S=T we also want to estimate x0, so we need T-S+4 which just equals 4.
+        for(int i = 4; i < T+5; ++i){
+          partials.row(i) += reparamDeriv(y, qLatent, latentSims.row(m), epsilon.row(m), T, i, meanfield)/M;
+        } 
+      } else { // If S<T, then we want to estimate X_{T-S} to X_T. 
+        for(int i = T-S+5; i < T+5; ++i){
+          partials.row(i) += reparamDeriv(y, qLatent, latentSims.row(m), epsilon.row(m), T, i, meanfield)/M;
+        }
       }
     }
-    // ADAM Updating
+    // ADAM Updating, seems to converge faster and more reliably than AdaGrad
     if(Adam){
-      Mt = beta1*Mt + (1-beta1)*partials;
+      Mt = beta1*Mt + (1-beta1)*partials; // Creates biased estimates of first and second moment
       Vt = beta2*Vt + (1-beta2)*pow(partials, 2);
-      MtHat = Mt / (1 - pow(beta1, iter));
+      MtHat = Mt / (1 - pow(beta1, iter)); // Corrects bias
       VtHat = Vt / (1 - pow(beta2, iter));
-      updateQ(qLatent, alpha * MtHat / (sqrt(VtHat) + e), T+5, meanfield);
+      updateQ(qLatent, alpha * MtHat / (sqrt(VtHat) + e), T+5, meanfield); // Size of step depends on second moments and alpha
     } else {
-    // AdaGrad Updating
-      Gt += pow(partials, 2);
+    // AdaGrad Updating is available as it was the original method I used in the confirmation etc.
+      Mt += pow(partials, 2); // sum of squared derivatives
       for(int i = 0; i < T+5; ++i){
         if(meanfield){
-          Pt(i, 0) = alpha * pow(Gt(i, 0), -0.5);
-          Pt(i, 1) = alpha * pow(Gt(i, 1), -0.5);
+          Vt(i, 0) = alpha * pow(Mt(i, 0), -0.5); // Size of step depends on squared derivatives
+          Vt(i, 1) = alpha * pow(Mt(i, 1), -0.5);
         } else {
           for(int j = 0; j <= i+1; ++j){
-            Pt(i, j) = alpha * pow(Gt(i, j), -0.5);
+            Vt(i, j) = alpha * pow(Mt(i, j), -0.5);
           }
         }
        }
-      updateQ(qLatent, Pt % partials, T+5, meanfield);
+      updateQ(qLatent, Vt % partials, T+5, meanfield);
     }
-    LB[iter] = ELBO(Y, y, pLatent, qLatent, T, T+5);
-    diff = abs(LB[iter] - LB[iter-1]);
-    
+    LB[iter] = ELBO(Y, y, pLatent, qLatent, T, T+5); // Calculate ELBO with new values
+    diff = abs(LB[iter] - LB[iter-1]); // Check difference after one extra iteration.
   } // End of while loop
-  vec LBout(iter);
-  for(int i = 0; i < iter; ++i){
-    LBout[i] = LB[i];
-  }
+  
+  LB = LB.head(iter+1); // The LB vector has length maxIter+1, extract the part we actually used (+1 to include initial LB).
+  // Print some useful information to the console
   Rcpp::Rcout << "Number of iterations: " << iter << std::endl;
-  Rcpp::Rcout << "Final ELBO: " << LB[iter-1] << std::endl;
+  Rcpp::Rcout << "Final ELBO: " << LB.tail(1) << std::endl; 
   Rcpp::Rcout << "Final Change in ELBO: " << diff << std::endl;
   if(meanfield){
+    // Not interested in the whole L matrix for the meanfield, just the vector of standard deviations
     vec sd(T+5);
     for(int i = 0; i < T+5; ++i){
       sd(i) = abs(qLatent->chol_diag(i));
     }
     return Rcpp::List::create(Rcpp::Named("Mu") = qLatent->mean,
                               Rcpp::Named("Sd") = sd,
-                              Rcpp::Named("ELBO") = LBout,
-                              Rcpp::Named("Iter") = iter-1);
+                              Rcpp::Named("ELBO") = LB,
+                              Rcpp::Named("Iter") = iter);
     
   } else {
     return Rcpp::List::create(Rcpp::Named("Mu") = qLatent->mean,
                             Rcpp::Named("L") = qLatent->chol,
-                            Rcpp::Named("ELBO") = LBout,
-                            Rcpp::Named("Iter") = iter-1);
+                            Rcpp::Named("ELBO") = LB,
+                            Rcpp::Named("Iter") = iter);
   }
 }
 
