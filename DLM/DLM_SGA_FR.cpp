@@ -19,7 +19,7 @@ class Distribution{
 public:
   // This function is only here so I can call any of the subclass versions.
   // It gets overwritten by the subclass version anyway.
-  virtual double logdens(double x) {return -99.99;};
+  virtual double logdens(double x) {return -10000;};
 };
 
 // All distribution subclass objects have parameters, a constructor, a set_value and increase_value function, a logdensity function
@@ -233,8 +233,9 @@ rowvec reparamDeriv (vec y, MultiNormal* qLatent, rowvec latent, rowvec epsilon,
     double dfds = epsilon[i];
     double dqds = -1 / qLatent->chol_diag(i);
     if(i < 2){
-      dfdm = log(latent[i]);
-      dfds *= log(latent[i]);
+      dfdm = latent[i];
+      dfds *= latent[i];
+      dqdm = -1;
       dqds -= epsilon[i];
     }
     rowvec derivs(T+6, fill::zeros);
@@ -367,7 +368,8 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
       VtHat = Vt / (1 - pow(beta2, iter));
       updateQ(qLatent, alpha * MtHat / (sqrt(VtHat) + e), T+5, meanfield); // Size of step depends on second moments and alpha
     } else {
-    // AdaGrad Updating is available as it was the original method I used in the confirmation etc.
+    // AdaGrad Updating is available as it was the original method I used in the confirmation etc. 
+    // Partial updating not yet implemented
       Mt += pow(partials, 2); // sum of squared derivatives
       for(int i = 0; i < T+5; ++i){
         if(meanfield){
@@ -392,9 +394,9 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
   // The LB vector has length maxIter+1, extract the part we actually used (+1 to include initial LB).
   // If the ELBO didn't converge, the loop will add one to iter before checking iter > MaxIter, so don't do +1 in this case
   // Print some useful information to the console
-  Rcpp::Rcout << "Number of iterations: " << iter << std::endl;
-  Rcpp::Rcout << "Final ELBO: " << LB.tail(1) << std::endl; 
-  Rcpp::Rcout << "Final Change in ELBO: " << diff << std::endl;
+  //Rcpp::Rcout << "Number of iterations: " << iter << std::endl;
+  //Rcpp::Rcout << "Final ELBO: " << LB.tail(1) << std::endl; 
+  //Rcpp::Rcout << "Final Change in ELBO: " << diff << std::endl;
   if(meanfield){
     // Not interested in the whole L matrix for the meanfield, just the vector of standard deviations
     vec sd(T+5);
