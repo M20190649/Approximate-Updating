@@ -240,7 +240,7 @@ rowvec reparamDeriv (vec y, MultiNormal* qLatent, rowvec latent, rowvec epsilon,
     }
     rowvec derivs(T+6, fill::zeros);
     derivs[0] = dpdf*dfdm - dqdm;
-    derivs[1] = dpdf*dfds - dqds;
+    derivs[i+1] = dpdf*dfds - dqds;
     return derivs;
   } else {
     vec dfdL(T+5, fill::zeros); 
@@ -272,16 +272,11 @@ rowvec reparamDeriv (vec y, MultiNormal* qLatent, rowvec latent, rowvec epsilon,
   }
 }
 
-void updateQ (MultiNormal* qLatent, mat updates, int p, bool meanfield){
+void updateQ (MultiNormal* qLatent, mat updates, int p){
   // via lambda(t+1) = lambda(t) + Pt dELBO/dlambda
   // updates contains mu derivatives in first column, L derivatives in the rest
   vec mean = updates.col(0);
-  mat chol(p, p, fill::zeros);
-  if(meanfield){
-    chol.diag() = updates.col(1);
-  } else {
-    chol = updates.submat(0, 1, p-1, p);
-  }
+  mat chol = updates.submat(0, 1, p-1, p);
   qLatent->increase_values(mean, chol);
 }
 
@@ -366,7 +361,7 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
       Vt = beta2*Vt + (1-beta2)*pow(partials, 2);
       MtHat = Mt / (1 - pow(beta1, iter)); // Corrects bias
       VtHat = Vt / (1 - pow(beta2, iter));
-      updateQ(qLatent, alpha * MtHat / (sqrt(VtHat) + e), T+5, meanfield); // Size of step depends on second moments and alpha
+      updateQ(qLatent, alpha * MtHat / (sqrt(VtHat) + e), T+5); // Size of step depends on second moments and alpha
     } else {
     // AdaGrad Updating is available as it was the original method I used in the confirmation etc. 
     // Partial updating not yet implemented
@@ -374,14 +369,14 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
       for(int i = 0; i < T+5; ++i){
         if(meanfield){
           Vt(i, 0) = alpha * pow(Mt(i, 0), -0.5); // Size of step depends on squared derivatives
-          Vt(i, 1) = alpha * pow(Mt(i, 1), -0.5);
+          Vt(i, i+1) = alpha * pow(Mt(i, i+1), -0.5);
         } else {
           for(int j = 0; j <= i+1; ++j){
             Vt(i, j) = alpha * pow(Mt(i, j), -0.5);
           }
         }
        }
-      updateQ(qLatent, Vt % partials, T+5, meanfield);
+      updateQ(qLatent, Vt % partials, T+5);
     }
     LB[iter] = ELBO(Y, y, pLatent, qLatent, T, T+5); // Calculate ELBO with new values
     diff = abs(LB[iter] - LB[iter-1]); // Check difference after one extra iteration.

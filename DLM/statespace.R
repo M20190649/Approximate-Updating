@@ -2,9 +2,12 @@ library(Rcpp)
 library(RcppArmadillo)
 library(VineCopula)
 library(ggplot2)
-
+library(microbenchmark)
+library(mvtnorm)
+library(tidyr)
 sourceCpp("DLM_MCMC.cpp")
 sourceCpp("DLM_SGA_FR.cpp")
+
 mu = 2
 phi = 0.5
 sigmaSqY = 1
@@ -17,12 +20,13 @@ muBar = 0
 muVar = 10
 T = 50
 J = 10
-set.seed(5)
+h = 1
 
+set.seed(5)
 x0 = rnorm(1, 0, sqrt(sigmaSqX))
-x = rep(0, T+J)
-y = rep(0, T+J)
-for(t in 1:(T+J)){
+x = rep(0, T+J+h)
+y = rep(0, T+J+h)
+for(t in 1:(T+J+h)){
   if(t == 1){
     x[t] = phi*x0 + rnorm(1, 0, sqrt(sigmaSqX)) 
   } else {
@@ -37,10 +41,8 @@ MCMCdraws = DLM_MCMC(y[1:T], 50000)
 thetaKeep = MCMCdraws$theta[25001:50000,]
 xdrawKeep = MCMCdraws$x[25001:50000,]
 
-
-
 # J + 1 step ahead forecast with no extra information
-ysupport = seq(min(y)-1, max(y)+1, length.out=1000)
+ysupport = seq(min(y)-5, max(y)+5, length.out=1000)
 ydens = rep(0, 1000)
 for(i in 1:10000){
   u = sample(25000, 1)
@@ -91,66 +93,69 @@ ggplot() + geom_line(aes(ysupport, ydens), colour = "red") +geom_line(aes(ysuppo
 
 
 # Variational Bayes
-
-
 set.seed(1)
-FRVB = list()
-MFVB = list()
-stats = data.frame()
+VB = list()
+ELBOfit = data.frame()
 
-for(i in 501:1000){
-  if(i <= 500){
-    FRVB[[i]] = DLM_SGA(y=y[1:T], S=T, M=(i %% 10 + 1), maxIter=5000, initialM = rep(0, 55), initialL = diag(0.1, 55))
-    df = data.frame(ELBO = tail(FRVB[[i]]$ELBO, 1), Iter = FRVB[[i]]$Iter, M = i %% 10 + 1, Covariance = "Non-Diagonal")
-    stats = rbind(stats, df)
+Mvec = c(1, 5, 10, 25, 50, 100)
+for(i in 301:600){
+  if(i <= 300){
+    VB[[i]] = DLM_SGA(y=y[1:T], S=T, M=Mvec[i%%6+1], maxIter=5000, initialM=c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL=diag(0.1, 55))
+    df = data.frame(ELBO=tail(VB[[i]]$ELBO, 1), Iter=VB[[i]]$Iter, M=Mvec[i%%6+1], Covariance="Non-Diagonal", runtime=0)
+    rownames(df) = NULL
+    ELBOfit = rbind(ELBOfit, df)
   } else {
-    MFVB[[i-500]] = DLM_SGA(y=y[1:T], S=T, M=(i %% 10 + 1), maxIter=5000, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE)
-    df = data.frame(ELBO = tail(MFVB[[i-500]]$ELBO, 1), Iter = MFVB[[i-500]]$Iter, M = i %% 10 + 1, Covariance = "Diagonal")
-    stats = rbind(stats, df)
+    VB[[i]] = DLM_SGA(y=y[1:T], S=T, M=Mvec[i%%6+1], maxIter=5000, initialM=c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL=diag(0.1, 55), meanfield=TRUE)
+    df = data.frame(ELBO=tail(VB[[i]]$ELBO, 1), Iter=VB[[i]]$Iter, M=Mvec[i%%6+1], Covariance="Diagonal", runtime=0)
+    rownames(df) = NULL
+    ELBOfit = rbind(ELBOfit, df)
+  }
+  if(i %% 50 == 0){
+    print(i)
   }
 }
-rownames(stats) = NULL
+rownames(ELBOfit) = NULL
+ggplot(ELBOfit, aes(x=Iter, y=ELBO, colour=factor(M))) + geom_point() + facet_wrap(~Covariance, scales = "free")
 
 timings = microbenchmark(
-               DLM_SGA(y=y[1:T], S=T, M=1, maxIter=1, initialM = rep(0, 55), initialL = diag(0.1, 55)),
-               DLM_SGA(y=y[1:T], S=T, M=2, maxIter=1, initialM = rep(0, 55), initialL = diag(0.1, 55)),
-               DLM_SGA(y=y[1:T], S=T, M=3, maxIter=1, initialM = rep(0, 55), initialL = diag(0.1, 55)),
-               DLM_SGA(y=y[1:T], S=T, M=4, maxIter=1, initialM = rep(0, 55), initialL = diag(0.1, 55)),
-               DLM_SGA(y=y[1:T], S=T, M=5, maxIter=1, initialM = rep(0, 55), initialL = diag(0.1, 55)),
-               DLM_SGA(y=y[1:T], S=T, M=1, maxIter=10, initialM = rep(0, 55), initialL = diag(0.1, 55)),
-               DLM_SGA(y=y[1:T], S=T, M=2, maxIter=10, initialM = rep(0, 55), initialL = diag(0.1, 55)),
-               DLM_SGA(y=y[1:T], S=T, M=3, maxIter=10, initialM = rep(0, 55), initialL = diag(0.1, 55)),
-               DLM_SGA(y=y[1:T], S=T, M=4, maxIter=10, initialM = rep(0, 55), initialL = diag(0.1, 55)),
-               DLM_SGA(y=y[1:T], S=T, M=5, maxIter=10, initialM = rep(0, 55), initialL = diag(0.1, 55)),
-               DLM_SGA(y=y[1:T], S=T, M=1, maxIter=20, initialM = rep(0, 55), initialL = diag(0.1, 55)),
-               DLM_SGA(y=y[1:T], S=T, M=2, maxIter=20, initialM = rep(0, 55), initialL = diag(0.1, 55)),
-               DLM_SGA(y=y[1:T], S=T, M=3, maxIter=20, initialM = rep(0, 55), initialL = diag(0.1, 55)),
-               DLM_SGA(y=y[1:T], S=T, M=4, maxIter=20, initialM = rep(0, 55), initialL = diag(0.1, 55)),
-               DLM_SGA(y=y[1:T], S=T, M=5, maxIter=20, initialM = rep(0, 55), initialL = diag(0.1, 55)),
-               DLM_SGA(y=y[1:T], S=T, M=1, maxIter=1, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE),
-               DLM_SGA(y=y[1:T], S=T, M=2, maxIter=1, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE),
-               DLM_SGA(y=y[1:T], S=T, M=3, maxIter=1, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE),
-               DLM_SGA(y=y[1:T], S=T, M=4, maxIter=1, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE),
-               DLM_SGA(y=y[1:T], S=T, M=5, maxIter=1, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE),
-               DLM_SGA(y=y[1:T], S=T, M=1, maxIter=10, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE),
-               DLM_SGA(y=y[1:T], S=T, M=2, maxIter=10, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE),
-               DLM_SGA(y=y[1:T], S=T, M=3, maxIter=10, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE),
-               DLM_SGA(y=y[1:T], S=T, M=4, maxIter=10, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE),
-               DLM_SGA(y=y[1:T], S=T, M=5, maxIter=10, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE),
-               DLM_SGA(y=y[1:T], S=T, M=1, maxIter=20, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE),
-               DLM_SGA(y=y[1:T], S=T, M=2, maxIter=20, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE),
-               DLM_SGA(y=y[1:T], S=T, M=3, maxIter=20, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE),
-               DLM_SGA(y=y[1:T], S=T, M=4, maxIter=20, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE),
-               DLM_SGA(y=y[1:T], S=T, M=5, maxIter=20, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE),
+               DLM_SGA(y=y[1:T], S=T, M=1, maxIter=1, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55)),
+               DLM_SGA(y=y[1:T], S=T, M=5, maxIter=1, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55)),
+               DLM_SGA(y=y[1:T], S=T, M=10, maxIter=1, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55)),
+               DLM_SGA(y=y[1:T], S=T, M=50, maxIter=1, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55)),
+               DLM_SGA(y=y[1:T], S=T, M=100, maxIter=1, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55)),
+               DLM_SGA(y=y[1:T], S=T, M=1, maxIter=10, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55)),
+               DLM_SGA(y=y[1:T], S=T, M=5, maxIter=10, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55)),
+               DLM_SGA(y=y[1:T], S=T, M=10, maxIter=10, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55)),
+               DLM_SGA(y=y[1:T], S=T, M=50, maxIter=10, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55)),
+               DLM_SGA(y=y[1:T], S=T, M=100, maxIter=10, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55)),
+               DLM_SGA(y=y[1:T], S=T, M=1, maxIter=20, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55)),
+               DLM_SGA(y=y[1:T], S=T, M=5, maxIter=20, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55)),
+               DLM_SGA(y=y[1:T], S=T, M=10, maxIter=20, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55)),
+               DLM_SGA(y=y[1:T], S=T, M=50, maxIter=20, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55)),
+               DLM_SGA(y=y[1:T], S=T, M=100, maxIter=20, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55)),
+               DLM_SGA(y=y[1:T], S=T, M=1, maxIter=1, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55), meanfield=TRUE),
+               DLM_SGA(y=y[1:T], S=T, M=5, maxIter=1, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55), meanfield=TRUE),
+               DLM_SGA(y=y[1:T], S=T, M=10, maxIter=1, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55), meanfield=TRUE),
+               DLM_SGA(y=y[1:T], S=T, M=50, maxIter=1, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55), meanfield=TRUE),
+               DLM_SGA(y=y[1:T], S=T, M=100, maxIter=1, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55), meanfield=TRUE),
+               DLM_SGA(y=y[1:T], S=T, M=1, maxIter=10, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55), meanfield=TRUE),
+               DLM_SGA(y=y[1:T], S=T, M=5, maxIter=10, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55), meanfield=TRUE),
+               DLM_SGA(y=y[1:T], S=T, M=10, maxIter=10, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55), meanfield=TRUE),
+               DLM_SGA(y=y[1:T], S=T, M=50, maxIter=10, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55), meanfield=TRUE),
+               DLM_SGA(y=y[1:T], S=T, M=100, maxIter=10, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55), meanfield=TRUE),
+               DLM_SGA(y=y[1:T], S=T, M=1, maxIter=20, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55), meanfield=TRUE),
+               DLM_SGA(y=y[1:T], S=T, M=5, maxIter=20, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55), meanfield=TRUE),
+               DLM_SGA(y=y[1:T], S=T, M=10, maxIter=20, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55), meanfield=TRUE),
+               DLM_SGA(y=y[1:T], S=T, M=50, maxIter=20, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55), meanfield=TRUE),
+               DLM_SGA(y=y[1:T], S=T, M=100, maxIter=20, initialM = c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55), meanfield=TRUE),
                times = 5L, control=list(order='inorder'))
-runtime = data.frame(M=rep(rep(1:5, 3), 10),
+runtime = data.frame(M=rep(c(1, 5, 10, 50, 100), 30),
                      Iter=rep(rep(c(1, 10, 20), rep(5, 3)), 10),
                      Covariance = rep(rep(c("Non-Diagonal", "Diagonal"), rep(15, 2)), 5),
                      time=timings$time) 
 timeMod = lm(time ~ M*Iter*Covariance, data=runtime)
-stats$runtime = predict(timeMod, newdata=stats)/1000000000
-ggplot(stats, aes(x=Iter, y=ELBO, colour=factor(M))) + geom_point() + facet_wrap(~Covariance, scales = "free")
-ggplot(stats, aes(x=runtime, y=ELBO, colour=factor(M))) + geom_point() + facet_wrap(~Covariance, scales="free") +
+ELBOfit$runtime = predict(timeMod, newdata=ELBOfit)/1000000000
+ggplot(ELBOfit, aes(x=runtime, y=ELBO, colour=factor(M))) + geom_point() + facet_wrap(~Covariance) +
   labs(x="Total Runtime (seconds)", y="Converged ELBO") + scale_color_discrete(name="Simulations per Iteration")
 
 
@@ -159,7 +164,7 @@ set.seed(1)
 FRVB = list()
 FinalElbo = rep(0, 10)
 for(i in 1:10){
-  FRVB[[i]] = DLM_SGA(y=y[1:T], S=T, M=5, maxIter=5000, initialM = rep(0, 55), initialL = diag(0.1, 55))
+  FRVB[[i]] = DLM_SGA(y=y[1:T], S=T, M=100, maxIter=5000, initialM=c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL=diag(0.1, 55))
   FinalElbo[i] = tail(FRVB[[i]]$ELBO, 1)
 }
 FRVBInit = FRVB[[which.max(FinalElbo)]]
@@ -169,7 +174,7 @@ UpdateL[1:(T+5), 1:(T+5)] = FRVBInit$L
 FRVBU = list()
 UpdateElbo = rep(0, 10)
 for(i in 1:10){
-  FRVBU[[i]] = DLM_SGA(y=y[1:(T+J)], S=J, M=1, maxIter=5000, initialM=UpdateM, initialL=UpdateL)
+  FRVBU[[i]] = DLM_SGA(y=y[1:(T+J)], S=J, M=100, maxIter=5000, initialM=UpdateM, initialL=UpdateL)
   UpdateElbo[i] = tail(FRVBU[[i]]$ELBO, 1)
 }
 FRVBUpdate = FRVBU[[which.max(UpdateElbo)]]
@@ -177,20 +182,96 @@ FRVBUpdate = FRVBU[[which.max(UpdateElbo)]]
 MFVB = list()
 FinalElbo = rep(0, 10)
 for(i in 1:10){
-  MFVB[[i]] = DLM_SGA(y=y[1:T], S=T, M=1, maxIter=5000, initialM = rep(0, 55), initialL = diag(0.1, 55), meanfield=TRUE)
+  MFVB[[i]] = DLM_SGA(y=y[1:T], S=T, M=5, maxIter=5000, c(0, 0, 0, mean(y[1:T]), rep(0, 51)), initialL = diag(0.1, 55), meanfield=TRUE)
   FinalElbo[i] = tail(MFVB[[i]]$ELBO, 1)
 }
 MFVBInit = MFVB[[which.max(FinalElbo)]]
 UpdateM = c(MFVBInit$Mu, rep(0, J))
 UpdateL = diag(0.1, T+J+5)
-UpdateL[1:(T+5), 1:(T+5)] = MFVBInit$L
+diag(UpdateL[1:(T+5), 1:(T+5)]) = MFVBInit$Sd
 MFVBU = list()
 UpdateElbo = rep(0, 10)
 for(i in 1:10){
-  MFVBU[[i]] = DLM_SGA(y=y[1:(T+J)], S=J, M=1, maxIter=5000, initialM=UpdateM, initialL=UpdateL, meanfield=TRUE)
+  MFVBU[[i]] = DLM_SGA(y=y[1:(T+J)], S=J, M=5, maxIter=5000, initialM=UpdateM, initialL=UpdateL, meanfield=TRUE)
   UpdateElbo[i] = tail(MFVBU[[i]]$ELBO, 1)
 }
 MFVBUpdate = MFVBU[[which.max(UpdateElbo)]]
+
+#J + 1 step ahead FRVB Forecast no extra info
+
+ysupport = seq(min(y)-5, max(y)+5, length.out=1000)
+ydensVB = rep(0, 1000)
+ydensMF = rep(0, 1000)
+frSigmaInit = FRVBInit$L %*% t(FRVBInit$L)
+
+for(i in 1:10000){
+  draw = rmvnorm(1, c(FRVBInit$Mu), frSigmaInit)
+  phiprod = rep(1, J+1)
+  for(i in 2:(J+1)){
+    phiprod[i] = draw[3] * phiprod[i-1]
+  }
+  ydensVB = ydensVB + dnorm(ysupport, draw[4] + draw[3]^J*draw[T+5], sqrt(exp(draw[1]) + sum(exp(draw[2])*phiprod)))/10000
+}
+for(i in 1:10000){
+  sigyd = exp(rnorm(1, MFVBInit$Mu[1], MFVBInit$Sd[1]))
+  sigxd = exp(rnorm(1, MFVBInit$Mu[2], MFVBInit$Sd[2]))
+  phid = rnorm(1, MFVBInit$Mu[3], MFVBInit$Sd[3])
+  gammad = rnorm(1, MFVBInit$Mu[4], MFVBInit$Sd[4])
+  XTd = rnorm(1, MFVBInit$Mu[T+5], MFVBInit$Sd[T+5])
+  phiprod = rep(1, J+1)
+  for(i in 2:(J+1)){
+    phiprod[i] = phid * phiprod[i-1]
+  }
+  ydensMF = ydensMF + dnorm(ysupport, gammad + phid^J*XTd, sqrt(sigyd + sum(sigxd*phiprod)))/10000
+}
+
+# One step ahead forecast using y_{T+1:T+J}, not updating thetas
+ydensVB2 = rep(0, 1000)
+ydensMF2 = rep(0, 1000)
+for(i in 1:10000){
+  sigyd = exp(rnorm(1, MFVBInit$Mu[1], MFVBInit$Sd[1]))
+  sigxd = exp(rnorm(1, MFVBInit$Mu[2], MFVBInit$Sd[2]))
+  phid = rnorm(1, MFVBInit$Mu[3], MFVBInit$Sd[3])
+  gammad = rnorm(1, MFVBInit$Mu[4], MFVBInit$Sd[4])
+  XTd = rnorm(1, MFVBInit$Mu[T+5], MFVBInit$Sd[T+5])
+  XTS = FFUpdatercpp(y[(T+1):(T+J)], phid, gammad, sigyd, sigxd, XTd)
+  ydensMF2 = ydensMF2 + dnorm(ysupport, gammad + phid*XTS[1], sqrt(sigyd + phid^2 * XTS[2] + sigxd))/10000
+}
+for(i in 1:10000){
+  draw = rmvnorm(1, c(FRVBInit$Mu), frSigmaInit)
+  XTS = FFUpdatercpp(y[(T+1):(T+J)], draw[3], draw[4], exp(draw[1]), exp(draw[2]), draw[T+5])
+  ydensVB2 = ydensVB2 + dnorm(ysupport, draw[4] + draw[3]*XTS[1], sqrt(exp(draw[1]) + draw[3]^2 * XTS[2] + exp(draw[2])))/10000
+}
+
+
+# Update initial VB using all y_{T+1:T+J}
+ydensVB3 = rep(0, 1000)
+ydensMF3 = rep(0, 1000)
+for(i in 1:10000){
+  draw = rmvnorm(1, c(FRVBUpdate$Mu), frSigmaU)
+  ydensVB3 = ydensVB3 + dnorm(ysupport, draw[4] + draw[3]*draw[T+J+5], sqrt(exp(draw[1]) + exp(draw[2])))/10000
+}
+for(i in 1:10000){
+  sigyd = exp(rnorm(1, MFVBUpdate$Mu[1], MFVBUpdate$Sd[1]))
+  sigxd = exp(rnorm(1, MFVBUpdate$Mu[2], MFVBUpdate$Sd[2]))
+  phid = rnorm(1, MFVBUpdate$Mu[3], MFVBUpdate$Sd[3])
+  gammad = rnorm(1, MFVBUpdate$Mu[4], MFVBUpdate$Sd[4])
+  XTd = rnorm(1, MFVBUpdate$Mu[T+5], MFVBUpdate$Sd[T+5])
+  ydensMF3 = ydensMF3 + dnorm(ysupport, gammad + phid*XTd, sqrt(sigyd + sigxd))/10000
+}
+
+MCMCforecast = gather(data.frame(ysupport, ydens, ydens2, ydens3), version, density, -ysupport)
+MCMCforecast$method = "MCMC"
+MFforecast = gather(data.frame(ysupport, ydensMF, ydensMF2, ydensMF3), version, density, -ysupport)
+MFforecast$method = "Meanfield"
+FRforecast = gather(data.frame(ysupport, ydensVB, ydensVB2, ydensVB3), version, density, -ysupport)
+FRforecast$method = "FullRank"
+forecasts = rbind(MCMCforecast, MFforecast, FRforecast)
+forecasts$version = rep(rep(c("S+1 step", "filtered", "1 step"), rep(1000, 3)), 3)
+
+ggplot(forecasts, aes(x=ysupport, y=density, colour=method)) + facet_wrap(~version) + geom_line()
+
+
 
 
 
