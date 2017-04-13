@@ -53,7 +53,7 @@ for(i in 1:10000){
   xTDraw = xdrawKeep[u, T+1]
   phiprod = rep(1, J+1)
   for(i in 2:(J+1)){
-    phiprod[i] = phiDraw * phiprod[i-1]
+    phiprod[i] = phiDraw^2 * phiprod[i-1]
   }
   ydens = ydens + dnorm(ysupport, gammaDraw + phi^J*xTDraw, sqrt(sigyDraw + sum(sigxDraw*phiprod)))/10000
 }
@@ -89,8 +89,6 @@ for(i in 1:10000){
 
 ggplot() + geom_line(aes(ysupport, ydens), colour = "red") +geom_line(aes(ysupport, ydens2), colour = "blue") +
   geom_line(aes(ysupport, ydens3), colour = "darkgreen") + geom_vline(aes(xintercept=y[61]))
-
-
 
 # Variational Bayes
 set.seed(1)
@@ -247,6 +245,7 @@ for(i in 1:10000){
 # Update initial VB using all y_{T+1:T+J}
 ydensVB3 = rep(0, 1000)
 ydensMF3 = rep(0, 1000)
+frSigmaU = FRVBUpdate$L %*% t(FRVBUpdate$L)
 for(i in 1:10000){
   draw = rmvnorm(1, c(FRVBUpdate$Mu), frSigmaU)
   ydensVB3 = ydensVB3 + dnorm(ysupport, draw[4] + draw[3]*draw[T+J+5], sqrt(exp(draw[1]) + exp(draw[2])))/10000
@@ -269,11 +268,8 @@ FRforecast$method = "FullRank"
 forecasts = rbind(MCMCforecast, MFforecast, FRforecast)
 forecasts$version = rep(rep(c("S+1 step", "filtered", "1 step"), rep(1000, 3)), 3)
 
+ggplot(forecasts, aes(x=ysupport, y=density, colour=version)) + facet_wrap(~method) + geom_line()
 ggplot(forecasts, aes(x=ysupport, y=density, colour=method)) + facet_wrap(~version) + geom_line()
-
-
-
-
 
 # Vine Copula
 

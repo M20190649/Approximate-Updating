@@ -58,8 +58,6 @@ vec FFUpdatercpp(vec y, double phi, double gamma, double sigmaSqY, double sigmaS
   return output;
 }
 
-
-
 // [[Rcpp::export]]
 rowvec FFBScpp(vec y, rowvec theta){
   int T = y.size();
