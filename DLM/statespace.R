@@ -295,10 +295,6 @@ for(t in 3:(T+1)){
 
 VineNoIndep = RVineCopSelect(cbind(pobtheta, pobx), Matrix=VineMatrix, cores=4, trunclevel=5)
 
-
-
-
-
 # Marginal Selection
 
 fitdist(thetaKeep[,3], "truncnorm", fix.arg =  list(a = -1, b = 1), start = list(mean = 0, sd = 1), method = "mle")$bic
