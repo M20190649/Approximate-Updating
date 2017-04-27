@@ -34,15 +34,15 @@ rowvec FFcpp(vec y, double phi, double gamma, double sigmaSqY, double sigmaSqX, 
 }
 
 // [[Rcpp::export]]
-vec FFUpdatercpp(vec y, double phi, double gamma, double sigmaSqY, double sigmaSqX, double XT){
+vec FFUpdatercpp(vec y, double phi, double gamma, double sigmaSqY, double sigmaSqX, double xTmean, double xTvar){
   int J = y.n_elem;
   y -= gamma;
   vec at(J);
   vec pt(J);
   vec att(J);
   vec ptt(J);
-  at[0] = phi*XT;
-  pt[0] = sigmaSqX;
+  at[0] = phi*xTmean;
+  pt[0] = pow(phi, 2)*xTvar + sigmaSqX;
   double vt = y[0] - at[0];
   att[0] = at[0] + pt[0] * vt / (pt[0] + sigmaSqY);
   ptt[0] = pt[0] - pow(pt[0], 2) / (pt[0] + sigmaSqY);
@@ -66,7 +66,7 @@ rowvec FFBScpp(vec y, rowvec theta){
   //forward filter steps
   vec att(T, fill::ones); //0 - (T-1) -> x1 - xT
   vec ptt(T, fill::ones);
-  rowvec draws(T+1); //0 - T -> x0 - xT
+  rowvec draws(T+3); //0 - T -> x0 - xT
   double at;
   double pt = pow(theta[2], 2)*theta[1] + theta[1];
   double vt = y[0];
@@ -97,6 +97,8 @@ rowvec FFBScpp(vec y, rowvec theta){
   atT[0] = theta[2]*draws[1] / (pow(theta[2], 2) + 1);
   ptT[0] = theta[1] / (pow(theta[2], 2) + 1);
   draws[0] = atT[0] + sqrt(ptT[0]) * randn<vec>(1)[0];
+  draws[T+1] = att[T-1];
+  draws[T+2] = ptt[T-1];
   
   return draws;
 }
@@ -105,7 +107,7 @@ rowvec FFBScpp(vec y, rowvec theta){
 Rcpp::List DLM_MCMC(vec y, int reps){
   int T = y.n_elem;
   mat theta(reps, 4);
-  mat x(reps, T+1, fill::zeros);
+  mat x(reps, T+3, fill::randn);
   rowvec initial = {1, 1, 0, 0};
   theta.row(0) = initial;
   
@@ -119,27 +121,25 @@ Rcpp::List DLM_MCMC(vec y, int reps){
   double meanGammaDenom;
 
   for(int i = 1; i < reps; ++i){
-    x.row(i) = FFBScpp(y, theta.row(i-1));
-    
     //sigmaSqY ~ IG(shape, scale)
     sigmaSqYScale = 1;
     for(int t = 0; t < T; ++t){
-      sigmaSqYScale += pow(y[t] - x(i, t+1) - theta(i-1, 3), 2) / 2;
+      sigmaSqYScale += pow(y[t] - x(i-1, t+1) - theta(i-1, 3), 2) / 2;
     }
     theta(i, 0) = (1 / randg<vec>(1, distr_param(sigmaSqYShape, 1/sigmaSqYScale)))[0];
     
     //sigmaSqX ~ IG(shape, scale)
     sigmaSqXScale = 1 + pow(x(i, 0), 2) / 2;
     for(int t = 0; t < T; ++t){
-      sigmaSqXScale += pow(x(i, t+1) - theta(i-1, 2)*x(i, t), 2) / 2;
+      sigmaSqXScale += pow(x(i-1, t+1) - theta(i-1, 2)*x(i-1, t), 2) / 2;
     }
     theta(i, 1) = (1 / randg<vec>(1, distr_param(sigmaSqXShape, 1/sigmaSqXScale)))[0];
     
     //phi ~ TruncNormal(mean, var, low = -1, high = 1)
     meanPhiNumer = meanPhiDenom = 0;
     for(int t = 0; t < T; ++t){
-      meanPhiNumer += x(i, t) * x(i, t+1);
-      meanPhiDenom += pow(x(i, t), 2);
+      meanPhiNumer += x(i-1, t) * x(i-1, t+1);
+      meanPhiDenom += pow(x(i-1, t), 2);
     }
     theta(i, 2) = (meanPhiNumer/meanPhiDenom + sqrt(theta(i, 1)/meanPhiDenom) * randn<vec>(1))[0];
     
@@ -147,9 +147,11 @@ Rcpp::List DLM_MCMC(vec y, int reps){
     meanGammaNumer = 0;
     meanGammaDenom = 10*T + theta(i, 0);
     for(int t = 0; t < T; ++t){
-      meanGammaNumer += 10 * y[t] - x(i, t+1);
+      meanGammaNumer += 10 * y[t] - x(i-1, t+1);
     }
     theta(i, 3) = (meanGammaNumer/meanGammaDenom + sqrt(10*theta(i, 0)/meanGammaDenom) * randn<vec>(1))[0];
+    
+    x.row(i) = FFBScpp(y, theta.row(i));
   }
   
   return Rcpp::List::create(Rcpp::Named("theta") = theta, Rcpp::Named("x") = x);

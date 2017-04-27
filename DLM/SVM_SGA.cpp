@@ -146,6 +146,26 @@ Uniform::Uniform (double mi, double ma){
   max = ma;
 }
 
+class YStardist: public Distribution{
+public:  
+  double alpha;
+  YStardist(double);
+  void set_values(double a){
+    alpha = a;
+  }
+  void increase_values(double a){
+    alpha += a;
+  }
+  double logdens (double y){
+    double constant = -0.5 * log(2*3.141593);
+    double kernel = 0.5 * (y - alpha - exp(y - alpha));
+    return constant + kernel;
+  }
+};
+
+YStardist::YStardist(double a){
+  alpha = a;
+}
 
 cube qSim (MultiNormal* qLatent, int n_samples, int p){
   // We want to return the matrix of epsilons (treat each row as a different realisation of a p-dimensional N(0, I))
@@ -164,10 +184,10 @@ cube qSim (MultiNormal* qLatent, int n_samples, int p){
   return output;
 }
 
-double pdens (Normal* Y[], vec y, Distribution* pLatent[], rowvec latent, int T, int p){
+double pdens (YStardist* Y[], vec y, Distribution* pLatent[], rowvec latent, int T, int p){
   // Evaluates sum(log(p(yt|xt, theta))) + sum(log(p(xt | xt-1, theta))) + sum(log(p(theta))) 
   double priorDens = 0;
-  // as the IG logdens function takes log(sigmaSq) as an input we keep so it uses latent instead of exp(latent)
+  // as the IG logdens function takes log(sigmaSq) as an input this uses latent instead of exp(latent)
   for(int i = 0; i < p; ++i){
     // Prior also includes all of the latent state densities
     priorDens += pLatent[i]->logdens(latent[i]);
@@ -180,22 +200,22 @@ double pdens (Normal* Y[], vec y, Distribution* pLatent[], rowvec latent, int T,
   return priorDens + dataDens;
 }
 
-void updateP (Normal* Y[], Distribution* pLatent[], rowvec latent, int T){
+void updateP (YStardist* Y[], Distribution* pLatent[], rowvec latent, int T){
   // This function updates the parameters of p using a sample of q (when the distributions in p have dependencies)
-  // latent[0] = log(sigmaSqY), latent[1] = log(sigmaSqX), latent[2] = phi, latent[3] = mu, latent[4],...,latentT+5] = x_0, ..., x_T
-  dynamic_cast<Normal*>(pLatent[4])->set_values(0.0, 2.78*exp(latent[1])); //X_0 ~ N(0, sigmaSqX / 1-phi^2) 
+  // latent[0] = log(sigmaSq), latent[1] = gamma, latent[2] = phi, latent[4],...,latentT+4] = a_0, ..., a_T
+  dynamic_cast<Normal*>(pLatent[4])->set_values(0.0, 4*exp(latent[1])); //a_0 ~ N(0, sigmaSq / 1-phi^2) 
   // I need an efficient way to sample phi from (-1, 1) as phi outside this range causes negative variance
-  // The true value of phi is 0.8, which gives x0 a variance of 2.78*sigmaSqX, so use it until I can fix the phi sampler 
+  // 2*sigmasq is the marginal variance that occurs when phi = 0.7 
   for(int t = 0; t < T; ++t){
     // Despite the set_values function in Distribution being overwritten with the version in Normal,
     // unless I explicitly say to use the Normal version (via dynamic cast) this was using the distribution version of set_values (now removed)
-    dynamic_cast<Normal*>(pLatent[t+5])->set_values(latent[2] * latent[t+4], exp(latent[1])); //X_t ~ N(phi*x_t-1, sigmaSqX)
-    // Y is a Normal* object not a Distribution* object so it avoids the problem as the compiler knows to use Normal::logdens
-    Y[t]->set_values(latent[3] + latent[t+5], exp(latent[0])); //Y_t ~N(mu + x_t, sigmaSqY)
+    dynamic_cast<Normal*>(pLatent[t+4])->set_values(latent[1] + latent[2] * latent[t+3], exp(latent[0])); //a_t ~ N(gamma + phi*a_t-1, sigmaSq)
+    // Y is a not a Distribution* object so it avoids the problem
+    Y[t]->set_values(latent[t+4]); //Y_t - alpha_t ~ log(chi^2_1)
   }
 } 
 
-double ELBO (Normal* Y[], vec y, Distribution* pLatent[], MultiNormal* qLatent, int T, int p, int n = 250){
+double ELBO (YStardist* Y[], vec y, Distribution* pLatent[], MultiNormal* qLatent, int T, int p, int n = 250){
   // Evaluates the ELBO as an expectation over n simulations of theta & x
   // sample theta - don't need epsilon for this so only keep the theta slice
   mat latentSims = qSim(qLatent, n, p).slice(0);
@@ -219,49 +239,43 @@ rowvec reparamDeriv (vec y, MultiNormal* qLatent, rowvec latent, rowvec epsilon,
   // dqdL = derivative of q wrt L
   double dpdf = 0; //Initialise to 0 
   latent[0] = exp(latent[0]); // transform to sigmaSq to make p(y, theta) a little bit easier to deal with
-  latent[1] = exp(latent[1]);
   // Next is the derivatives of p(y, theta) wrt theta.
-  if(i == 0){ //sigmaSqY
-    dpdf = -(T/2 + 2) / latent[i] + 1 / pow(latent[i], 2);
-    for(int t = 0; t < T; ++t){
-      dpdf += pow(y[t] - latent[3] - latent[t+5], 2) / (2 * pow(latent[i], 2));
-    }
-  } else if(i == 1){  //sigmaSqX
+  if(i == 0){ //sigmaSq
     dpdf = -(T/2 + 5/2) / latent[i] + 1 / pow(latent[i], 2) + pow(latent[4], 2) * (1 - pow(latent[2], 2)) / (2 * pow(latent[i], 2));
-    for(int t = 5; t < T+5; ++t){
-      dpdf += pow(latent[t] - latent[2]*latent[t-1], 2) / (2 * pow(latent[i], 2));
+    for(int t = 4; t < T+4; ++t){
+      dpdf += pow(latent[t] - latent[1] - latent[2]*latent[t-1], 2) / (2 * pow(latent[i], 2));
+    }
+  } else if(i == 1){  //Gamma
+    dpdf = - latent[i] / 100;
+    for(int t = 4; t < T+4; ++t){
+      dpdf -= (latent[i] + latent[2]*latent[t-1] - latent[t])  / latent[0];
     }
   } else if(i == 2){ //Phi
-    dpdf = latent[i] / (1 - pow(latent[i], 2)) - latent[i] * pow(latent[4], 2) / latent[1];
-    for(int t = 5; t < T+5; ++t){
-      dpdf += (latent[t]*latent[t-1] - latent[i]*pow(latent[t-1], 2)) / latent[1];
+    dpdf = latent[i] / (1 - pow(latent[i], 2)) - latent[i] * pow(latent[3], 2) / latent[0];
+    for(int t = 4; t < T+4; ++t){
+      dpdf += (latent[t]*latent[t-1] - latent[i]*pow(latent[t-1], 2) - latent[t-1]*latent[1]) / latent[0];
     }
-  } else if(i == 3){ //Mu
-    dpdf = - latent[i] / 100;
-    for(int t = 0; t < T; ++t){
-      dpdf -= (latent[i] + latent[t+5] - y[t]) / latent[0];
-    }
-  } else if(i == 4){ //X0
-    dpdf = (1 - latent[5])*latent[i] / latent[1];
-  } else if(i == T+4){ //XT
-    dpdf = (y[i-5] - latent[3] - latent[i]) / latent[0] - (latent[i] - latent[2]*latent[i-1]) / latent[1];
-  } else { //X1 ... XT-1
-    dpdf = (y[i-5] - latent[3] - latent[i]) / latent[0] - (latent[i] - latent[2]*latent[i-1]) / latent[1] +
-      latent[2] * (latent[i+1] - latent[2] * latent[i]) / latent[1];
+  } else if(i == 3){ //Alpha0
+    dpdf = - latent[i] * (1 - latent[4] + latent[1]) / latent[0];
+  } else if(i == T+3){ //AlphaT
+    dpdf = (1 + exp(y[T-1] - latent[i])) * 0.5 - (latent[i] - latent[1] - latent[2]*latent[i-1]) / latent[0];
+  } else { //A1 ... AT-1
+    dpdf = (y[i-4] - latent[3] - latent[i]) / latent[0] - (latent[i] - latent[1] - latent[2]*latent[i-1]) / latent[0] +
+      latent[2] * (latent[i+1] - latent[2] * latent[i] - latent[1]) / latent[0];
   }
   
   double dfdm = 1; //theta = mu + sum(L*eps) for i > 2. Derivative of 1.
   double dqdm = 0; // dq/dmu is zero except for i = 1, 2
-  vec dfdL(T+5, fill::zeros);
+  vec dfdL(T+4, fill::zeros);
   if(meanfield){
-    dfdL[i] = epsilon[i];
+      dfdL[i] = epsilon[i];
   } else {
-    for(int j = 0; j <= i; ++j){ //Each L_ij (j <= i) has a derivative of epsilon_j, zero otherwise
-      dfdL[j] = epsilon[j];
+      for(int j = 0; j <= i; ++j){ //Each L_ij (j <= i) has a derivative of epsilon_j, zero otherwise
+        dfdL[j] = epsilon[j];
+      }
     }
-  }
   // lnq = -( mu1 + mu2 + sum(log(Lii) for i = 1, ..., p) + L11eps1 + L21eps1 + L22eps2) + ln(p(eps))
-  vec dqdL(T+5, fill::zeros);
+  vec dqdL(T+4, fill::zeros);
   dqdL[i] = -1/qLatent->chol_diag(i); // dq/DLij is -1/Lij for i = j, otherwise = 0 
   if(i == 0){
     dfdm = latent[i];
@@ -269,11 +283,12 @@ rowvec reparamDeriv (vec y, MultiNormal* qLatent, rowvec latent, rowvec epsilon,
     dqdm = -1;
     dqdL[i] -= epsilon[i];
   }
-  rowvec derivs(T+6, fill::zeros);
+  rowvec derivs(T+5, fill::zeros);
   derivs[0] = dpdf*dfdm - dqdm;
-  derivs.tail(T+5) = dpdf*dfdL.t() - dqdL.t();
+  derivs.tail(T+4) = dpdf*dfdL.t() - dqdL.t();
   return derivs;
 }
+
 
 void updateQ (MultiNormal* qLatent, mat updates, int p){
   // via lambda(t+1) = lambda(t) + Pt dELBO/dlambda
@@ -284,7 +299,7 @@ void updateQ (MultiNormal* qLatent, mat updates, int p){
 }
 
 // [[Rcpp::export]]
-Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL, double threshold=0.01, 
+Rcpp::List SVM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL, double threshold=0.01, 
                    double alpha=0.01, double beta1=0.9, double beta2=0.999, bool Adam=true, bool meanfield=false){
   // Initialise everything we are going to need
   // T is treated as the total length of y, which is T+S in the written report.
@@ -293,29 +308,28 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
   int T = y.n_elem;
   if(S > T){
     // This would imply that the original MCMC is based on data up to y_{T-S < 0}
-    Rcpp::Rcout << "Error: S must be equal to or less than the length of y" << std::endl;
+    Rcpp::Rcout << "Error: S must be less than or equal to the length of y" << std::endl;
     return Rcpp::List::create();
   }
-  mat e(T+5, T+6);
+  mat e(T+4, T+5);
   e.fill(pow(10, -8));
-  mat Mt(T+5, T+6, fill::zeros); // doubles as AdaGrad's Gt
-  mat Vt(T+5, T+6, fill::zeros); // doubles as AdaGrad's Pt
+  mat Mt(T+4, T+5, fill::zeros); // doubles as AdaGrad's Gt
+  mat Vt(T+4, T+5, fill::zeros); // doubles as AdaGrad's Pt
   mat MtHat;
   mat VtHat;
-  mat partials(T+5, T+6); // Partials will be reset to zero at the start of every iteration
+  mat partials(T+4, T+5); // Partials will be reset to zero at the start of every iteration
   
   // Set up distribution objects. We will use the pointers to these as arguments for the functions SGA_DLM calls.
-  Normal* Y[T];
-  Distribution* pLatent[T+5]; // pLatent contains Normals and Inverse Gammas, so must use the superclass. This makes dynamic casts required.
+  YStardist* Y[T];
+  Distribution* pLatent[T+4]; // pLatent contains Normals and Inverse Gammas, so must use the superclass. This makes dynamic casts required.
   MultiNormal* qLatent;
   pLatent[0] = new InverseGamma(1, 1);
-  pLatent[1] = new InverseGamma(1, 1); 
+  pLatent[1] = new Normal(0, 10); 
   pLatent[2] = new Uniform(-1, 1); 
-  pLatent[3] = new Normal(0, 5); 
-  pLatent[4] = new Normal(0, 2);
+  pLatent[3] = new Normal(0, 2);
   for(int i = 0; i < T; ++i){
-    Y[i] = new Normal(0, 1);
-    pLatent[i+5] = new Normal(0, 1);
+    Y[i] = new YStardist(1);
+    pLatent[i+4] = new Normal(0, 1);
   }
   qLatent = new MultiNormal(initialM, initialL);
   
@@ -324,7 +338,7 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
   // Vector of ELBO value for each iteration
   vec LB(maxIter+1, fill::zeros);
   // ELBO for initial values
-  LB[0] = ELBO(Y, y, pLatent, qLatent, T, T+5);
+  LB[0] = ELBO(Y, y, pLatent, qLatent, T, T+4);
   double diff = threshold + 1;
   
   // Repeat until convergence, make sure it doesnt just stop after one - 20 is pretty arbitary but small enough to not matter
@@ -336,7 +350,7 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
     // Reset partial derivatives
     partials.fill(0);
     // Simulate S times from q
-    cube Sims = qSim(qLatent, M, T+5);
+    cube Sims = qSim(qLatent, M, T+4);
     // It is easier to split the cube into two matrices now, as calling a row of a matrix of a cube via Sims.slice(i).row(j) doesn't work. 
     // Subcube views can extract the row but it will be stored as a cube object instead of a row vector.
     // This is a bit redundant memory wise but these are not large objects anyway.                                                            
@@ -345,16 +359,16 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
     // Derivatives are an average of our M samples
     for(int m = 0; m < M; ++m){ 
       updateP(Y, pLatent, latentSims.row(m), T); // Update p distribution parameters based on simulation results
-      for(int i = 0; i < 4; ++i){ // Calculate Partial Derivatives wrt global parameters
+      for(int i = 0; i < 3; ++i){ // Calculate Partial Derivatives wrt global parameters
         partials.row(i) += reparamDeriv(y, qLatent, latentSims.row(m), epsilon.row(m), T, i, meanfield)/M;
       }
       if(S == T){ // If S=T, then we want to estimate all T states AND x0. Below we do T-S+5 to start at X_{T-S}, but when
-                  // S=T we also want to estimate x0, so we need T-S+4 which just equals 4.
-        for(int i = 4; i < T+5; ++i){
+        // S=T we also want to estimate x0, so we need T-S+4 which just equals 4.
+        for(int i = 3; i < T+4; ++i){
           partials.row(i) += reparamDeriv(y, qLatent, latentSims.row(m), epsilon.row(m), T, i, meanfield)/M;
         } 
       } else { // If S<T, then we want to estimate X_{T-S} to X_T. 
-        for(int i = T-S+5; i < T+5; ++i){
+        for(int i = T-S+4; i < T+4; ++i){
           partials.row(i) += reparamDeriv(y, qLatent, latentSims.row(m), epsilon.row(m), T, i, meanfield)/M;
         }
       }
@@ -365,12 +379,12 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
       Vt = beta2*Vt + (1-beta2)*pow(partials, 2);
       MtHat = Mt / (1 - pow(beta1, iter)); // Corrects bias
       VtHat = Vt / (1 - pow(beta2, iter));
-      updateQ(qLatent, alpha * MtHat / (sqrt(VtHat) + e), T+5); // Size of step depends on second moments and alpha
+      updateQ(qLatent, alpha * MtHat / (sqrt(VtHat) + e), T+4); // Size of step depends on second moments and alpha
     } else {
-    // AdaGrad Updating is available as it was the original method I used in the confirmation etc. 
-    // Partial updating not yet implemented
+      // AdaGrad Updating is available as it was the original method I used in the confirmation etc. 
+      // Partial updating not yet implemented
       Mt += pow(partials, 2); // sum of squared derivatives
-      for(int i = 0; i < T+5; ++i){
+      for(int i = 0; i < T+4; ++i){
         if(meanfield){
           Vt(i, 0) = alpha * pow(Mt(i, 0), -0.5); // Size of step depends on squared derivatives
           Vt(i, i+1) = alpha * pow(Mt(i, i+1), -0.5);
@@ -379,10 +393,10 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
             Vt(i, j) = alpha * pow(Mt(i, j), -0.5);
           }
         }
-       }
-      updateQ(qLatent, Vt % partials, T+5);
+      }
+      updateQ(qLatent, Vt % partials, T+4);
     }
-    LB[iter] = ELBO(Y, y, pLatent, qLatent, T, T+5); // Calculate ELBO with new values
+    LB[iter] = ELBO(Y, y, pLatent, qLatent, T, T+4); // Calculate ELBO with new values
     diff = abs(LB[iter] - LB[iter-1]); // Check difference after one extra iteration.
   } // End of while loop
   if(iter <= maxIter){
@@ -399,7 +413,7 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
   if(meanfield){
     // Not interested in the whole L matrix for the meanfield, just the vector of standard deviations
     vec sd = qLatent->chol.diag();
-    for(int i = 0; i < T+5; ++i){
+    for(int i = 0; i < T+4; ++i){
       if(sd[i] < 0){
         sd[i] = -sd[i]; // L values can be negative, sd cannot
       }
@@ -411,9 +425,8 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
     
   } else {
     return Rcpp::List::create(Rcpp::Named("Mu") = qLatent->mean,
-                            Rcpp::Named("L") = qLatent->chol,
-                            Rcpp::Named("ELBO") = LB,
-                            Rcpp::Named("Iter") = iter);
+                              Rcpp::Named("L") = qLatent->chol,
+                              Rcpp::Named("ELBO") = LB,
+                              Rcpp::Named("Iter") = iter);
   }
 }
-
