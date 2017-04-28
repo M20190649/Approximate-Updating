@@ -222,12 +222,12 @@ rowvec reparamDeriv (vec y, MultiNormal* qLatent, rowvec latent, rowvec epsilon,
   latent[1] = exp(latent[1]);
   // Next is the derivatives of p(y, theta) wrt theta.
   if(i == 0){ //sigmaSqY
-    dpdf = -(T/2 + 2) / latent[i] + 1 / pow(latent[i], 2);
+    dpdf = -(0.5*T + 2) / latent[i] + 1 / pow(latent[i], 2);
     for(int t = 0; t < T; ++t){
       dpdf += pow(y[t] - latent[3] - latent[t+5], 2) / (2 * pow(latent[i], 2));
     }
   } else if(i == 1){  //sigmaSqX
-    dpdf = -(T/2 + 5/2) / latent[i] + 1 / pow(latent[i], 2) + pow(latent[4], 2) * (1 - pow(latent[2], 2)) / (2 * pow(latent[i], 2));
+    dpdf = -(0.5*T + 2.5) / latent[i] + 1 / pow(latent[i], 2) + pow(latent[4], 2) * (1 - pow(latent[2], 2)) / (2 * pow(latent[i], 2));
     for(int t = 5; t < T+5; ++t){
       dpdf += pow(latent[t] - latent[2]*latent[t-1], 2) / (2 * pow(latent[i], 2));
     }

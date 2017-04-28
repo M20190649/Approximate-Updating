@@ -241,7 +241,7 @@ rowvec reparamDeriv (vec y, MultiNormal* qLatent, rowvec latent, rowvec epsilon,
   latent[0] = exp(latent[0]); // transform to sigmaSq to make p(y, theta) a little bit easier to deal with
   // Next is the derivatives of p(y, theta) wrt theta.
   if(i == 0){ //sigmaSq
-    dpdf = -(T/2 + 5/2) / latent[i] + 1 / pow(latent[i], 2) + pow(latent[4], 2) * (1 - pow(latent[2], 2)) / (2 * pow(latent[i], 2));
+    dpdf = -(0.5*T + 2.5) / latent[i] + 1 / pow(latent[i], 2) + pow(latent[4], 2) * (1 - pow(latent[2], 2)) / (2 * pow(latent[i], 2));
     for(int t = 4; t < T+4; ++t){
       dpdf += pow(latent[t] - latent[1] - latent[2]*latent[t-1], 2) / (2 * pow(latent[i], 2));
     }
@@ -260,7 +260,7 @@ rowvec reparamDeriv (vec y, MultiNormal* qLatent, rowvec latent, rowvec epsilon,
   } else if(i == T+3){ //AlphaT
     dpdf = (1 + exp(y[T-1] - latent[i])) * 0.5 - (latent[i] - latent[1] - latent[2]*latent[i-1]) / latent[0];
   } else { //A1 ... AT-1
-    dpdf = (y[i-4] - latent[3] - latent[i]) / latent[0] - (latent[i] - latent[1] - latent[2]*latent[i-1]) / latent[0] +
+    dpdf = (1 + exp(y[i-4] - latent[i])) * 0.5 - (latent[i] - latent[1] - latent[2]*latent[i-1]) / latent[0] +
       latent[2] * (latent[i+1] - latent[2] * latent[i] - latent[1]) / latent[0];
   }
   
