@@ -203,7 +203,7 @@ double pdens (YStardist* Y[], vec y, Distribution* pLatent[], rowvec latent, int
 void updateP (YStardist* Y[], Distribution* pLatent[], rowvec latent, int T){
   // This function updates the parameters of p using a sample of q (when the distributions in p have dependencies)
   // latent[0] = log(sigmaSq), latent[1] = gamma, latent[2] = phi, latent[4],...,latentT+4] = a_0, ..., a_T
-  dynamic_cast<Normal*>(pLatent[4])->set_values(0.0, 4*exp(latent[1])); //a_0 ~ N(0, sigmaSq / 1-phi^2) 
+  dynamic_cast<Normal*>(pLatent[4])->set_values(latent[1] / (1 - latent[2]), 4*exp(latent[2])); //a_0 ~ N(gamma / 1-phi, sigmaSq / 1-phi^2) 
   // I need an efficient way to sample phi from (-1, 1) as phi outside this range causes negative variance
   // 2*sigmasq is the marginal variance that occurs when phi = 0.7 
   for(int t = 0; t < T; ++t){

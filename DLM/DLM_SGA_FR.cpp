@@ -393,9 +393,9 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
   // The LB vector has length maxIter+1, extract the part we actually used (+1 to include initial LB).
   // If the ELBO didn't converge, the loop will add one to iter before checking iter > MaxIter, so don't do +1 in this case
   // Print some useful information to the console
-  Rcpp::Rcout << "Number of iterations: " << iter << std::endl;
-  Rcpp::Rcout << "Final ELBO: " << LB.tail(1) << std::endl; 
-  Rcpp::Rcout << "Final Change in ELBO: " << diff << std::endl;
+  //Rcpp::Rcout << "Number of iterations: " << iter << std::endl;
+  //Rcpp::Rcout << "Final ELBO: " << LB.tail(1) << std::endl; 
+  //Rcpp::Rcout << "Final Change in ELBO: " << diff << std::endl;
   if(meanfield){
     // Not interested in the whole L matrix for the meanfield, just the vector of standard deviations
     vec sd = qLatent->chol.diag();

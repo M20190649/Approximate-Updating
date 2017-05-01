@@ -29,7 +29,6 @@ KLdiv = function(p, q){
 }
 
 predictiveDensities = function(T, S, h, MCMCrep){
-  set.seed(5)
   x0 = rnorm(1, 0, sqrt(sigmaSqX))
   x = rep(0, T+S+h)
   y = rep(0, T+S+h)
@@ -42,9 +41,9 @@ predictiveDensities = function(T, S, h, MCMCrep){
     y[t] = mu + x[t] + rnorm(1, 0, sqrt(sigmaSqY))
   }
   
-  ggplot() + geom_line(aes(x=1:T, y=y[1:T])) + geom_line(aes(x=T:(T+S), y=y[T:(T+S)]), colour="red") + 
-    geom_line(aes(x=(T+S):(T+S+h), y=y[(T+S):(T+S+h)]), colour='blue') + 
-    theme(legend.position='none') + labs(x='t', y='y')
+  #ggplot() + geom_line(aes(x=1:T, y=y[1:T])) + geom_line(aes(x=T:(T+S), y=y[T:(T+S)]), colour="red") + 
+  #  geom_line(aes(x=(T+S):(T+S+h), y=y[(T+S):(T+S+h)]), colour='blue') + 
+  #  theme(legend.position='none') + labs(x='t', y='y')
   
   # Markov Chain Monte Carlo
   
@@ -52,10 +51,42 @@ predictiveDensities = function(T, S, h, MCMCrep){
   thetaKeep = MCMCdraws$theta[(MCMCrep/2 + 1):MCMCrep,]
   xdrawKeep = MCMCdraws$x[(MCMCrep/2 + 1):MCMCrep,]
   
-  # S + 1 step ahead forecast with no extra information
+  #ggplot() + geom_line(aes(ysupport, ydens), colour = "red") +geom_line(aes(ysupport, ydens2), colour = "blue") +
+  #  geom_line(aes(ysupport, ydens3), colour = "darkgreen") + geom_vline(aes(xintercept=y[T+S+h]))
+  
+  initM = c(0, 0, cor(y[2:T],y[2:T-1]), mean(y), rep(0, T+1))
+  FRVBInit = DLM_SGA(y=y[1:T], S=T, M=100, maxIter=5000, initialM=initM, initialL=diag(0.1, T+5))
+  MFVBInit = DLM_SGA(y=y[1:T], S=T, M=5, maxIter=5000, initialM=initM, initialL = diag(0.1, T+5), meanfield=TRUE)
+  
+  #S + 1 step ahead FRVB Forecast no extra info
+  
   ysupport = seq(min(y)-5, max(y)+5, length.out=1000)
+  frSigmaInit = FRVBInit$L %*% t(FRVBInit$L)
+  
+  ydensVB = rep(0, 1000)
+  ydensMF = rep(0, 1000)
+  for(i in 1:500){
+    draw = rmvnorm(1, c(FRVBInit$Mu), frSigmaInit)
+    phiprod = rep(1, S+h)
+    for(i in 2:(S+h)){
+      phiprod[i] = draw[3]^2 * phiprod[i-1]
+    }
+    ydensVB = ydensVB + dnorm(ysupport, draw[4] + draw[3]^(S+h)*draw[T+5], sqrt(exp(draw[1]) + sum(exp(draw[2])*phiprod)))/500
+  }
+  for(i in 1:500){
+    sigyd = exp(rnorm(1, MFVBInit$Mu[1], MFVBInit$Sd[1]))
+    sigxd = exp(rnorm(1, MFVBInit$Mu[2], MFVBInit$Sd[2]))
+    phid = rnorm(1, MFVBInit$Mu[3], MFVBInit$Sd[3])
+    gammad = rnorm(1, MFVBInit$Mu[4], MFVBInit$Sd[4])
+    XTd = rnorm(1, MFVBInit$Mu[T+5], MFVBInit$Sd[T+5])
+    phiprod = rep(1, S+h)
+    for(i in 2:(S+h)){
+      phiprod[i] = phid^2 * phiprod[i-1]
+    }
+    ydensMF = ydensMF + dnorm(ysupport, gammad + phid^(S+h)*XTd, sqrt(sigyd + sum(sigxd*phiprod)))/500
+  }
   ydens = rep(0, 1000)
-  for(i in 1:10000){
+  for(i in 1:500){
     u = sample(MCMCrep/2, 1)
     gammaDraw = thetaKeep[u, 4]
     phiDraw = thetaKeep[u, 3]
@@ -68,12 +99,32 @@ predictiveDensities = function(T, S, h, MCMCrep){
       phiprod[i] = phiDraw^2 * phiprod[i-1]
     }
     ydens = ydens + dnorm(ysupport, gammaDraw + phiDraw^(S+h)*xTmean, 
-                          sqrt(sigyDraw + sum(sigxDraw*phiprod) + phiDraw^(2*(S+h))*xTvar))/10000
+                          sqrt(sigyDraw + sum(sigxDraw*phiprod) + phiDraw^(2*(S+h))*xTvar))/500
   }
-  
+  obs = min(which((y[T+S+h] < ysupport) == TRUE))
+  logscoreSh =  c(log(ydens[obs]), log(ydensMF[obs]), log(ydensVB[obs]))
+  meanMCMC = colMeans(cbind(log(thetaKeep[,1:2]), thetaKeep[,3:4], xdrawKeep[,T+1]))
+  meanVB = c(FRVBInit$Mu)[c(1:4, T+5)]
+  meanMF = c(MFVBInit$Mu)[c(1:4, T+5)]
+
   # One step ahead forecast using y_{T+1:T+S}, not updating thetas
-  ydens2 = rep(0, 1000)
-  for(i in 1:10000){
+  yden = rep(0, 1000)
+  ydensMF2 = rep(0, 1000)
+  for(i in 1:500){
+    sigyd = exp(rnorm(1, MFVBInit$Mu[1], MFVBInit$Sd[1]))
+    sigxd = exp(rnorm(1, MFVBInit$Mu[2], MFVBInit$Sd[2]))
+    phid = rnorm(1, MFVBInit$Mu[3], MFVBInit$Sd[3])
+    gammad = rnorm(1, MFVBInit$Mu[4], MFVBInit$Sd[4])
+    XTS = FFUpdatercpp(y[(T+1):(T+S)], phid, gammad, sigxd, sigyd, MFVBInit$Mu[T+5], MFVBInit$Sd[T+5]^2)
+    ydensMF = ydensMF + dnorm(ysupport, gammad + phid*XTS[1], sqrt(sigxd + phid^2 * XTS[2] + sigyd))/500
+  }
+  for(i in 1:500){
+    draw = rmvnorm(1, c(FRVBInit$Mu), frSigmaInit)
+    XTS = FFUpdatercpp(y[(T+1):(T+S)], draw[3], draw[4], exp(draw[2]), exp(draw[1]), FRVBInit$Mu[T+5], frSigmaInit[T+5, T+5])
+    ydensVB = ydensVB + dnorm(ysupport, draw[4] + draw[3]*XTS[1], sqrt(exp(draw[1]) + draw[3]^2 * XTS[2] + exp(draw[2])))/500
+  }
+  ydens = rep(0, 1000)
+  for(i in 1:500){
     u = sample(MCMCrep/2, 1)
     gammaDraw = thetaKeep[u, 4]
     phiDraw = thetaKeep[u, 3]
@@ -82,151 +133,90 @@ predictiveDensities = function(T, S, h, MCMCrep){
     xTmean = xdrawKeep[u, T+2]
     xTvar = xdrawKeep[u, T+3]
     XTS = FFUpdatercpp(y[(T+1):(T+S)], phiDraw, gammaDraw, sigyDraw, sigxDraw, xTmean, xTvar)
-    ydens2 = ydens2 + dnorm(ysupport, gammaDraw + phiDraw*XTS[1], sqrt(sigyDraw + phiDraw^2 * XTS[2] + sigxDraw))/10000
+    ydens = ydens + dnorm(ysupport, gammaDraw + phiDraw*XTS[1], sqrt(sigyDraw + phiDraw^2 * XTS[2] + sigxDraw))/500
   }
+  obs = min(which((y[T+S+h] < ysupport) == TRUE))
+  logscoreFilter =  c(log(ydens[obs]), log(ydensMF[obs]), log(ydensVB[obs]))
   
+  UpdateM = c(FRVBInit$Mu, rep(0, S))
+  UpdateL = diag(0.1, T+S+5)
+  UpdateL[1:(T+5), 1:(T+5)] = FRVBInit$L
+  FRVBUpdate = DLM_SGA(y=y[1:(T+S)], S=S, M=100, maxIter=5000, initialM=UpdateM, initialL=UpdateL)
+  
+  UpdateM = c(MFVBInit$Mu, rep(0, S))
+  UpdateL = diag(0.1, T+S+5)
+  diag(UpdateL[1:(T+5), 1:(T+5)]) = MFVBInit$Sd
+  MFVBUpdate = DLM_SGA(y=y[1:(T+S)], S=S, M=5, maxIter=5000, initialM=UpdateM, initialL=UpdateL, meanfield=TRUE)
+  
+
+  # Update initial VB using all y_{T+1:T+S}
+  ydensVB = rep(0, 1000)
+  ydensMF = rep(0, 1000)
+  frSigmaU = FRVBUpdate$L %*% t(FRVBUpdate$L)
+  for(i in 1:500){
+    draw = rmvnorm(1, c(FRVBUpdate$Mu), frSigmaU)
+    ydensVB = ydensVB + dnorm(ysupport, draw[4] + draw[3]*draw[T+S+5], sqrt(exp(draw[1]) + exp(draw[2])))/500
+  }
+  for(i in 1:500){
+    sigyd = exp(rnorm(1, MFVBUpdate$Mu[1], MFVBUpdate$Sd[1]))
+    sigxd = exp(rnorm(1, MFVBUpdate$Mu[2], MFVBUpdate$Sd[2]))
+    phid = rnorm(1, MFVBUpdate$Mu[3], MFVBUpdate$Sd[3])
+    gammad = rnorm(1, MFVBUpdate$Mu[4], MFVBUpdate$Sd[4])
+    XTd = rnorm(1, MFVBUpdate$Mu[T+S+5], MFVBUpdate$Sd[T+S+5])
+    ydensMF = ydensMF + dnorm(ysupport, gammad + phid*XTd, sqrt(sigyd + sigxd))/500
+  }
   # Rerun MCMC using all y up to time T+S
   MCMCupdate = DLM_MCMC(y[1:(T+S)], MCMCrep)
   thetaUpdateKeep = MCMCupdate$theta[(MCMCrep/2 + 1):MCMCrep,]
   xdrawUpdateKeep = MCMCupdate$x[(MCMCrep/2 + 1):MCMCrep,]
-  
-  ydens3 = rep(0, 1000)
-  for(i in 1:10000){
+  ydens = rep(0, 1000)
+  for(i in 1:500){
     u = sample(MCMCrep/2, 1)
     gammaDraw = thetaUpdateKeep[u, 4]
     phiDraw = thetaUpdateKeep[u, 3]
     sigxDraw = thetaUpdateKeep[u, 2]
     sigyDraw = thetaUpdateKeep[u, 1]
     XTS = xdrawUpdateKeep[u, T+S+2:3]
-    ydens3 = ydens3 + dnorm(ysupport, gammaDraw + phiDraw*XTS[1], sqrt(sigyDraw + phiDraw^2 * XTS[2] + sigxDraw))/10000
+    ydens = ydens + dnorm(ysupport, gammaDraw + phiDraw*XTS[1], sqrt(sigyDraw + phiDraw^2 * XTS[2] + sigxDraw))/500
   }
-  
-  ggplot() + geom_line(aes(ysupport, ydens), colour = "red") +geom_line(aes(ysupport, ydens2), colour = "blue") +
-    geom_line(aes(ysupport, ydens3), colour = "darkgreen") + geom_vline(aes(xintercept=y[T+S+h]))
-  
-  
-  FRVB = list()
-  FinalElbo = rep(0, 10)
-  initM=c(0, 0, cor(y[2:T], y[2:T-1]), mean(y[1:T]), rep(0, T+1))
-  for(i in 1:10){
-    FRVB[[i]] = DLM_SGA(y=y[1:T], S=T, M=100, maxIter=5000, initialM=initM, initialL=diag(0.1, T+5))
-    FinalElbo[i] = tail(FRVB[[i]]$ELBO, 1)
-  }
-  FRVBInit = FRVB[[which.max(FinalElbo)]]
-  UpdateM = c(FRVBInit$Mu, rep(0, S))
-  UpdateL = diag(0.1, T+S+5)
-  UpdateL[1:(T+5), 1:(T+5)] = FRVBInit$L
-  FRVBU = list()
-  UpdateElbo = rep(0, 10)
-  for(i in 1:10){
-    FRVBU[[i]] = DLM_SGA(y=y[1:(T+S)], S=S, M=100, maxIter=5000, initialM=UpdateM, initialL=UpdateL)
-    UpdateElbo[i] = tail(FRVBU[[i]]$ELBO, 1)
-  }
-  FRVBUpdate = FRVBU[[which.max(UpdateElbo)]]
+  obs = min(which((y[T+S+h] < ysupport) == TRUE))
+  logscoreRefit = c(log(ydens[obs]), log(ydensMF[obs]), log(ydensVB[obs]))
+  meanMCMC = c(meanMCMC, mean(xdrawUpdateKeep[,T+S+1]))
+  meanVB = c(meanVB, c(FRVBUpdate$Mu[T+S+5]))
+  meanMF = c(meanMF, c(MFVBUpdate$Mu[T+S+5]))
 
-  MFVB = list()
-  FinalElbo = rep(0, 10)
-  for(i in 1:10){
-    MFVB[[i]] = DLM_SGA(y=y[1:T], S=T, M=5, maxIter=5000, initialM=initM, initialL = diag(0.1, T+5), meanfield=TRUE)
-    FinalElbo[i] = tail(MFVB[[i]]$ELBO, 1)
-  }
-  MFVBInit = MFVB[[which.max(FinalElbo)]]
-  UpdateM = c(MFVBInit$Mu, rep(0, S))
-  UpdateL = diag(0.1, T+S+5)
-  diag(UpdateL[1:(T+5), 1:(T+5)]) = MFVBInit$Sd
-  MFVBU = list()
-  UpdateElbo = rep(0, 10)
-  for(i in 1:10){
-    MFVBU[[i]] = DLM_SGA(y=y[1:(T+S)], S=S, M=5, maxIter=5000, initialM=UpdateM, initialL=UpdateL, meanfield=TRUE)
-    UpdateElbo[i] = tail(MFVBU[[i]]$ELBO, 1)
-  }
-  MFVBUpdate = MFVBU[[which.max(UpdateElbo)]]
-  
-  #S + 1 step ahead FRVB Forecast no extra info
-  
-  ysupport = seq(min(y)-5, max(y)+5, length.out=1000)
-  ydensVB = rep(0, 1000)
-  ydensMF = rep(0, 1000)
-  frSigmaInit = FRVBInit$L %*% t(FRVBInit$L)
-  
-  for(i in 1:10000){
-    draw = rmvnorm(1, c(FRVBInit$Mu), frSigmaInit)
-    phiprod = rep(1, S+h)
-    for(i in 2:(S+h)){
-      phiprod[i] = draw[3]^2 * phiprod[i-1]
-    }
-    ydensVB = ydensVB + dnorm(ysupport, draw[4] + draw[3]^(S+h)*draw[T+5], sqrt(exp(draw[1]) + sum(exp(draw[2])*phiprod)))/10000
-  }
-  for(i in 1:10000){
-    sigyd = exp(rnorm(1, MFVBInit$Mu[1], MFVBInit$Sd[1]))
-    sigxd = exp(rnorm(1, MFVBInit$Mu[2], MFVBInit$Sd[2]))
-    phid = rnorm(1, MFVBInit$Mu[3], MFVBInit$Sd[3])
-    gammad = rnorm(1, MFVBInit$Mu[4], MFVBInit$Sd[4])
-    XTd = rnorm(1, MFVBInit$Mu[T+5], MFVBInit$Sd[T+5])
-    phiprod = rep(1, S+h)
-    for(i in 2:(S+h)){
-      phiprod[i] = phid^2 * phiprod[i-1]
-    }
-    ydensMF = ydensMF + dnorm(ysupport, gammad + phid^(S+h)*XTd, sqrt(sigyd + sum(sigxd*phiprod)))/10000
-  }
-  
-  # One step ahead forecast using y_{T+1:T+S}, not updating thetas
-  ydensVB2 = rep(0, 1000)
-  ydensMF2 = rep(0, 1000)
-  for(i in 1:10000){
-    sigyd = exp(rnorm(1, MFVBInit$Mu[1], MFVBInit$Sd[1]))
-    sigxd = exp(rnorm(1, MFVBInit$Mu[2], MFVBInit$Sd[2]))
-    phid = rnorm(1, MFVBInit$Mu[3], MFVBInit$Sd[3])
-    gammad = rnorm(1, MFVBInit$Mu[4], MFVBInit$Sd[4])
-    XTS = FFUpdatercpp(y[(T+1):(T+S)], phid, gammad, sigxd, sigyd, MFVBInit$Mu[T+5], MFVBInit$Sd[T+5]^2)
-    ydensMF2 = ydensMF2 + dnorm(ysupport, gammad + phid*XTS[1], sqrt(sigxd + phid^2 * XTS[2] + sigyd))/10000
-  }
-  for(i in 1:10000){
-    draw = rmvnorm(1, c(FRVBInit$Mu), frSigmaInit)
-    XTS = FFUpdatercpp(y[(T+1):(T+S)], draw[3], draw[4], exp(draw[2]), exp(draw[1]), FRVBInit$Mu[T+5], frSigmaInit[T+5, T+5])
-    ydensVB2 = ydensVB2 + dnorm(ysupport, draw[4] + draw[3]*XTS[1], sqrt(exp(draw[1]) + draw[3]^2 * XTS[2] + exp(draw[2])))/10000
-  }
-
-  # Update initial VB using all y_{T+1:T+S}
-  ydensVB3 = rep(0, 1000)
-  ydensMF3 = rep(0, 1000)
-  frSigmaU = FRVBUpdate$L %*% t(FRVBUpdate$L)
-  for(i in 1:10000){
-    draw = rmvnorm(1, c(FRVBUpdate$Mu), frSigmaU)
-    ydensVB3 = ydensVB3 + dnorm(ysupport, draw[4] + draw[3]*draw[T+S+5], sqrt(exp(draw[1]) + exp(draw[2])))/10000
-  }
-  for(i in 1:10000){
-    sigyd = exp(rnorm(1, MFVBUpdate$Mu[1], MFVBUpdate$Sd[1]))
-    sigxd = exp(rnorm(1, MFVBUpdate$Mu[2], MFVBUpdate$Sd[2]))
-    phid = rnorm(1, MFVBUpdate$Mu[3], MFVBUpdate$Sd[3])
-    gammad = rnorm(1, MFVBUpdate$Mu[4], MFVBUpdate$Sd[4])
-    XTd = rnorm(1, MFVBUpdate$Mu[T+S+5], MFVBUpdate$Sd[T+S+5])
-    ydensMF3 = ydensMF3 + dnorm(ysupport, gammad + phid*XTd, sqrt(sigyd + sigxd))/10000
-  }
-  
-  
-  MCMCforecast = gather(data.frame(ysupport, ydens, ydens2, ydens3), version, density, -ysupport)
-  MCMCforecast$method = "MCMC"
-  MFforecast = gather(data.frame(ysupport, ydensMF, ydensMF2, ydensMF3), version, density, -ysupport)
-  MFforecast$method = "Meanfield"
-  FRforecast = gather(data.frame(ysupport, ydensVB, ydensVB2, ydensVB3), version, density, -ysupport)
-  FRforecast$method = "FullRank"
-  forecasts = rbind(MCMCforecast, MFforecast, FRforecast)
-  forecasts$version = rep(rep(c("S+h step", "h step - Filter", "h step - MCMC"), rep(1000, 3)), 3)
-  forecasts$version = factor(forecasts$version, levels=c("S+h step", "h step - Filter", "h step - MCMC"))
-  
-  KL = c(KLdiv(ydens, ydensMF), KLdiv(ydens, ydensVB), KLdiv(ydens2, ydensMF2), 
-         KLdiv(ydens2, ydensVB2), KLdiv(ydens3, ydensMF3), KLdiv(ydens3, ydensVB3))
-  return(list(forecasts=forecasts, KLdiv = KL))
+  #MCMCforecast = gather(data.frame(ysupport, ydens, ydens2, ydens3), version, density, -ysupport)
+  #MCMCforecast$method = "MCMC"
+  #MFforecast = gather(data.frame(ysupport, ydensMF, ydensMF2, ydensMF3), version, density, -ysupport)
+  #MFforecast$method = "Diagonal"
+  #FRforecast = gather(data.frame(ysupport, ydensVB, ydensVB2, ydensVB3), version, density, -ysupport)
+  #FRforecast$method = "Non-Diagonal"
+  #forecasts = rbind(MCMCforecast, MFforecast, FRforecast)
+  #forecasts$version = rep(rep(c("S+h step", "h step - Filter", "h step - MCMC"), rep(1000, 3)), 3)
+  #forecasts$version = factor(forecasts$version, levels=c("S+h step", "h step - Filter", "h step - Refit"))
+  return(c(logscoreSh, logscoreFilter, logscoreRefit, meanMCMC, meanVB, meanMF))
 }
 
-T50S10 = predictiveDensities(50, 10, 1, 50000)
+set.seed(5)
+T100S10 = t(replicate(1000, predictiveDensities(100, 10, 1, 15000), simplify = 'matrix'))
+MCMCres = data.frame(T100S10[,c(1, 4, 7, 10:15)])
+VBres = data.frame(T100S10[,c(2, 5, 8, 16:21)])
+MFres = data.frame(T100S10[,c(3, 6, 9, 22:27)])
+colnames(MCMCres) = c('S+h step Logscore', 'h step Filtered Logscore', 'h step refit Logscore', 'lnSigYSq', 'lnSigXSq', 'Phi', 'Gamma', 'X_T', 'X_T+S')
+colnames(VBres) = c('S+h step Logscore', 'h step Filtered Logscore', 'h step refit Logscore', 'lnSigYSq', 'lnSigXSq', 'Phi', 'Gamma', 'X_T', 'X_T+S')
+colnames(MFres) = c('S+h step Logscore', 'h step Filtered Logscore', 'h step refit Logscore', 'lnSigYSq', 'lnSigXSq', 'Phi', 'Gamma', 'X_T', 'X_T+S')
+MCMCres$Method = 'MCMC'
+VBres$Method = 'Non-Diagonal'
+MFres$Method = 'Diagonal'
+T50S10df = rbind(MCMCres, VBres, MFres) %>% gather(variable, value, -Method)
+ggplot(T50S10df) + geom_boxplot(aes(y=value, x=Method)) + facet_wrap(~variable, scales='free')
+
 p1 <- ggplot(forecasts, aes(x=ysupport, y=density, colour=method)) + facet_wrap(~version) + geom_line() + 
   labs(x=expression(Y[T+S+h]), y="Predictive Density", colour="Approach") +# theme_bw() +
   scale_color_discrete(labels=c('Non-Diagonal VB', 'MCMC', 'Diagonal VB'))
 p2 <- ggplot(forecasts, aes(x=ysupport, y=density, colour=version)) + facet_wrap(~method) + geom_line() + 
   labs(x=expression(Y[T+S+h]), y="Predictive Density", colour="Approach") +# theme_bw() +
-  scale_color_discrete(labels=c('Sh', 'Filter', 'h'))
+  scale_color_discrete(labels=c('S+h', 'h Filter', 'h Refit'))
 gridExtra::grid.arrange(p1, p2, ncol=1)
 
 drawsXTS = rmvnorm(10000, FRVBUpdate$Mu, frSigmaU)
