@@ -210,7 +210,7 @@ double ELBO (Normal* Y[], vec y, Distribution* pLatent[], MultiNormal* qLatent, 
   return value / n;
 }
 
-rowvec reparamDeriv (vec y, MultiNormal* qLatent, rowvec latent, rowvec epsilon, int T, int i, bool meanfield = false){
+rowvec reparamDeriv (vec y, MultiNormal* qLatent, rowvec latent, rowvec epsilon, int T, int i, bool meanfield){
   // Aim is to take the derivative of mu_i and the entire i_th row of L as one row vector
   // We use: dpdf = derivative of p wrt theta
   // dfdm = derivative of theta wrt mu (for the chain rule of the derivative of p wrt mu)
@@ -232,17 +232,17 @@ rowvec reparamDeriv (vec y, MultiNormal* qLatent, rowvec latent, rowvec epsilon,
       dpdf += pow(latent[t] - latent[2]*latent[t-1], 2) / (2 * pow(latent[i], 2));
     }
   } else if(i == 2){ //Phi
-    dpdf = latent[i] / (1 - pow(latent[i], 2)) - latent[i] * pow(latent[4], 2) / latent[1];
+    dpdf = latent[i] / (1 - pow(latent[i], 2)) + latent[i] * pow(latent[4], 2) / latent[1];
     for(int t = 5; t < T+5; ++t){
-      dpdf += (latent[t]*latent[t-1] - latent[i]*pow(latent[t-1], 2)) / latent[1];
+      dpdf += latent[t-1]*(latent[t] - latent[i]*latent[t-1]) / latent[1];
     }
-  } else if(i == 3){ //Mu
+  } else if(i == 3){ //Gamma
     dpdf = - latent[i] / 100;
     for(int t = 0; t < T; ++t){
       dpdf -= (latent[i] + latent[t+5] - y[t]) / latent[0];
     }
   } else if(i == 4){ //X0
-    dpdf = (1 - latent[5])*latent[i] / latent[1];
+    dpdf = (latent[5]*latent[2] -latent[i]) / latent[1];
   } else if(i == T+4){ //XT
     dpdf = (y[i-5] - latent[3] - latent[i]) / latent[0] - (latent[i] - latent[2]*latent[i-1]) / latent[1];
   } else { //X1 ... XT-1
