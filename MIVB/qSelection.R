@@ -5,16 +5,13 @@ FitRealMarginals = function(x){
   NormMu = mean(x)
   NormVar = (n-1) / n * var(x)
   AIC[1] = 4  - 2*sum(dnorm(x, NormMu, sqrt(NormVar), log=TRUE))
-  # Student T - MAKE THIS WORK
-  #fitT = fitdistr(x, 't', list(m=mean(x), s=var(x), df=5))
-  #AIC[2] = 6 - 2*fitT$loglik
-  # NormMix
-  fitMix = normalmixEM(x, k = 2)
-  AIC[2] = 10 - 2*fitMix$loglik
+  # Student T
+  fitT = fitdistr(x, 't', list(m=mean(x), s=var(x), df=5))
+  AIC[2] = 6 - 2*fitT$loglik
   if(AIC[1] < AIC[2]){
     return(list(Dist=1, params=c(NormMu, NormVar)))
   } else {
-    return(list(Dist=2), params=c(fitMix$mu, fitMix$sigma^2, fitMix$lambda[1]))
+    return(list(Dist=2), params=fitT$estimate)
   }
 }
 
@@ -164,4 +161,34 @@ RestrictedVineSelect = function(T, subset, k, MCMCreps, MCMC){
   FullVine$family[T+1, 1:T] = XCop
   
   return(FullVine)
+}
+
+MarginalTransform = function(unifs, thetaDist, xDist, thetaParams, xParams){
+  output = matrix(0, nrow(unifs), ncol(unifs))
+  for(i in 1:2){
+    if(thetaDist[i]==1){
+      output[,i] = qweibull(unifs[,i], thetaParams[1, i], thetaParams[2, i])
+    } else if(thetaDist[i]==2){
+      output[,i] = qgamma(unifs[,i], thetaParams[1, i], thetaParams[2, i])
+    } else if(thetaDist[i]==3){
+      output[,i] = qigamma(unifs[,i], thetaParams[1, i], thetaParams[2, i])
+    } else {
+      output[,i] = qlnorm(unifs[,i], thetaParams[1, i], sqrt(thetaParams[2, i]))
+    }
+  }
+  for(i in 3:4){
+    if(thetaDist[i]==1){
+      output[,i] = qnorm(unifs[,i], tthetaParams[1, i], sqrt(thetaParams[2, i]))
+    } else {
+      output[,i] = qt(unifs[,i], thetaParams[1, i], thetaParams[2, i], thetaParams[3, i])
+    }
+  }
+  for(i in 5:length(unifs)){
+    if(xDist == 2){
+      output[,i] = qnorm(unifs[,i], xParams[1, i-4], sqrt(xParams[2, i-4]))
+    } else {
+      output[,i] = qt(unifs[,i], xParams[1, i-4], xParams[2, i-4], xParams[3, i-4])
+    }
+  }
+  return(output)
 }

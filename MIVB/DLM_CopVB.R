@@ -52,38 +52,8 @@ ELBO = function(unifs, sims, y, thetaDist, xDist, thetaParams, xParams, Vine, N)
   return(elbo/N)
 }
 
-MarginalTransform = function(unifs, thetaDist, xDist, thetaParams, xParams){
-  output = rep(0, length(unifs))
-  for(i in 1:2){
-    if(thetaDist[i]==1){
-      output[i] = qweibull(unifs[i], thetaParams[1, i], thetaParams[2, i])
-    } else if(thetaDist[i]==2){
-      output[i] = qgamma(unifs[i], thetaParams[1, i], thetaParams[2, i])
-    } else if(thetaDist[i]==3){
-      output[i] = qigamma(unifs[i], thetaParams[1, i], thetaParams[2, i])
-    } else {
-      output[i] = qlnorm(unifs[i], thetaParams[1, i], sqrt(thetaParams[2, i]))
-    }
-  }
-  for(i in 3:4){
-    if(thetaDist[i]==1){
-      output[i] = qnorm(unifs[i], tthetaParams[1, i], sqrt(thetaParams[2, i]))
-    } else {
-      output[i] = qt(unifs[i], thetaParams[1, i], thetaParams[2, i], thetaParams[3, i])
-    }
-  }
-  for(i in 5:length(unifs)){
-    if(xDist == 2){
-      output[i] = qnorm(unifs[i], xParams[1, i-4], sqrt(xParams[2, i-4]))
-    } else {
-      output[i] = qt(unifs[i], xParams[1, i-4], xParams[2, i-4], xParams[3, i-4])
-    }
-  }
-  return(output)
-}
-
-LambdaPartial = function(unifs, sims, y, thetaDist, xDist, thetaParams, xParams, Vine, par, i, j){
-  if(par == 'theta'){
+LambdaPartial = function(unifs, sims, y, thetaDist, xDist, thetaParams, xParams, Vine, what, i, j){
+  if(what == 'theta'){
     if(j <= 2){ # SigmaSq parameters on R+
       if(thetaDist[j] == 1){
         if(i == 1){
@@ -127,7 +97,7 @@ LambdaPartial = function(unifs, sims, y, thetaDist, xDist, thetaParams, xParams,
         }
       }
     }
-  } else if(par == 'x'){ 
+  } else if(what == 'x'){ 
     if(xDist == 2){
       if(i == 1){
         score = score of normal wrt mu
@@ -149,7 +119,19 @@ LambdaPartial = function(unifs, sims, y, thetaDist, xDist, thetaParams, xParams,
   return(score*ELBO)
 }
 
-EtaPartial = function(){}
+EtaPartial = function(unifs, sims, y, thetaDist, xDist, thetaParams, xParams, Vine, what, par, i, j){
+  
+  if(what == 'TT'){
+    
+  } else if(what == 'TX'){
+    
+  } else if(what =='XX'){
+    
+  }
+  ELBO = PLogDens(y, sims) - QLogDens(unifs, sims, thetaDist, xDist, thetaParams, xParams, Vine)
+  return(score*ELBO)
+  
+}
 
 CopulaVB = function(y, S, thetaDist, xDist, thetaParams, xParams, Vine, 
                     M, maxIter, threshold=0.01, alpha=0.01, beta1=0.9, beta2=0.999){

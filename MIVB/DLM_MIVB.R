@@ -4,7 +4,6 @@ library(VineCopula)
 library(MASS)
 library(pscl)
 library(distr)
-library(mixtools)
 sourceCpp("DLM_MCMC.cpp")
 source('qSelection.R')
 #source('DLM_CopVB.R')
@@ -49,7 +48,7 @@ MIVB = function(T, S, h, sigmaSqY=1, sigmaSqX=2, phi=0.95, gamma=2, MCMCreps=T*1
     if(h > 1){
       for(t in 2:h){
         XTS = FFUpdatercpp(y[T+S+t-1], phiDraw, gammaDraw, sigyDraw, sigxDraw, XTS[1], XTS[2])
-        ydens[,2] = ydens[,2] + dnorm(ysupport, gammaDraw + phiDraw*XTS[1], sqrt(sigyDraw + phiDraw^2 * XTS[2] + sigxDraw))/500
+        ydens[,t] = ydens[,t] + dnorm(ysupport, gammaDraw + phiDraw*XTS[1], sqrt(sigyDraw + phiDraw^2 * XTS[2] + sigxDraw))/500
       }
     }
   }
@@ -64,13 +63,13 @@ MIVB = function(T, S, h, sigmaSqY=1, sigmaSqX=2, phi=0.95, gamma=2, MCMCreps=T*1
   # Theta
   SigSqYFit = FitPositiveMarginals(MCMC$theta[(MCMCreps/2 + 1):MCMCreps, 1])
   SigSqXFit = FitPositiveMarginals(MCMC$theta[(MCMCreps/2 + 1):MCMCreps, 2])
-  PhiFit = FitRealMarginals(MCMC$theta[(MCMCreps/2 + 1):MCMCreps, 3], truncate=TRUE)
+  PhiFit = FitRealMarginals(MCMC$theta[(MCMCreps/2 + 1):MCMCreps, 3])
   GammaFit = FitRealMarginals(MCMC$theta[(MCMCreps/2 + 1):MCMCreps, 4])
   thetaDist = c(SigSqYFit$AIC, SigSqXFit$AIC, PhiFit$AIC, GammaFit$AIC)
   thetaParams = c(SigSqYFit$params, SigSqXFit$params, PhiFit$params, GammaFit$params)
   
   # Choose distribution for the last few X marginals
-  subset = min(T/20, 25)
+  subset = min(T/10, 15)
   Xfit = list()
   XfitTable = matrix(0, 2, subset)
   for(i in 1:subset){
@@ -83,13 +82,12 @@ MIVB = function(T, S, h, sigmaSqY=1, sigmaSqX=2, phi=0.95, gamma=2, MCMCreps=T*1
     xParams = matrix(0, T+1, 2)
     xParams[,1] = apply(MCMC$x[(MCMCreps/2+1):MCMCreps,1:(T+1)], 2, mean)
     xParams[,2] = apply(MCMC$x[(MCMCreps/2+1):MCMCreps,1:(T+1)], 2, var)
-  } else { # CHANGE THIS
+  } else {
     xParams = matrix(0, T, 3)
     for(i in 1:T){
-      Mixfit = normalmixEM(MCMC$x[(MCMCreps/2+1):MCMCreps,i], k = 2)
-      Xparams[i, 1:2] = Mixfit$mu
-      Xparams[i, 3:4] = Mixfit$sigma^2
-      Xparams[i, 5] = Mixfit$lambda[1]
+      fitT = fitdistr(MCMC$x[(MCMCreps/2+1):MCMCreps,i],
+                      't', list(m=mean(x), s=var(x), df=5))
+      Xparams[i, ] = fitT$estimate
     }
   }
   
@@ -104,6 +102,35 @@ MIVB = function(T, S, h, sigmaSqY=1, sigmaSqX=2, phi=0.95, gamma=2, MCMCreps=T*1
   VineObject = RVineMatrix(Vine$Matrix, Vine$family)
   VineFit = RVineSeqEst(cbind(pobtheta, pobx), VineObject)
   
-  # Run the VB updater to time S
+  # Run the VB updater to time T+S
+  VBfit = CopulaVB(y, S, thetaDist, xDist, thetaParams, xParams, Vine, M, maxIter)
+  unifs = RVineSim(VBfit$Vine, 500)
+  simul = MarginalTransform(unifs, thetaDist, Dist, VBfit$thetaParams, VBfit$xParams)
+  ydensVB = matrix(0, h, 1000)
   
+  # Calculate Density
+  for(i in 1:500){
+    ydensVB[,1] = ydensVB[,1] + dnorm(ysupport, simul[i, 4] + simul[i, 3]*simul[i,T+S+5], 
+                                    sqrt(simul[i,1] + simul[i,2]))/500
+  }
+   
+  logscoreVB = rep(0, h)
+  logscoreVB[1] = log(ydensVB[obs[1], 1])
+  
+  # Update for forcasting y_{T+S+2:T+S+h}
+  if(h > 1){
+    for(t in 2:h){
+      VBfit = CopulaVB(y[T+S+t], 1, thetaDist, xDist, VBfit$thetaParams, VBfit$xParams, VBfit$Vine, M, maxIter)
+      unifs = RVineSim(VBfit$Vine, 500)
+      simul = MarginalTransform(unifs, thetaDist, Dist, VBfit$thetaParams, VBfit$xParams)
+      for(i in 1:500){
+        ydensVB[,t] = ydensVB[,t] + dnorm(ysupport, simul[i, 4] + simul[i, 3]*simul[i,T+S+5], 
+                                        sqrt(simul[i,1] + simul[i,2]))/500
+        
+      }
+      logscoreVB[2] = log(ydensVB[obs[t], t])
+    }
+  }
+  
+  return(data.frame(futureY=ysupport[obs], logscoreMCMC, logscoreVB))
 }
