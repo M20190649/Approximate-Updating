@@ -3,169 +3,16 @@
 
 #include <RcppArmadillo.h>
 #include <math.h>
-//#include <distributions.h> //figure this out
+#include "Distributions.h"
+
 using namespace Rcpp;
 using namespace arma;
 using namespace std;
 
 // TODO:
-// Find out how to add distribution code as a header to reduce amount of code in one file
 // Make phi have a truncated normal marginal so I can fix the x0 prior variance 
 // Can repeatedly sample from the MVN until we get a draw in (-1, 1) but I'd like to avoid while loops when the mean of phi can go way outside (-1, 1). Could restrict the mean?
 // Find out how to avoid dynamic casting to make it easier to implement new models, but if I'm sticking with DLM's for a while this is not a problem yet
-
-class Distribution{
-  // This is the base class for the distributions, and exists so I can have Normal and Inverse Gamma pointers in the same array
-public:
-  // This function is only here so I can call any of the subclass versions.
-  // It gets overwritten by the subclass version anyway.
-  virtual double logdens(double x) {return -10000;};
-};
-
-// All distribution subclass objects have parameters, a constructor, a set_value and increase_value function, a logdensity function
-// and in the normal distribution case a transform from epsilon function
-
-class Normal: public Distribution{
-  // This just provides methods for the single variate normal distribution
-public:
-  double mean, variance; // Parameters
-  Normal(double, double); // Constructor
-  void set_values(double m, double v){
-    mean = m;
-    variance = v;
-  }
-  void increase_values(double m, double sd){
-    mean += m;
-    if(sqrt(variance) > -sd){
-      variance = pow(sqrt(variance) + sd, 2);
-    }
-  }
-  double logdens (double x) {
-    return -0.5 * log(2*3.141593*variance) - pow(x - mean, 2) / (2 * variance);}
-  double transform_epsilon(double x){
-    return mean + sqrt(variance) * x;
-  }
-};
-
-Normal::Normal (double m, double v){ // Constructor
-  mean = m;
-  variance = v;
-}
-
-class MultiNormal: public Distribution{
-  // This provides methods for the multivariate normal distribution parameterised with the lower triangular cholesky decomposition for variance
-public:
-  vec mean;
-  mat chol;
-  MultiNormal(vec, mat);
-  void set_values(vec m, mat L){
-    mean = m;
-    chol = L; 
-  }
-  void increase_values(vec m, mat L){
-    mean += m;
-    chol += L;
-  }
-  double logdens(rowvec x){
-    double logdet = 0;
-    double n = x.n_elem;
-    for(int i = 0; i < n; ++i){
-      logdet += -log(abs(chol(i, i)));
-    }
-    double cons = -n / 2 * log(2.0*3.141593);
-    mat sigma = chol * chol.t();
-    mat exponent = - ((x - mean.t()) * sigma.i() * (x.t() - mean))/ 2;
-    return cons + logdet + exponent(0,0);
-  }
-  rowvec transform_epsilon(rowvec epsilon){
-    int n = epsilon.n_elem;
-    rowvec output(n);
-    for(int i = 0; i < n; ++i){
-      output[i] = mean[i];
-      for(int j = 0; j <= i; ++j){
-        output[i] += chol(i, j)*epsilon[j];
-      }
-    }
-    return output;
-  }
-  double chol_diag(int i){
-    return chol(i,i);
-  }
-};
-
-MultiNormal::MultiNormal(vec m, mat ch){
-  mean = m;
-  chol = ch;
-}
-
-class InverseGamma: public Distribution{
-  // The distribution for 1/x  where x ~ gamma(shape, rate)
-  double shape, scale;
-public:
-  InverseGamma(double, double);
-  void set_values(double sh, double sc){
-    shape = sh;
-    scale = sc;
-  }
-  void increase_values(double sh, double sc){
-    shape += sh;
-    scale += sc;
-  }
-  double logdens (double x) {
-    // the input x should be log(sigmaSq)
-    double constant = shape * log(scale) - log(tgamma(shape));
-    double kernel = -(shape + 1) * x - scale / exp(x);
-    return constant + kernel;
-  }
-};
-
-InverseGamma::InverseGamma (double sh, double sc){
-  shape = sh;
-  scale = sc;
-}
-
-class Uniform: public Distribution{
-public:
-  double min, max;
-  Uniform(double, double);
-  void set_values(double mi, double ma){
-    min = mi;
-    max = ma;
-  }
-  void increase_values(double mi, double ma){
-    min += mi;
-    max += ma;
-  }
-  double logdens(double x){
-    return 1.0 / log(max - min);
-  }
-};
-
-Uniform::Uniform (double mi, double ma){
-  min = mi;
-  max = ma;
-}
-
-class YStardist: public Distribution{
-public:  
-  double alpha;
-  YStardist(double);
-  void set_values(double a){
-    alpha = a;
-  }
-  void increase_values(double a){
-    alpha += a;
-  }
-  double logdens (double y){
-    double constant = -0.5 * log(2*3.141593);
-    double kernel = 0.5 * (y - alpha - exp(y - alpha));
-    return constant + kernel;
-  }
-};
-
-YStardist::YStardist(double a){
-  alpha = a;
-}
 
 cube qSim (MultiNormal* qLatent, int n_samples, int p){
   // We want to return the matrix of epsilons (treat each row as a different realisation of a p-dimensional N(0, I))
@@ -203,9 +50,9 @@ double pdens (YStardist* Y[], vec y, Distribution* pLatent[], rowvec latent, int
 void updateP (YStardist* Y[], Distribution* pLatent[], rowvec latent, int T){
   // This function updates the parameters of p using a sample of q (when the distributions in p have dependencies)
   // latent[0] = log(sigmaSq), latent[1] = gamma, latent[2] = phi, latent[4],...,latentT+4] = a_0, ..., a_T
-  dynamic_cast<Normal*>(pLatent[4])->set_values(latent[1] / (1 - latent[2]), 4*exp(latent[2])); //a_0 ~ N(gamma / 1-phi, sigmaSq / 1-phi^2) 
+  dynamic_cast<Normal*>(pLatent[4])->set_values(latent[1] / (1 - latent[2]), (1-pow(0.9, 2))*exp(latent[0])); //a_0 ~ N(gamma / 1-phi, sigmaSq / 1-phi^2) 
   // I need an efficient way to sample phi from (-1, 1) as phi outside this range causes negative variance
-  // 2*sigmasq is the marginal variance that occurs when phi = 0.7 
+  // True phi is 0.9 so substitute this in for now
   for(int t = 0; t < T; ++t){
     // Despite the set_values function in Distribution being overwritten with the version in Normal,
     // unless I explicitly say to use the Normal version (via dynamic cast) this was using the distribution version of set_values (now removed)
@@ -215,7 +62,7 @@ void updateP (YStardist* Y[], Distribution* pLatent[], rowvec latent, int T){
   }
 } 
 
-double ELBO (YStardist* Y[], vec y, Distribution* pLatent[], MultiNormal* qLatent, int T, int p, int n = 250){
+double ELBO (YStardist* Y[], vec y, Distribution* pLatent[], MultiNormal* qLatent, int T, int p, int n = 25){
   // Evaluates the ELBO as an expectation over n simulations of theta & x
   // sample theta - don't need epsilon for this so only keep the theta slice
   mat latentSims = qSim(qLatent, n, p).slice(0);
@@ -276,7 +123,7 @@ rowvec reparamDeriv (vec y, MultiNormal* qLatent, rowvec latent, rowvec epsilon,
     }
   // lnq = -( mu1 + mu2 + sum(log(Lii) for i = 1, ..., p) + L11eps1 + L21eps1 + L22eps2) + ln(p(eps))
   vec dqdL(T+4, fill::zeros);
-  dqdL[i] = -1/qLatent->chol_diag(i); // dq/DLij is -1/Lij for i = j, otherwise = 0 
+  dqdL[i] = -1.0 / qLatent->chol_diag(i); // dq/DLij is -1/Lij for i = j, otherwise = 0 
   if(i == 0){
     dfdm = latent[i];
     dfdL[i] *= latent[i];
