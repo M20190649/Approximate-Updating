@@ -1,4 +1,4 @@
-MarginalTransform = function(unifs, thetaDist, xDist, thetaParams, xParams, j=0){
+MarginalTransform = function(unifs, thetaDist, xDist, thetaParams, xParams, T, j=0){
   if(j > 0){
     if(j <= 2){
       if(thetaDist[j]==1){
@@ -18,9 +18,9 @@ MarginalTransform = function(unifs, thetaDist, xDist, thetaParams, xParams, j=0)
       }
     } else {
       if(xDist == 2){
-        output = qnorm(unifs, xParams[1, j-4], sqrt(xParams[2, j-4]))
+        output = qnorm(unifs, xParams[1, T+6-j], sqrt(xParams[2, T+6-j]))
       } else {
-        output = qt(unifs, xParams[1, j-4], xParams[2, j-4], xParams[3, j-4])
+        output = qt(unifs, xParams[1,T+6-j], xParams[2, T+6-j], xParams[3, T+6-j])
       }
     }
   } else {
@@ -45,9 +45,9 @@ MarginalTransform = function(unifs, thetaDist, xDist, thetaParams, xParams, j=0)
     }
     for(i in 5:ncol(unifs)){
       if(xDist == 2){
-        output[,i] = qnorm(unifs[,i], xParams[1, i-4], sqrt(xParams[2, i-4]))
+        output[,i] = qnorm(unifs[,i], xParams[1, T+6-i], sqrt(xParams[2, T+6-i]))
       } else {
-        output[,i] = qt(unifs[,i], xParams[1, i-4], xParams[2, i-4], xParams[3, i-4])
+        output[,i] = qt(unifs[,i], xParams[1, T+6-i], xParams[2, T+6-i], xParams[3, T+6-i])
       }
     }
   }
@@ -115,7 +115,7 @@ Partial = function(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams
     thetaParams2 = thetaParams
     thetaParams2[i, j] = thetaParams2[i, j] + h
     newsim = sim
-    newsim[,j] = MarginalTransform(unifsdep[,j], thetaDist, xDist, thetaParams2, xParams, j)
+    newsim[,j] = MarginalTransform(unifsdep[,j], thetaDist, xDist, thetaParams2, xParams, T, j)
     deriv = 0
     for(i in 1:M){
       derivs = derivs + (PLogDens(y, newsim[i,]) - PLogDens(y, sims[i,]) -
@@ -126,7 +126,7 @@ Partial = function(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams
     xParams2 = xParams
     xParams2[i, j] = xParams2[i, j] + h
     newsim = sim
-    newsim[,j+5+T] = MarginalTransform(unifsdep[,j+5+T], thetaDist, xDist, thetaParams, xParams2, j+5+T)
+    newsim[,j+5+T-S] = MarginalTransform(unifsdep[,j+5+T-S], thetaDist, xDist, thetaParams, xParams2, T, j+5+T-S)
     for(i in 1:M){
       derivs = derivs + (PLogDens(y, newsim[i,]) - PLogDens(y, sims[i,]) -
                            QLogDens(unifsdep[i,], newsim[i,], thetaDist, xDist, thetaParams, xParams2, Vine) +
@@ -136,21 +136,21 @@ Partial = function(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams
     Vine2 = Vine
     if(what == 'EtaT') {
       if(par==1){
-        Vine2$par[T+2+i,T+2+j] = Vine2$par[T+2+i,T+2+j] + h
+        Vine2$par[T+2+i,T+1+j] = Vine2$par[T+2+i,T+1+j] + h
       } else {
-        Vine2$par2[T+2+i,T+2+j] = Vine2$par2[T+2+i,T+2+j] + h
+        Vine2$par2[T+2+i,T+1+j] = Vine2$par2[T+2+i,T+1+j] + h
       }
     } else if(what == 'EtaX') {
       if(par==1){
-        Vine2$par[T+1+i,T-S+1+j] = Vine2$par[T+1+i,T-S+1+j] + h
+        Vine2$par[T+1+i,j] = Vine2$par[T+1+i,j] + h
       } else {
-        Vine2$par2[T+1+i,T-S+1+j] = Vine2$par2[T+1+i,T-S+1+j] + h
+        Vine2$par2[T+1+i,j] = Vine2$par2[T+1+i,j] + h
       }
     } else if(what == 'EtaXX') {
       if(par==1){
-        Vine2$par[T+1+i,T-S+1+j] = Vine2$par[T+1, T-S+j] + h
+        Vine2$par[T+1+i,j] = Vine2$par[T+1, j] + h
       } else {
-        Vine2$par2[T+1+i,T-S+1+j] = Vine2$par2[T+1, T-S+j] + h
+        Vine2$par2[T+1+i,j] = Vine2$par2[T+1, j] + h
       }
     }
     newdep = RVineSim(M, Vine2, unifs[1:M,])
@@ -164,6 +164,48 @@ Partial = function(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams
   return(derivs/M)
 }
 
+VineSim = function(Vine, unifs, T){
+  n = ncol(unifs)
+  nr = nrow(unifs)
+  m = Vine$Matrix
+  mTheta = diag(Vine$Matrix)[2:5+T]
+  for(i in 1:4){
+    for(j in 1:4){
+    m[T+1+i, j] = ifelse(m[T+1+i, j] == 0, 0, 
+                         switch(which(mTheta == m[T+1+i, j]), 4, 3, 2, 1))
+    }
+  }
+  mmax = matrix(0, n, n)
+  for(i in 1:n){
+    for(j in 1:n){
+      mmax[i, j] = max(m[i:n, j])
+    }
+  }
+  vd = array(0, dim = c(n, n, nr))
+  vind = array(0, dim = c(n, n, nr))
+  vd[n,,] = unifs
+  z1 = array(0, dim = c(n, n, nr))
+  z2 = array(0, dim = c(n, n, nr))
+  x = unifs[,1]
+  for(k in (n-1):1){
+    for(i in (k+1):n){
+      if(mmax[i, k] == m[i, k]){
+        z2[i, k,] = vd[i, n-mmax[i,k]+1,]
+      } else {
+        z2[i, k,] = vind[i, n-mmax[i,k]+1,]
+      }
+      vd[n, k,] = BiCopHinv1(vd[n,k,], z2[i,k,], Vine$Family[i, k], Vine$par[i, k], Vine$par2[i, k])
+    }
+    x = cbind(x, vd[n, k,])
+    for(i in n:(k+1)){
+      z1[i, k,] = vd[i, k,]
+      vd[i-1, k,] = BiCopHfunc1(z1[i, k,], z2[i, k,], Vine$Family[i, k], Vine$par[i, k], Vine$par2[i, k])
+      vind[i-1, k,] = BiCopHfunc1(z1[i, k,], z2[i, k,], Vine$Family[i, k], Vine$par[i, k], Vine$par2[i, k])
+    }
+  }
+  return(cbind(x[,rev(mTheta)], x[,5:n]))
+}
+
 CopulaVB = function(y, S, thetaDist, xDist, thetaParams, xParams, Vine, 
                     M, maxIter, threshold=0.01, alpha=0.01, beta1=0.9, beta2=0.999){
   require(VineCopula)
@@ -175,7 +217,7 @@ CopulaVB = function(y, S, thetaDist, xDist, thetaParams, xParams, Vine,
   }
   e = 1E-8 # Adam optimsier parameter
   xDist = ifelse(xDist==1, 2, 3) # Convert from distribution marker to number of parameters in distribution
-  xParams = cbind(xParams, matrix(runif(xDist*S), nrow=xDist)) # Extend X parameter matrix to new latent variables
+  xParams = cbind(matrix(runif(xDist*S), nrow=xDist), xParams) # Extend X parameter matrix to new latent variables
   
   MtLamT = VtLamT = matrix(0, 3, 4) # For theta Marginal Parameters
   MtLamX = VtLamX = matrix(0, xDist, S) # For new X Marginal Parameters
@@ -189,28 +231,20 @@ CopulaVB = function(y, S, thetaDist, xDist, thetaParams, xParams, Vine,
   diag(FullVine$Matrix)[1:(T+1)] = 5:(T+5)
   for(i in 2:(T+1)){
     for(j in 1:i-1){
-      FullVine$Matrix[i, j] = T + j - i + 6
+      FullVine$Matrix[i, j] = i - j + 4
     }
   }
   
   # Copy old Vine entries across
-  FullVine$Matrix[2:5+T,2:5+T] = Vine$Matrix[2:5+T-S, 2:5+T-S]
-  FullVine$Matrix[2:5+T,1:(T+1)] = Vine$Matrix[2:5+T-S, 1]
-  FullVine$family[2:5+T,2:5+T] = Vine$family[2:5+T-S, 2:5+T-S]
-  FullVine$family[2:5+T,1:(T+1)] = Vine$family[2:5+T-S, 1]
-  FullVine$family[T+1, 1:T] = Vine$family[T-S+1, 1]
-  FullVine$par[2:5+T,2:5+T] = Vine$par[2:5+T-S, 2:5+T-S]
-  FullVine$par2[2:5+T,2:5+T] = Vine$par2[2:5+T-S, 2:5+T-S]
-  FullVine$par[2:5+T,1:(T-S+1)] = Vine$par[2:5+T-S, 1:(T-S+1)]
-  FullVine$par2[2:5+T,1:(T-S+1)] = Vine$par2[2:5+T-S, 1:(T-S+1)]
-  FullVine$par[T+1, 1:(T-S)] = Vine$par[T-S+1, 1:(T-S)]
-  FullVine$par2[T+1, 1:(T-S)] = Vine$par2[T-S+1, 1:(T-S)]
-  
-  #Initialise new parameters at last X's value
-  FullVine$par[2:5+T, (T-S+2):(T+1)] = FullVine$par[2:5+T, T-S+1]
-  FullVine$par2[2:5+T, (T-S+2):(T+1)] = FullVine$par2[2:5+T, T-S+1]
-  FullVine$par[T+1, (T-S+1):T] = FullVine$par[T+1, T-S]
-  FullVine$par2[T+1, (T-S+1):T] = FullVine$par2[T+1, T-S]
+  FullVine$Matrix[(S+1):(T+5),(S+1):(T+5)] = Vine$Matrix
+  FullVine$family[(S+1):(T+5), (S+1):(T+5)] = Vine$Family
+  FullVine$par[(S+1):(T+5), (S+1):(T+5)] = Vine$par
+  FullVine$par2[(S+1):(T+5), (S+1):(T+5)] = Vine$par2
+  # Extend to new X variables
+  FullVine$Matrix[(T+2):(T+5), 1:S] = FullVine$Matrix[(T+2):(T+5), S+1]
+  FullVine$family[(T+1):(T+5), 1:S] = FullVine$family[(T+1):(T+5), S+1]
+  FullVine$par[(T+1):(T+5), 1:S] = FullVine$par[(T+1):(T+5), S+1]
+  FullVine$par2[(T+1):(T+5), 1:S] = FullVine$par2[(T+1):(T+5), S+1]
   
   MtEtaT1 = VtEtaT1 = MtEtaT2 = VtEtaT2 = matrix(0, 4, 4) # For theta copula parameters par1/par2
   MtEtaX1 = VtEtaX1 = MtEtaX2 = VtEtaX2 = matrix(0, 4, S) # for theta/X copula par1/par2
@@ -219,8 +253,8 @@ CopulaVB = function(y, S, thetaDist, xDist, thetaParams, xParams, Vine,
   # While Loop Parameters
   iter = 0
   unifs = matrix(runif(min(50, M)*(T+5)), ncol=T+5)
-  unifsdep = RVineSim(min(50, M), FullVine, unifs) 
-  sims = MarginalTransform(unifsdep, thetaDist, xDist, thetaParams, xParams)
+  unifsdep = VineSim(unifs, FullVine, T) 
+  sims = MarginalTransform(unifsdep, thetaDist, xDist, thetaParams, xParams, T)
   LB = ELBO(unifsdep, sims, y, thetaDist, xDist, thetaParams, xParams, Vine, 50)
   lastDiff = threshold + 1
   meanDiff = 0
@@ -267,22 +301,22 @@ CopulaVB = function(y, S, thetaDist, xDist, thetaParams, xParams, Vine,
     }
     for(i in 1:4){
       for(j in 1:S){
-        if(FullVine$par[T+1+i,T-S+1+j] != 0){
+        if(FullVine$par[T+1+i,j] != 0){
           PEtaX1[i, j] = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
                                  xParams, Vine, M, 'EtaX', i, j, 1)
         }
-        if(FullVine$par[T+1+i,T-S+1+j] != 0){
+        if(FullVine$par[T+1+i,j] != 0){
           PEtaX2[i, j] = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
                                  xParams, Vine, M, 'EtaX', i, j, 2)
         }
       }
     }
     for(j in 1:S){
-      if(FullVine$par[T+1, T-S+j] != 0){
+      if(FullVine$par[T+1, j] != 0){
         PEtaXX1[i, j] = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
                                xParams, Vine, M, 'EtaXX', i, j, 1)
       }
-      if(FullVine$par2[T+1, T-S+j] != 0){
+      if(FullVine$par2[T+1, j] != 0){
         PEtaXX1[i, j] = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
                                 xParams, Vine, M, 'EtaXX', i, j, 2)
       }
@@ -314,14 +348,14 @@ CopulaVB = function(y, S, thetaDist, xDist, thetaParams, xParams, Vine,
     xParams[,(T-S+1):T] = xParams[,(T-S+1):T] + alpha * (MtLamX/(1-beta1^iter)) / (sqrt(VtLamX/(1-beta2^iter))+e)
     FullVine$par[2:5+T,2:5+T] = FullVine$par[2:5+T,2:5+T] + alpha * (MtEtaT1/(1-beta1^iter)) / (sqrt(VtEtaT1/(1-beta2^iter))+e)
     FullVine$par2[2:5+T,2:5+T] = FullVine$par2[2:5+T,2:5+T] + alpha * (MtEtaT2/(1-beta1^iter)) / (sqrt(VtEtaT2/(1-beta2^iter))+e)
-    FullVine$par[2:5+T, (T-S+2):(T+1)] = FullVine$par[2:5+T, (T-S+2):(T+1)] + alpha * (MtEtaX1/(1-beta1^iter)) / (sqrt(VtEtaX1/(1-beta2^iter))+e)
-    FullVine$par2[2:5+T, (T-S+2):(T+1)] = FullVine$par2[2:5+T, (T-S+2):(T+1)] + alpha * (MtEtaX2/(1-beta1^iter)) / (sqrt(VtEtaX2/(1-beta2^iter))+e)
-    FullVine$par[T+1, (T-S+1):T] = FullVine$par[T+1, (T-S+1):T] + alpha * (MtEtaXX1/(1-beta1^iter)) / (sqrt(VtEtaXX1/(1-beta2^iter))+e)
-    FullVine$par2[T+1, (T-S+1):T] = FullVine$par2[T+1, (T-S+1):T] + alpha * (MtEtaXX2/(1-beta1^iter)) / (sqrt(VtEtaXX2/(1-beta2^iter))+e)
+    FullVine$par[2:5+T, 1:S] = FullVine$par[2:5+T, 1:S] + alpha * (MtEtaX1/(1-beta1^iter)) / (sqrt(VtEtaX1/(1-beta2^iter))+e)
+    FullVine$par2[2:5+T, 1:S] = FullVine$par2[2:5+T, 1:S] + alpha * (MtEtaX2/(1-beta1^iter)) / (sqrt(VtEtaX2/(1-beta2^iter))+e)
+    FullVine$par[T+1, 1:S] = FullVine$par[T+1, 1:S] + alpha * (MtEtaXX1/(1-beta1^iter)) / (sqrt(VtEtaXX1/(1-beta2^iter))+e)
+    FullVine$par2[T+1, 1:S] = FullVine$par2[T+1, 1:S] + alpha * (MtEtaXX2/(1-beta1^iter)) / (sqrt(VtEtaXX2/(1-beta2^iter))+e)
                                                   
     unifs = matrix(runif(min(50, M)*(T+5)), ncol=T+5)
-    unifsdep = RVineSim(min(50, M), FullVine, unifs) 
-    sims = MarginalTransform(unifsdep, thetaDist, xDist, thetaParams, xParams)
+    unifsdep = VineSim(unifs, FullVine, T) 
+    sims = MarginalTransform(unifsdep, thetaDist, xDist, thetaParams, xParams, T)
     LB = ELBO(unifsdep, sims, y, thetaDist, xDist, thetaParams, xParams, Vine, 50)
     if(iter > 10){
       lastDiff = abs(LB[iter]-LB[iter-1])

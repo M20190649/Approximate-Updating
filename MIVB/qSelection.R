@@ -58,10 +58,10 @@ RestrictedVineSelect = function(T, subset, k, MCMCreps, MCMC){
               Family = matrix(0, subset+k, subset+k),
               par = matrix(0, subset+k, subset+k),
               par2 = matrix(0, subset+k, subset+k))
-  diag(Vine$Matrix)[1:subset] = 1:subset+k
+  diag(Vine$Matrix)[1:subset] = subset:1+k
   for(i in 2:(subset)){
     for(j in 1:(i-1)){
-      Vine$Matrix[i, j] = subset + j - i + k + 1
+      Vine$Matrix[i, j] = i - j + k 
     }
   }
   
@@ -115,9 +115,9 @@ RestrictedVineSelect = function(T, subset, k, MCMCreps, MCMC){
     pobxNext = matrix(0, length(v), subset) 
     for(i in 1:subset){
       CopEstim = BiCopEst(pobx[,i], pobtheta[,whichTheta[tree], tree], family=TreeCop[tree])
-      pobxNext[,i] = BiCopHfunc(pobx[,i], pobtheta[,whichTheta[tree], tree], family=TreeCop[tree], par=CopEstim$par, par2=CopEstim$par2)$hfunc2
-      Vine$par[subset+k+1-tree, i] = CopEstim$par
-      Vine$par2[subset+k+1-tree, i] = CopEstim$par2
+      pobxNext[,i] = BiCopHfunc2(pobx[,i], pobtheta[,whichTheta[tree], tree], family=TreeCop[tree], par=CopEstim$par, par2=CopEstim$par2)
+      Vine$par[subset+k+1-tree, subset+1-i] = CopEstim$par
+      Vine$par2[subset+k+1-tree, subset+1-i] = CopEstim$par2
     }
     pobx = pobxNext
     
@@ -149,8 +149,8 @@ RestrictedVineSelect = function(T, subset, k, MCMCreps, MCMC){
   XCop = Mode(XFit)
   for(i in 1:(subset-1)){
     CopEstim = BiCopEst(pobx[,i], pobx[,i+1], family=XCop)
-    Vine$par[subset, i] = CopEstim$par
-    Vine$par2[subset, i] = CopEstim$par2
+    Vine$par[subset, subset-i] = CopEstim$par
+    Vine$par2[subset, subset-i] = CopEstim$par2
   }
   
   # Extrapolate structure to vine over whole x parameter vector
@@ -159,10 +159,10 @@ RestrictedVineSelect = function(T, subset, k, MCMCreps, MCMC){
                   par = matrix(0, T+1+k, T+1+k), 
                   par2 = matrix(0,T+1+k, T+1+k))
   
-  diag(FullVine$Matrix)[1:(T+1)] = 0:T+1+k
+  diag(FullVine$Matrix)[1:(T+1)] = T:0+1+k
   for(i in 2:(T+1)){
     for(j in 1:i-1){
-      FullVine$Matrix[i, j] = T + j - i + k + 2
+      FullVine$Matrix[i, j] = i - j + k
     }
   }
   
@@ -173,7 +173,7 @@ RestrictedVineSelect = function(T, subset, k, MCMCreps, MCMC){
   FullVine$family[T+1, 1:T] = XCop
   FullVine$par[(2:(1+k)+T), 2:(1+k)+T] = thetaVine$par
   FullVine$par2[(2:(1+k)+T), 2:(1+k)+T] = thetaVine$par2
-  FullVine$par[0:k+T+1, (T-subset+2):(T+1)] = Vine$par[0:k + subset, 1:subset]
+  FullVine$par[0:k+T+1, 1:subset] = Vine$par[0:k + subset, 1:subset]
   
   
   # Estimate remaining par values
@@ -182,21 +182,21 @@ RestrictedVineSelect = function(T, subset, k, MCMCreps, MCMC){
     pobxNext = matrix(0, length(v), T-subset+1)
     for(i in 1:(T-subset+1)){
       CopEstim = BiCopEst(pobxNew[,i], pobtheta[,whichTheta[tree], tree], family=TreeCop[tree])
-      pobxNext[,i] = BiCopHfunc(pobxNew[,i], pobtheta[,whichTheta[tree], tree], family=TreeCop[tree], par=CopEstim$par, par2=CopEstim$par2)$hfunc2
-      FullVine$par[T+2+k-tree, i] = CopEstim$par
-      FullVine$par2[T+2+k-tree, i] = CopEstim$par2
+      pobxNext[,i] = BiCopHfunc2(pobxNew[,i], pobtheta[,whichTheta[tree], tree], family=TreeCop[tree], par=CopEstim$par, par2=CopEstim$par2)
+      FullVine$par[T+2+k-tree, T+2-i] = CopEstim$par
+      FullVine$par2[T+2+k-tree, T+2-i] = CopEstim$par2
     }
     pobxNew = pobxNext
   }
   for(i in 1:(T-subset)){
     CopEstim = BiCopEst(pobxNew[,i], pobxNew[,i+1], family=XCop)
-    FullVine$par[T+1, i] = CopEstim$par
-    FullVine$par2[T+1, i] = CopEstim$par2
+    FullVine$par[T+1, T+1-i] = CopEstim$par
+    FullVine$par2[T+1, T+1-i] = CopEstim$par2
   }
   # Final Copula between first subset X and last non-subset X
   CopEstim = BiCopEst(pobxNew[,T-subset], pobx[,1], family=XCop)
-  FullVine$par[T+1, T-subset+1] = CopEstim$par
-  FullVine$par2[T+1, T-subset+1] = CopEstim$par2
+  FullVine$par[T+1, subset] = CopEstim$par
+  FullVine$par2[T+1, subset] = CopEstim$par2
   
   return(FullVine)
 }
