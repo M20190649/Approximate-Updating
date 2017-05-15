@@ -7,6 +7,7 @@ using namespace Rcpp;
 using namespace arma;
 using namespace std;
 
+// Used to filter states forward in forecasting with extra data added
 // [[Rcpp::export]]
 vec FFUpdatercpp(vec y, double phi, double gamma, double sigmaSqY, double sigmaSqX, double xTmean, double xTvar){
   int J = y.n_elem;
@@ -32,6 +33,7 @@ vec FFUpdatercpp(vec y, double phi, double gamma, double sigmaSqY, double sigmaS
   return output;
 }
 
+// Kalman FFBS for MCMC
 // [[Rcpp::export]]
 rowvec FFBScpp(vec y, rowvec theta){
   int T = y.size();
@@ -77,6 +79,7 @@ rowvec FFBScpp(vec y, rowvec theta){
   return draws;
 }
 
+// Main MCMC algorithm
 // [[Rcpp::export]]
 Rcpp::List DLM_MCMC(vec y, int reps){
   int T = y.n_elem;
@@ -109,7 +112,8 @@ Rcpp::List DLM_MCMC(vec y, int reps){
     }
     theta(i, 1) = (1 / randg<vec>(1, distr_param(sigmaSqXShape, 1/sigmaSqXScale)))[0];
     
-    //phi ~ TruncNormal(mean, var, low = -1, high = 1)
+    //phi ~ TruncNormal(mean, var, low = -1, high = 1) - Not truncated right now, working fine as is.
+    // Should implement it properly
     meanPhiNumer = meanPhiDenom = 0;
     for(int t = 0; t < T; ++t){
       meanPhiNumer += x(i-1, t) * x(i-1, t+1);

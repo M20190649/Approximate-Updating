@@ -53,7 +53,15 @@ Mode = function(x) {
 
 BiCopAIC = function(x, y, family){
   output = rep(0, length(family))
-  for(i in seq_along(famiy)){
+  tau = cor(x, y, method='kendall')
+  for(i in seq_along(family)){
+    if(family[i] %in% c(23, 24, 26, 27, 28, 29, 30, 33, 34, 36, 37, 38, 39, 40,
+                        124, 134, 224, 234) & tau > 0){
+      output[i] = 99999
+    } else if(family[i] %in% c(3, 4, 6, 7, 8, 9, 10, 13, 14, 16, 17, 18, 19, 20,
+                               104, 114, 204, 214) & tau < 0){
+      output[i] = 99999
+    } else
     output[i] = BiCopEst(x, y, family[i])$AIC
   }
   return(output)
@@ -87,7 +95,9 @@ RestrictedVineSelect = function(T, subset, k, MCMCreps, MCMC){
   
   # Misc Variables to initialise
   TreeEdge = rep(0, k)
-  TreeAIC = matrix(0, length(family), subset
+  family = c(0, 1, 2, 2, 4, 5, 6, 7, 8, 9, 10, 13, 14, 16, 17, 18, 19, 20, 23, 24, 26, 
+             27, 28, 29, 30, 33, 34, 36, 37, 38, 39, 40, 104, 114, 124, 134, 204, 214, 224, 234)
+  TreeAIC = matrix(0, length(family), subset)
   TreeCop = rep(0, k)
   candidates = 1:k
   whichTheta = rep(0, k)

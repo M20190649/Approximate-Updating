@@ -3,17 +3,20 @@
 
 #include <RcppArmadillo.h>
 #include <math.h>
-//#include <distributions.h> //figure this out
 using namespace Rcpp;
 using namespace arma;
 using namespace std;
 
-// TODO:
-// Find out how to add distribution code as a header to reduce amount of code in one file
-// Make phi have a truncated normal marginal so I can fix the x0 prior variance 
-// Can repeatedly sample from the MVN until we get a draw in (-1, 1) but I'd like to avoid while loops when the mean of phi can go way outside (-1, 1). Could restrict the mean?
-// Find out how to avoid dynamic casting to make it easier to implement new models, but if I'm sticking with DLM's for a while this is not a problem yet
+// Y - Distribution object for p(yt | xt, theta) for t= 1, ..., T
+// Pdist - Distribution object for p(theta), p(x0) and p(xt | xt-1, theta) for t = 1, ..., T
+// Qdist - Distribution object for q(theta, x)
+// y - data
+// sims - simulated value of theta and x from q
+// p = T+5, the dimension of the q distribution
+// epsilon - simulated standard normal variables that are transformed to theta and x
 
+
+// All of the p and q densities are stored as distribution objects, which makes it way easier to adapt the code to new models
 class Distribution{
   // This is the base class for the distributions, and exists so I can have Normal and Inverse Gamma pointers in the same array
 public:
@@ -22,29 +25,21 @@ public:
   virtual double logdens(double x) {return -10000;};
 };
 
-// All distribution subclass objects have parameters, a constructor, a set_value and increase_value function, a logdensity function
-// and in the normal distribution case a transform from epsilon function
+// All distribution subclass objects have parameters, a constructor, a set parameter value and a logdensity function.
+// The multivariate normal also has extra functions to increase parameter values and to transform standard normal 'noise' variables epsilon to theta and x.
+// Only the MVN is used for q distributions so it needs the extra functionality.
 
 class Normal: public Distribution{
   // This just provides methods for the single variate normal distribution
 public:
   double mean, variance; // Parameters
   Normal(double, double); // Constructor
-  void set_values(double m, double v){
+  void set_values(double m, double v){ 
     mean = m;
     variance = v;
   }
-  void increase_values(double m, double sd){
-    mean += m;
-    if(sqrt(variance) > -sd){
-      variance = pow(sqrt(variance) + sd, 2);
-    }
-  }
   double logdens (double x) {
     return -0.5 * log(2*3.141593*variance) - pow(x - mean, 2) / (2 * variance);}
-  double transform_epsilon(double x){
-    return mean + sqrt(variance) * x;
-  }
 };
 
 Normal::Normal (double m, double v){ // Constructor
@@ -107,10 +102,6 @@ public:
     shape = sh;
     scale = sc;
   }
-  void increase_values(double sh, double sc){
-    shape += sh;
-    scale += sc;
-  }
   double logdens (double x) {
     // the input x should be log(sigmaSq)
     double constant = shape * log(scale) - log(tgamma(shape));
@@ -132,10 +123,6 @@ public:
     min = mi;
     max = ma;
   }
-  void increase_values(double mi, double ma){
-    min += mi;
-    max += ma;
-  }
   double logdens(double x){
     return 1.0 / log(max - min);
   }
@@ -146,31 +133,32 @@ Uniform::Uniform (double mi, double ma){
   max = ma;
 }
 
-
-cube qSim (MultiNormal* qLatent, int n_samples, int p){
-  // We want to return the matrix of epsilons (treat each row as a different realisation of a p-dimensional N(0, I))
+// Function to simulate n_samples many draws from the p dimensional multivariate normal distribution for q
+cube qSim (MultiNormal* qDist, int n_samples, int p){
+  // We want to return the matrix of epsilons (treat each row as a different realisation of a p-dimensional MVN(0, I))
   // We also want the transformed matrix of variables
-  // Does not apply the exp transform, the algorithm is storing it as log sigma squared. exp is only applied to evaluate log(p(theta, x, y))
-  // Maths is written as if we had a distribution for sigma squared instead of log sigma squared.
+  // Does not apply the exp transform, the code stores these as log sigma squared.
+  // However the maths is written for the posterior/approximation to sigma squared instead of log sigma squared.
   cube output(n_samples, p, 2);
   mat epsilon = randn<mat>(n_samples, p);   
   mat theta (n_samples, p);
   for(int i = 0; i < n_samples; ++i){
     // Each row of theta corresponds to the transform of that row of epsilon
-    theta.row(i) = qLatent->transform_epsilon(epsilon.row(i));
+    theta.row(i) = qDist->transform_epsilon(epsilon.row(i));
   }
   output.slice(0) = theta;
   output.slice(1) = epsilon;
   return output;
 }
 
-double pdens (Normal* Y[], vec y, Distribution* pLatent[], rowvec latent, int T, int p){
+// Function to evaluate the density of log(p(y, x, theta)) for a simulated value of theta & x.
+double pdens (Normal* Y[], vec y, Distribution* pDist[], rowvec sims, int T, int p){
   // Evaluates sum(log(p(yt|xt, theta))) + sum(log(p(xt | xt-1, theta))) + sum(log(p(theta))) 
   double priorDens = 0;
   // as the IG logdens function takes log(sigmaSq) as an input we keep so it uses latent instead of exp(latent)
   for(int i = 0; i < p; ++i){
-    // Prior also includes all of the latent state densities
-    priorDens += pLatent[i]->logdens(latent[i]);
+    // Prior also includes all of the latent state densities p(xt | xt-1, theta)
+    priorDens += pDist[i]->logdens(sims[i]);
   }
   double dataDens = 0;
   for(int t = 0; t < T; ++t){
@@ -180,78 +168,85 @@ double pdens (Normal* Y[], vec y, Distribution* pLatent[], rowvec latent, int T,
   return priorDens + dataDens;
 }
 
-void updateP (Normal* Y[], Distribution* pLatent[], rowvec latent, int T){
-  // This function updates the parameters of p using a sample of q (when the distributions in p have dependencies)
-  // latent[0] = log(sigmaSqY), latent[1] = log(sigmaSqX), latent[2] = phi, latent[3] = mu, latent[4],...,latentT+5] = x_0, ..., x_T
-  dynamic_cast<Normal*>(pLatent[4])->set_values(0.0, 2.78*exp(latent[1])); //X_0 ~ N(0, sigmaSqX / 1-phi^2) 
-  // I need an efficient way to sample phi from (-1, 1) as phi outside this range causes negative variance
-  // The true value of phi is 0.8, which gives x0 a variance of 2.78*sigmaSqX, so use it until I can fix the phi sampler 
+// This function updates the parameters of p and Y using simulated values of theta & x.
+// This is because the parameters of these distributions typically depend on other variables.
+void updateP (Normal* Y[], Distribution* pDist[], rowvec sims, int T){
+  // sims[0] = log(sigmaSqY), sims[1] = log(sigmaSqX), sims[2] = phi, sims[3] = gamma, sims[4],...,sims[]T+5] = x_0, ..., x_T
+  dynamic_cast<Normal*>(pDist[4])->set_values(0.0, 10.25*exp(sims[1])); //X_0 ~ N(0, sigmaSqX / 1-phi^2) 
+  // This should used 1/(1-phi^2) instead of 10.25, but I haven't figured out how to sample phi from a truncated marginal distribution
+  // Right now phi can be outside (-1, 1), which makes the variance of x0 negative.
+  // The true value of phi is 0.95, which gives x0 a variance of 10.25*sigmaSqX, so use it until I can fix the phi sampler 
   for(int t = 0; t < T; ++t){
-    // Despite the set_values function in Distribution being overwritten with the version in Normal,
-    // unless I explicitly say to use the Normal version (via dynamic cast) this was using the distribution version of set_values (now removed)
-    dynamic_cast<Normal*>(pLatent[t+5])->set_values(latent[2] * latent[t+4], exp(latent[1])); //X_t ~ N(phi*x_t-1, sigmaSqX)
+    dynamic_cast<Normal*>(pDist[t+5])->set_values(sims[2] * sims[t+4], exp(sims[1])); //X_t ~ N(phi*x_t-1, sigmaSqX)
     // Y is a Normal* object not a Distribution* object so it avoids the problem as the compiler knows to use Normal::logdens
-    Y[t]->set_values(latent[3] + latent[t+5], exp(latent[0])); //Y_t ~N(mu + x_t, sigmaSqY)
+    Y[t]->set_values(sims[3] + sims[t+5], exp(sims[0])); //Y_t ~N(gamma + x_t, sigmaSqY)
   }
 } 
 
-double ELBO (Normal* Y[], vec y, Distribution* pLatent[], MultiNormal* qLatent, int T, int p, int n = 250){
-  // Evaluates the ELBO as an expectation over n simulations of theta & x
-  // sample theta - don't need epsilon for this so only keep the theta slice
-  mat latentSims = qSim(qLatent, n, p).slice(0);
+// Evaluate the ELBO as E_q(p - q) as a sum of (p-q) from n many simulations from q.
+double ELBO (Normal* Y[], vec y, Distribution* pDist[], MultiNormal* qDist, int T, int p, int n = 250){
+  // sample theta and x only, don't need epsilon so only keep the theta slice from qSim
+  mat sims = qSim(qDist, n, p).slice(0);
   double value = 0;
   for(int i = 0; i < n; ++i){
-    // Set p parameters based on that sample of q
-    updateP (Y, pLatent, latentSims.row(i), T);
-    // Evaluate ELBO for that sample
-    value += pdens(Y, y, pLatent, latentSims.row(i), T, p) - qLatent->logdens(latentSims.row(i)); 
+    // Update p parameters based on that sample of q
+    updateP (Y, pDist, sims.row(i), T);
+    // Evaluate p - q for that sample
+    value += pdens(Y, y, pDist, sims.row(i), T, p) - qDist->logdens(sims.row(i)); 
   }
   // Average over n realisations of q(x, theta)
   return value / n;
 }
 
-rowvec reparamDeriv (vec y, MultiNormal* qLatent, rowvec latent, rowvec epsilon, int T, int i, bool meanfield){
+// Take the derivative of the reparameterised ELBO
+// d/dlambda (e_eps (logp(f(eps)) - logq(eps) + log|J|))
+// Input i is a marker to take the derivative of the i'th element of {theta, x}.
+// Derivative of q is different in diagonal and non-diagonal cases.
+rowvec reparamDeriv (vec y, MultiNormal* qDist, rowvec sims, rowvec epsilon, int T, int i, bool meanfield){
   // Aim is to take the derivative of mu_i and the entire i_th row of L as one row vector
-  // We use: dpdf = derivative of p wrt theta
-  // dfdm = derivative of theta wrt mu (for the chain rule of the derivative of p wrt mu)
-  // dfdL = derivative of theta wrt L
+  // dpdf = derivative of logp wrt theta
+  // dfdm = derivative of theta wrt mu (mean vector of Q)
+  // dfdL = derivative of theta wrt L (lower triangle of variance matrix)
   // dqdm = derivative of q wrt mu (easy functional form, can skip the chain rule)
   // dqdL = derivative of q wrt L
   double dpdf = 0; //Initialise to 0 
-  latent[0] = exp(latent[0]); // transform to sigmaSq to make p(y, theta) a little bit easier to deal with
-  latent[1] = exp(latent[1]);
-  // Next is the derivatives of p(y, theta) wrt theta.
+  sims[0] = exp(sims[0]); // transform to sigmaSq to make p(y, theta) a little bit easier to deal with
+  sims[1] = exp(sims[1]);
+  // Next is the derivatives of p(y, x, theta) wrt theta or x.
   if(i == 0){ //sigmaSqY
-    dpdf = -(0.5*T + 2) / latent[i] + 1 / pow(latent[i], 2);
+    dpdf = -(0.5*T + 2) / sims[i] + 1 / pow(sims[i], 2);
     for(int t = 0; t < T; ++t){
-      dpdf += pow(y[t] - latent[3] - latent[t+5], 2) / (2 * pow(latent[i], 2));
+      dpdf += pow(y[t] - sims[3] - sims[t+5], 2) / (2 * pow(sims[i], 2));
     }
   } else if(i == 1){  //sigmaSqX
-    dpdf = -(0.5*T + 2.5) / latent[i] + 1 / pow(latent[i], 2) + pow(latent[4], 2) * (1 - pow(latent[2], 2)) / (2 * pow(latent[i], 2));
+    dpdf = -(0.5*T + 2.5) / sims[i] + 1 / pow(sims[i], 2) + pow(sims[4], 2) * (1 - pow(sims[2], 2)) / (2 * pow(sims[i], 2));
     for(int t = 5; t < T+5; ++t){
-      dpdf += pow(latent[t] - latent[2]*latent[t-1], 2) / (2 * pow(latent[i], 2));
+      dpdf += pow(sims[t] - sims[2]*sims[t-1], 2) / (2 * pow(sims[i], 2));
     }
   } else if(i == 2){ //Phi
-    dpdf = latent[i] / (1 - pow(latent[i], 2)) + latent[i] * pow(latent[4], 2) / latent[1];
+    dpdf = sims[i] / (1 - pow(sims[i], 2)) + sims[i] * pow(sims[4], 2) / sims[1];
     for(int t = 5; t < T+5; ++t){
-      dpdf += latent[t-1]*(latent[t] - latent[i]*latent[t-1]) / latent[1];
+      dpdf += sims[t-1]*(sims[t] - sims[i]*sims[t-1]) / sims[1];
     }
   } else if(i == 3){ //Gamma
-    dpdf = - latent[i] / 100;
+    dpdf = - sims[i] / 100;
     for(int t = 0; t < T; ++t){
-      dpdf -= (latent[i] + latent[t+5] - y[t]) / latent[0];
+      dpdf -= (sims[i] + sims[t+5] - y[t]) / sims[0];
     }
   } else if(i == 4){ //X0
-    dpdf = (latent[5]*latent[2] -latent[i]) / latent[1];
+    dpdf = (sims[5]*sims[2] -sims[i]) / sims[1];
   } else if(i == T+4){ //XT
-    dpdf = (y[i-5] - latent[3] - latent[i]) / latent[0] - (latent[i] - latent[2]*latent[i-1]) / latent[1];
+    dpdf = (y[i-5] - sims[3] - sims[i]) / sims[0] - (sims[i] - sims[2]*sims[i-1]) / sims[1];
   } else { //X1 ... XT-1
-    dpdf = (y[i-5] - latent[3] - latent[i]) / latent[0] - (latent[i] - latent[2]*latent[i-1]) / latent[1] +
-      latent[2] * (latent[i+1] - latent[2] * latent[i]) / latent[1];
+    dpdf = (y[i-5] - sims[3] - sims[i]) / sims[0] - (sims[i] - sims[2]*sims[i-1]) / sims[1] +
+      sims[2] * (sims[i+1] - sims[2] * sims[i]) / sims[1];
   }
   
-  double dfdm = 1; //theta = mu + sum(L*eps) for i > 2. Derivative of 1.
-  double dqdm = 0; // dq/dmu is zero except for i = 1, 2
+  //theta or x = mu + sum(L*eps) for i > 2. Derivative wrt mu is one.
+  double dfdm = 1; 
+  // lnq = -( mu1 + mu2 + sum(log(Lii) for i = 1, ..., p) + L11eps1 + L21eps1 + L22eps2) + ln(p(eps)) (L21 = 0 if diagonal approximation)
+  // derivative wrt mu_i, i > 2 is zero
+  double dqdm = 0;  
   vec dfdL(T+5, fill::zeros);
   if(meanfield){
     dfdL[i] = epsilon[i];
@@ -260,14 +255,18 @@ rowvec reparamDeriv (vec y, MultiNormal* qLatent, rowvec latent, rowvec epsilon,
       dfdL[j] = epsilon[j];
     }
   }
-  // lnq = -( mu1 + mu2 + sum(log(Lii) for i = 1, ..., p) + L11eps1 + L21eps1 + L22eps2) + ln(p(eps))
+ 
   vec dqdL(T+5, fill::zeros);
-  dqdL[i] = -1/qLatent->chol_diag(i); // dq/DLij is -1/Lij for i = j, otherwise = 0 
-  if(i == 0){
-    dfdm = latent[i];
-    dfdL[i] *= latent[i];
+  dqdL[i] = -1/qDist->chol_diag(i); // dq/DLij is -1/Lij for i = j, otherwise = 0 
+  if(i < 2){ // special cases for sigma squared variables
+    dfdm = sims[i];
+    dfdL[i] *= sims[i];
     dqdm = -1;
     dqdL[i] -= epsilon[i];
+    if(!meanfield & i == 1){
+      dqdL[0] -= epsilon[0];
+      dfdL[0] *= sims[i];
+    }
   }
   rowvec derivs(T+6, fill::zeros);
   derivs[0] = dpdf*dfdm - dqdm;
@@ -275,12 +274,12 @@ rowvec reparamDeriv (vec y, MultiNormal* qLatent, rowvec latent, rowvec epsilon,
   return derivs;
 }
 
-void updateQ (MultiNormal* qLatent, mat updates, int p){
+void updateQ (MultiNormal* qDist, mat updates, int p){
   // via lambda(t+1) = lambda(t) + Pt dELBO/dlambda
   // updates contains mu derivatives in first column, L derivatives in the rest
   vec mean = updates.col(0);
   mat chol = updates.submat(0, 1, p-1, p);
-  qLatent->increase_values(mean, chol);
+  qDist->increase_values(mean, chol);
 }
 
 // [[Rcpp::export]]
