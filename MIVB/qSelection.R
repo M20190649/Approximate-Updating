@@ -51,6 +51,15 @@ Mode = function(x) {
   ux[which.max(tabulate(match(x, ux)))]
 }
 
+BiCopAIC = function(x, y, family){
+  output = rep(0, length(family))
+  for(i in seq_along(famiy)){
+    output[i] = BiCopEst(x, y, family[i])$AIC
+  }
+  return(output)
+}
+
+
 RestrictedVineSelect = function(T, subset, k, MCMCreps, MCMC){
   require(VineCopula)
   # Create Vine Matrix for X subset
@@ -78,7 +87,7 @@ RestrictedVineSelect = function(T, subset, k, MCMCreps, MCMC){
   
   # Misc Variables to initialise
   TreeEdge = rep(0, k)
-  TreeFit = rep(0, subset)
+  TreeAIC = matrix(0, length(family), subset
   TreeCop = rep(0, k)
   candidates = 1:k
   whichTheta = rep(0, k)
@@ -107,9 +116,9 @@ RestrictedVineSelect = function(T, subset, k, MCMCreps, MCMC){
                                  x[2] == as.numeric(paste0(sort(TreeEdge[1:(tree-1)]), collapse=''))))
     }
     for(i in 1:subset){ 
-      TreeFit[i] = BiCopSelect(pobx[,i], pobtheta[,whichTheta[tree], tree])$family
+      TreeAIC[,i] = BiCopAIC(pobx[,i], pobtheta[,whichTheta[tree], tree], family)
     }
-    TreeCop[tree] = Mode(TreeFit)
+    TreeCop[tree] = family[which.min(rowSums(TreeAIC))]
     
     # Calculate next level of xt | theta
     pobxNext = matrix(0, length(v), subset) 
@@ -142,11 +151,11 @@ RestrictedVineSelect = function(T, subset, k, MCMCreps, MCMC){
   }
   
   # X_t - X_t+1 Tree
-  XFit = rep(0, subset-1)
+   XAIC = matrix(0, length(family), subset-1)
   for(i in 1:(subset-1)){
-    XFit[i] = BiCopSelect(pobx[,i], pobx[,i+1])$family
+    XAIC[,i] = BiCopAIC(pobx[,i], pobx[,i+1])
   }
-  XCop = Mode(XFit)
+  XCop = family[which.min(rowSums(XAIC))]
   for(i in 1:(subset-1)){
     CopEstim = BiCopEst(pobx[,i], pobx[,i+1], family=XCop)
     Vine$par[subset, subset-i] = CopEstim$par

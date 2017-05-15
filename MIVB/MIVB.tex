@@ -135,11 +135,12 @@ Kingma and Welling (2014) show that an $f$ exists to transform $\boldsymbol{\eps
 \label{changevar}
 q_{\epsilon}(\boldsymbol{\epsilon}) = q_{\theta, x}(f (\boldsymbol{\epsilon}, \boldsymbol{\lambda})) |J|
 \end{equation}
-where $J = d\boldsymbol{\epsilon}/d\boldsymbol{\theta}dx_{1:T+S}$ is the Jacobian Matrix of the transformation $f$. Substituting (\ref{changevar}) into (\ref{ELBO}) gives
+where $J = d\boldsymbol{\theta}dx_{1:T+S}/d\boldsymbol{\epsilon}$ is the Jacobian Matrix of the transformation $f$. Substituting (\ref{changevar}) into (\ref{ELBO}) gives
 \begin{align}
-\mathcal{L}(q(\boldsymbol{\theta}, x_{1:T+S} | \boldsymbol{\lambda}), y_{1:T+S}) &= \int q_{\epsilon}(\boldsymbol{\epsilon}) \ln \left( \frac{p(y_{1:T+S},f (\boldsymbol{\epsilon}, \boldsymbol{\lambda}))}{q_{\theta, x}(f (\boldsymbol{\epsilon}, \boldsymbol{\lambda}))} \right) \frac{ d\boldsymbol{\epsilon}}{d\boldsymbol{\theta}dx_{1:T+S}}d\boldsymbol{\theta}dx_{1:T+S} \nonumber \\
-&= \int q_{\epsilon}(\boldsymbol{\epsilon}) \ln \left( \frac{p(y_{1:T+S},f (\boldsymbol{\epsilon}, \boldsymbol{\lambda}))}{q_{\epsilon}(\boldsymbol{\epsilon})|J|^{-1}} \right) d\boldsymbol{\epsilon}\nonumber \\
-&= \int q_{\epsilon}(\boldsymbol{\epsilon}) \ln (p(y_{1:T+S},f (\boldsymbol{\epsilon}, \boldsymbol{\lambda}))) - \ln(q_{\epsilon}(\boldsymbol{\epsilon})) + \ln(|J|) d\boldsymbol{\epsilon}\nonumber \\
+\mathcal{L}(q(\boldsymbol{\theta}, x_{1:T+S} | \boldsymbol{\lambda}), y_{1:T+S}) &= \int q_{\theta, x}(\boldsymbol{\theta}, x_{1:T+S} | \boldsymbol{\lambda}) \ln \left( \frac{p(y_{1:T+S},\boldsymbol{\theta}, x_{1:T+S})}{q_{\theta, x}(\boldsymbol{\theta}, x_{1:T+S} | \boldsymbol{\lambda})} \right) d\boldsymbol{\theta}dx_{1:T+S} \nonumber \\
+&= \int q_{\epsilon}(\boldsymbol{\epsilon})|J|^{-1} \ln \left( \frac{p(y_{1:T+S},f (\boldsymbol{\epsilon}, \boldsymbol{\lambda}))}{q_{\epsilon}(\boldsymbol{\epsilon})|J|^{-1}} \right) d\boldsymbol{\theta}dx_{1:T+S} \nonumber \\
+&= \int q_{\epsilon}(\boldsymbol{\epsilon}) \ln \left( \frac{p(y_{1:T+S},f (\boldsymbol{\epsilon}, \boldsymbol{\lambda}))}{q_{\epsilon}(\boldsymbol{\epsilon})|J|^{-1}} \right) d\boldsymbol{\epsilon} \nonumber \\
+&= \int q_{\epsilon}(\boldsymbol{\epsilon}) \left( \ln (p(y_{1:T+S},f (\boldsymbol{\epsilon}, \boldsymbol{\lambda}))) - \ln(q_{\epsilon}(\boldsymbol{\epsilon})) + \ln(|J|)\right) d\boldsymbol{\epsilon}\nonumber \\
 &= \mathcal{L}(q(\boldsymbol{\epsilon}), \boldsymbol{\lambda}, y_{1:T+S}). \label{reparamELBO}
 \end{align}
 
@@ -194,64 +195,71 @@ A black box VB approach such as ADVI allows implementation to be simple, as the 
 \item Extrapolate the form to $q(\boldsymbol{\theta}, x_{1:T+S} | \boldsymbol{\lambda})$.
 \end{enumerate}
 
-Treating the MCMC samples as `data', choosing a functional form for $q(\boldsymbol{\theta}, x_{1:T} | \boldsymbol{\lambda})$ can be approached as a traditional distribution fitting problem. Optimal marginal distributions are selected from a pool of suitable candidate distributions for each parameter by AIC, while a vine copula modelling approach is adopted for the dependence structure. Sklar (1959) proves that any joint probability distribution with $k$ variables can be written as the product of the marginals and a copula function,
+Treating the MCMC samples as `data', choosing a functional form for $q(\boldsymbol{\theta}, x_{1:T} | \boldsymbol{\lambda})$ can be approached as a traditional distribution fitting problem. Select optimal marginal distributions $\tilde{q}$ from a pool of suitable candidate distributions for each parameter by AIC, and for convenience select the same marginal distribution for each $x_t$ latent variable. A vine copula modelling approach is adopted for the dependence structure, as this can be selected independently to the marginal distribution. Sklar (1959) proves the any joint probability distribution with $k$ variables can be written as the product of the marginals and a copula function,
 \begin{equation}
 \label{vc1}
 p(\omega_1, \dots, \omega_k) = p(\omega_1) \dots p(\omega_k) c(P(\omega_1), \dots, P(\omega_k))
 \end{equation}
-where $p(\theta)$ is a pdf, $P(\theta)$ is a cdf, and $c(\cdot)$ is a copula. A vine copula is a structure to factorise this copula, increasing the flexibility given to the modeller, and is defined by a set of trees $\mathcal{V} = \{T_1, \dots, T_{k-1} \}$, where
+where $p(\theta)$ is a pdf, $P(\theta)$ is a cdf, and $c(\cdot)$ is a copula. A vine copula is a structure to factorise this copula, increasing the flexibility of modelling dependence, and is defined by a set of trees $\mathcal{V} = \{T_1, \dots, T_{k-1} \}$, where
 \begin{enumerate}
-\item $T_1$ has $k$ nodes corresponding to the $k$ variables, with $k-1$ edges.
-\item $T_t, t = 2, \dots, p-1$ has nodes corresponding to the edges in tree $T_{t-1}$
+\item $T_1$ has $k$ nodes corresponding to and labelled by the $k$ variables, with $k-1$ edges.
+\item $T_t, t = 2, \dots, k-1$ have $k+1-t$ nodes corresponding to the edges in tree $T_{t-1}$
 \item Two nodes in tree $T_t$ are joined by an edge only if the associated edges in $T_{t-1}$ share a node. 
+\item Each node in $T_t,  t = 2, \dots, k-1$ is labelled by the union of the nodes associated edge in $T_{t-1}$ connects to.
 \end{enumerate}
-Each edge in the vine corresponds to a bivariate copula with a conditioning set containing all variables that are shared between both connected nodes, and the product of each of these $k(k-1)/2$ bivariate copulas forms the complete copula. Figure (\ref{fig:vinecop}) provides an example for a four dimensional $\theta$.
+Each edge corresponds to a bivariate copula between the two variables that are unique to each of the connected nodes, with a conditioning set containing all shared variables. The product of each of these $k(k-1)/2$ bivariate copulae forms the complete copula. Figure (\ref{fig:vinecop}) provides an example for a four dimensional $\theta$.
 \begin{figure}[h]
 \centering
 %\includegraphics[width=0.4\linewidth,height=\textheight,keepaspectratio]{vines.png}
 \vspace{2mm}
-\caption{An example of a Vine Copula over four variables. The edges in the top tree represent unconditional bivariate copulas between the parameters on the connected nodes. The second tree edges represent the bivariate copulas for $\theta_1 \theta_3 | \theta_2$ and for $\theta_3 \theta_4 | \theta_2$, the conditioning on $\theta_2$ caused by its appearance in each connected node. The edge in the final tree represents the bivariate copula for $\theta_1, \theta_4 | \theta_2, \theta_3$, as both $\theta_2$ and $\theta_3$ appear in the connected nodes.}
+\caption{An example of a Vine Copula over four variables. The edges in the top tree represent unconditional bivariate copulae between the parameters on the connected nodes. The second tree edges represent the bivariate copulae for $\theta_1 \theta_3 | \theta_2$ and for $\theta_3 \theta_4 | \theta_2$, the conditioning on $\theta_2$ caused by its appearance in each connected node. The edge in the final tree represents the bivariate copula for $\theta_1, \theta_4 | \theta_2, \theta_3$, as both $\theta_2$ and $\theta_3$ appear in the connected nodes.}
 \label{fig:vinecop}
 \end{figure}
 
-The Markovian structure of the latent states in the models used provides additional information that can be used in the structure of the vine. Denoting the number of elements in $\boldsymbol{\theta}$ by $k$, the vine is restricted so that the first $k$ trees do not contain contain edges that correspond to copulas between two different elements of $x_{1:T}$, and that the $k+1'th$ tree edges correspond to the copulas $c(x_0, x_1 | \boldsymbol{\theta}), c(x_1, x_2 | \boldsymbol{\theta}), \dots, c(x_{T-1}, x_T | \boldsymbol{\theta})$. This enforces a structure where each further tree contains only bivariate copulas between $x_t$ and $x_{t+j}$ conditioned on $x_{t+l}$, where $j > l \geq 1$. The Markovian latent states implies that $x_t$ and $x_{t+j}$ are conditionally independent given $x_{t+l}$ for all $t$, so each copula in tree $k+2$ onwards can be set to the independence copula, reducing the number of copula parameters included in $\boldsymbol{\lambda}$ to be linear in $T$ instead of quadratic. For convenience in adding new variables $x_{T+1:T+S}$ to the vine, a further restriction is applied to the vine: the position in the vine and copula family for every $x_t$ is identical, the nodes each have a single edge to the same $\boldsymbol{\theta}$ node in the first $k$ trees with a single copula family chosen for each $c(x_t, \theta_i)$ copula in the same tree, as well as for for each $c(x_t, x_{t+1})$ copula in tree $k+1$. The algorithm used to select the vine and marginal distributions is adapted from Di{\ss}mann's algorith (Di{\ss}mann, Brechmann, Czado and Kurowicka 2013) and appears below in Algorithm \ref{alg:MIVB}.
+Denoting the number of elements in $\boldsymbol{\theta}$ by $k$, a vine copula for $q(\boldsymbol{\theta}, x_{0:T} | \boldsymbol{\lambda})$ contains $T+k$ trees, with a number of parameters included in $\boldsymbol{\lambda}$ that is $O(T+k)^2$. Constructing the vine so that the first $k$ trees do not contain copulae between any two elements of $x_t$ and the $k+1$'th tree contains copulae $c(x_t, x_{t+1} | \boldsymbol{\theta})$ will force trees $k+r$, with $r \geq 2$, to contain copulae $c(x_t, x_{t+r} | \boldsymbol{\theta}, x_{t+1:t+r-1}). These can be set to the independence copula as the Markovian nature of the latent varables implies that $x_t$ and $x_{t+r}$ are conditionally independent given $\boldsymbol{\theta}$ and $x_{t+1:t+r-1}, reducing the number of copula parameters to $O(Tk)$. For convenience the vine is further restricted so that, in each of the first $k$ trees, every $x_t$ has an edge to the same $\theta$ node with the same copula family. 
 
-After the functional form for $q(\boldsymbol{\theta}, x_{0:T+S} | \boldsymbol{\lambda})$ is chosen, the ELBO can be maximised using Copula Variational Inference (Tran, Blei and Airoldi 2015). The Markovian structure of the latent states implies that, after learning the distribution of any $x_t$, the distribution of each $x_s, s < t$ is irrelevant to forecast of $y_{T+S+h}$. The computational cost of the gradient ascent algorithm can be substantially reduced by holding fixed any parameters associated with $x_t, t = 0, \dots, T$. Instead apply Equation (\ref{GradAscent}) to only the $\lambda$ parameters associated with the marginal distribution of each $\theta$, copulas between two $\theta$ variables, the marginal distribution of each $x_s, s > T$, copulas between $x_s$ and $\theta$ and copulas between $x_{s-1}, x_s$. 
+Di{\ss}mann's algorith (Di{\ss}mann, Brechmann, Czado and Kurowicka 2013) can be used to fit a vine copula to data, selecting both the set of edges for each tree and an appropriate copula family for each edge according to some criteria. A common critereon is to select the set of edges that maximise the sum of absolute empirical pairwise Kendell's Tau, with copula families that minimise AIC. This algorithm is modified to include the above restrictions. In the following, use of the letters $i$ and $j$ denote $\theta_i$ and $\theta_j$ and an alternative use of $t$ denotes $x_t$. Edges are denoted by $\{i, j | D \}$ and copula are given by $c(i, j | D)$ where $D$ is the conditioning set. Any copula that is to be included in the $q$ distribution is given by $\tilde{c}(i, j | D)$. Finally the empirical Kendell's Tau between a pair of variables is denoted by $\tau_{i, j | D}$. Noting that copulae are a function of the CDF of a random variable first transform all MCMC samples of $\boldsymbol{\theta}$ and $x_{0:T}$ to $(0, 1)$ using the empirical marginal CDFs. No restrictions are applied to the $\boldsymbol{\theta}$ sub-trees, so a $k$ dimensional vine for these parameters can be estimated using Di{\ss}mann's algorith by any critiera with selected edges $\{i, j | D\}$ and copulae $\tilde{c}(i, j | D)$ added to the first $k$ trees of the full vine. 
+
+The first tree also contains edges from each $x_t$ to the same $\theta$ element, selected by calculating $\tau_{j, t}$ for each $\theta_j$ and $x_t$ and add edges $\{t, i^{(1)} \}$ where
+\begin{equation}
+\label{Vine:TauCrit}
+i^{(1)} = \arg \underset{j}{\max} \sum_{t} \tau_{j, t}.
+\end{equation}
+For each copula family $m$ and each $t$, estimate the copula $c_m(i^{(1)}, t)$ and choose an optimal family to include in the vine as $\tilde{c}(i^{(1)}, t)$. The optimal family could be chosen by criteria such as minimises the sum of AIC across $t$, the minimises AIC for the most $t$. In each tree $l = 2, \dots, k$ this processs is repeated: Calculate $\tau_{j, t | i^{(1)}, \dots, i^{(l-1)}$ for each $t$ and element of $\theta$ that has an edge to $\theta^{(l-1)}$ in one of the first $l-1$ trees, then choose $\theta_{i^{(l)}$ where
+\begin{equation}
+\label{Vine:TauCrit}
+i^{(l)} = \arg \underset{j}{\max} \sum_{t} \tau_{j, t}.
+\end{equation}
+Estimate copulae $c_m(i^{(l)}, t | i^{(1:l-1)})$ for each $t$ and $m$ and select an optimal family as $\tilde{c}(i^{(l)}, t |i^{(1)}, \dots, i^{(l-1)})$.
+Tree $k+1$ contains edges $\{t, t+1 |  i^{(1)}, \dots, i^{(k) \}$, with an optimal copula family $\tilde{c}(t, t+1 |i^{(1)}, \dots, i^{(l-k)})$. Tree $k+r$ with $r \geq 2$ must then contain edges $\{t, t+r |  i^{(1), \dots, i^{(k), t+1, \dots, t+r-1 \} with $\tilde{c}(t, t+r |  i^{(1), \dots, i^{(k), t+1, \dots, t+r-1) chosen to be the independence copula. This approach is given in Algorithm \ref{alg:MIVB}.
+
+The product of all $\tilde{c}$ copula and selected $\tilde{q}$ marginals forms the approximating distribution $q(\boldsymbol{\theta}, x_{0:T} | \boldsymbol{\lambda})$. As the marginal distributions and copula for $x_t$ are identical for each $t$ additional latent variables $x_{T+1:T+S}$ can easily be included to form $q(\boldsymbol{\theta}, x_{0:T+S} | \boldsymbol{\lambda})$. The ELBO can be maximised for this $q$ using Copula Variational Inference (Tran, Blei and Airoldi 2015). As we are interested in forecasts of $y_{T+S+h}$ and $x_t$ is Markovian, the distribution of each $x_s, s < t$ is irrelevant given the distribution of $x_t$. Holding $\lambda}$ parameters assocaited with $x_t, t = 0, \dots, T$ fixed at MCMC data estimated values will drastically reduce the computational cost of the gradient ascent algorirhtm as only the $\lambda$ parameters associated with the marginal distributions of $\theta$ and $x_{T+1:T+S}$, as well as the copulae between these, needs to be optimised.
 
 \begin{algorithm}[H]
  \SetKwInOut{Input}{Input}
- \Input{Observations of $\boldsymbol{\theta}, x_{T-V:T}$,  $k$, the number of elements in $\boldsymbol{\theta}$. \;}
- \KwResult{$q$ functional form for use in MIVB}
- \For {$i = 1, \dots, k$} {
-   Select $q(\theta_i)$ functional form that minimises AIC as $\hat{q}(\theta_i)$, add parameters to $\boldsymbol{\lambda}$.\;
- }
- \For {$t = T-V, \dots, T$} {
-  Select $q(x_t)$ functional form that minimises AIC. \;
- }
- Select the mode $q(x_t)$ functional form as $\hat{q}(x_t)$, estimate for all $t = T-V, \dots, T$, add parameters to $\boldsymbol{\lambda}$.\;
+ \Input{Observations of $\boldsymbol{\theta}, x_{1:T}$,  $k$, the number of elements in $\boldsymbol{\theta}$. \;}
+ \KwResult{Set of copulae $\tilde{c}(\cdot, \codt)$}
  Transform observations for each variable to $(0, 1)$ by the inverse CDF\;
- Apply Di{\ss}mann's algorithm to $\boldsymbol{\theta}$, denote the selected edges by $\{i, j | D \}_l$ and copulas by $\hat{c}(i, j | D)_l$ where $D$ is the conditioning set for each copula and $l = 1, \dots, k-1$ is the tree. \;
- \For {$l = 1, \dots, k$} {
-  \If {l = 1} {
-    Calculate the empirical Kendall's tau $\tau_{i, t | \emptyset}$ for each pair $\theta_i$ and $x_t$ \;
-  } \Else {
-    Calculate the empirical Kendell's tau $\tau_{j, t | i^{(1:l-1)}}$ for $x_t | \theta_{i^{(1:l-1)}}$ and each $\theta_j | D$ where $D$ matches the $x_t$ conditioning set $\theta_{i^{(1:l-1)}}$. \;
-  }
-  Find $i^{(l)} = \arg \underset{j}{\max} \sum_t \tau_{j, t | i^{(1:l-1)}}$. \;
+ Apply Di{\ss}mann's algorithm to $\boldsymbol{\theta}$, denote the selected edges by $\{i, j | D \}_l$ and copulae by $\tilde{c}(i, j | D)_l$ where $D$ is the conditioning set for each copula and $l = 1, \dots, k-1$ is the tree. \;
+ Calculate $\hat{\tau}_{j, t}$ for each $j$ and $t$ \;
+ Find $i^{(1)} = \arg \underset{j}{\max} \sum_t \hat{\tau}_{j, t}$. \;
+ Add edges $\{i, j |\}_1$ and $\{i^{(1)}, t \}$ to Tree $1$. \;
+ For each $t$ and copula family $m$ estimate $c_m(i^{(1)}, t)$.\;
+ Select $\tilde{c}(i^{(1)}, t)$.\;
+ For each $\tilde{c}(i, j)_1$ calculate $\theta_i | \theta_j$ and $\theta_j | \theta_i$; transform to (0, 1).\;
+ For each $t$ use $\tilde{c}(i^{(1)}, t)$ to calculate $x_t | \theta_{i^{(1)}}$; transform to (0, 1).\;
+ \For {$l = 2, \dots, k$} {
+    Calculate $\hat{\tau}_{j, t | i^{(1:l-1)}}$ for $x_t | \theta_{i^{(1:l-1)}}$ and each $\theta_j | D$ where $D$ matches the $x_t$ conditioning set $\theta_{i^{(1:l-1)}}$. \;
+  Find $i^{(l)} = \arg \underset{j}{\max} \sum_t \hat{\tau}_{j, t | i^{(1:l-1)}}$. \;
   Add edges $\{i, j | D\}_l$ and $\{i^{(l)}, t |  i^{(1:l-1)}\}$ to Tree $l$. \;
-  For each $t$ find the copula family that minimises the AIC of $c(i^{(l)}, t |i^{(1:l-1)})$.\;
-  Select the mode copula family as $\hat{c}(i^{(l)}, t |i^{(1:l-1)})$.\;
-  For each $\hat{c}(i, j | D)_l$ calculate $\theta_i | \theta_j, \theta_D$ and $\theta_j | \theta_i, \theta_D$; transform to (0, 1).\;
-  For each $\hat{c}(i^{(l)}, t |i^{(1:l-1)})$ calculate $x_t | \theta_{i^{(1:l)}}$; transform to (0, 1).\;
+  For each $t$ and copula family $m$ estimate $c_m(i^{(l)}, t |i^{(1:l-1)})$.\;
+  Select $\tilde{c}(i^{(l)}, t |i^{(1:l-1)})$.\;
+  For each $\tilde{c}(i, j | D)_l$ calculate $\theta_i | \theta_j, \theta_D$ and $\theta_j | \theta_i, \theta_D$; transform to (0, 1).\;
+  For each $\tilde{c}(i^{(l)}, t |i^{(1:l-1)})$ calculate $x_t | \theta_{i^{(1:l)}}$; transform to (0, 1).\;
  }
-  For each $t$ in $T-V+1, \dots, T$, find the copula family that minimises the AIC of $c(x_t, x_{t-1} | \boldsymbol{\theta}).$ \;
-  Select the mode family as $\hat{c}(x_t, x_{t-1} | \boldsymbol{\theta})$. \;
-  Add all estimated $\hat{c}$ copula parameters to $\boldsymbol{\lambda}$. \;
-  Set edges, copula family and marginal distribution family used for $t = T-V, \dots, T$ as $\hat{c}$ and $\hat{q}$ for all other $t$. \;
-  Estimate copula and marginal parameters for $t = 0, \dots, T-V-1$, add to $\boldsymbol{\lambda}$. \;
-  Set copula and marginal parameters for $t = T+1, \dots, T+S$ to those used for $t = T$, add to $\boldsymbol{\lambda}$.\;
-  Set $q(\boldsymbol{\theta}, x_{0:T+S} | \boldsymbol{\lambda})$ to the product of all $\hat{c}$ copulas and $\hat{q}$ marginals.\;
-  \caption{MIVB $q$ selection algorithm}
+  For each $t$ in $2, \dots, T$ and copula family $m$ estimate $c_m(t, t-1 | \boldsymbol{\theta}).$ \;
+  Select $\tilde{c}(t, t-1 | \boldsymbol{\theta})$. \;
+   \caption{MIVB Vine selection algorithm}
   \label{alg:MIVB}
 \end{algorithm}
 
@@ -266,7 +274,7 @@ After the functional form for $q(\boldsymbol{\theta}, x_{0:T+S} | \boldsymbol{\l
 
 \newpage
 \section{Appendix}
-\iffalse
+\iffalse % hide entire appendix
 
 \subsection{Variational Approximations for the Dynamic Linear Model}
 
