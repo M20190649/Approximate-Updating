@@ -282,19 +282,23 @@ void updateQ (MultiNormal* qDist, mat updates, int p){
   qDist->increase_values(mean, chol);
 }
 
+// Stochastic Gradient Ascent for the DLM.
+// Inputs: y = Data up to T+S, S = S (only update past S states, update all if S equals length of y), M = simulations per iteration,
+// maxIter = maximum number of iterations, initialM = initial value of q mean, initialL = initial value of lower triangle matrix of q variance,
+// threshold = convergence criteria, alpha/beta/beta2 = tuning parameters for algorithm, adam = Use adam if true, use adagrad if false 
+// Adam works better. meanfield = Diagonal approximation true/false
 // [[Rcpp::export]]
 Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL, double threshold=0.01, 
                    double alpha=0.01, double beta1=0.9, double beta2=0.999, bool Adam=true, bool meanfield=false){
-  // Initialise everything we are going to need
   // T is treated as the total length of y, which is T+S in the written report.
   // So we use data up to y_{T-S} then update using y_{T-S+1:T} instead of data up to y_{T} then update to y_{T+S}
-  // Also using M as a stand in for N - the number of simulations per iteration
   int T = y.n_elem;
   if(S > T){
     // This would imply that the original MCMC is based on data up to y_{T-S < 0}
     Rcpp::Rcout << "Error: S must be equal to or less than the length of y" << std::endl;
     return Rcpp::List::create();
   }
+  // Initialise everything we are going to need
   mat e(T+5, T+6);
   e.fill(pow(10, -8));
   mat Mt(T+5, T+6, fill::zeros); // doubles as AdaGrad's Gt
@@ -305,25 +309,25 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
   
   // Set up distribution objects. We will use the pointers to these as arguments for the functions SGA_DLM calls.
   Normal* Y[T];
-  Distribution* pLatent[T+5]; // pLatent contains Normals and Inverse Gammas, so must use the superclass. This makes dynamic casts required.
-  MultiNormal* qLatent;
-  pLatent[0] = new InverseGamma(1, 1);
-  pLatent[1] = new InverseGamma(1, 1); 
-  pLatent[2] = new Uniform(-1, 1); 
-  pLatent[3] = new Normal(0, 5); 
-  pLatent[4] = new Normal(0, 2);
+  Distribution* pDist[T+5]; // pDist contains Normals and Inverse Gammas, so must use the superclass. 
+  MultiNormal* qDist;
+  pDist[0] = new InverseGamma(1, 1); // Sigma^2_y
+  pDist[1] = new InverseGamma(1, 1); // Sigma^2_x
+  pDist[2] = new Uniform(-1, 1);  // Phi
+  pDist[3] = new Normal(0, 100);  // Gamma
+  pDist[4] = new Normal(0, 2);  //X0, inputs to all x distributions don't matter and will be changed depending on simulated data
   for(int i = 0; i < T; ++i){
-    Y[i] = new Normal(0, 1);
-    pLatent[i+5] = new Normal(0, 1);
+    Y[i] = new Normal(0, 1); //yt
+    pLatent[i+5] = new Normal(0, 1); //xt
   }
-  qLatent = new MultiNormal(initialM, initialL);
+  qDist = new MultiNormal(initialM, initialL);
   
   // Controls the while loop
   int iter = 0;
   // Vector of ELBO value for each iteration
   vec LB(maxIter+1, fill::zeros);
   // ELBO for initial values
-  LB[0] = ELBO(Y, y, pLatent, qLatent, T, T+5);
+  LB[0] = ELBO(Y, y, pDist, qDist, T, T+5);
   double diff = threshold + 1;
   
   // Repeat until convergence, make sure it doesnt just stop after one - 20 is pretty arbitary but small enough to not matter
@@ -334,27 +338,27 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
     }
     // Reset partial derivatives
     partials.fill(0);
-    // Simulate S times from q
-    cube Sims = qSim(qLatent, M, T+5);
+    // Simulate M times from q
+    cube simsCube = qSim(qLatent, M, T+5);
     // It is easier to split the cube into two matrices now, as calling a row of a matrix of a cube via Sims.slice(i).row(j) doesn't work. 
     // Subcube views can extract the row but it will be stored as a cube object instead of a row vector.
     // This is a bit redundant memory wise but these are not large objects anyway.                                                            
-    mat latentSims = Sims.slice(0); 
-    mat epsilon = Sims.slice(1);
+    mat sims = simsCube.slice(0); 
+    mat epsilon = simsCube.slice(1);
     // Derivatives are an average of our M samples
     for(int m = 0; m < M; ++m){ 
-      updateP(Y, pLatent, latentSims.row(m), T); // Update p distribution parameters based on simulation results
+      // Take the partial derivative with respect to mu_i and i'th row of L in the same function.
       for(int i = 0; i < 4; ++i){ // Calculate Partial Derivatives wrt global parameters
-        partials.row(i) += reparamDeriv(y, qLatent, latentSims.row(m), epsilon.row(m), T, i, meanfield)/M;
+        partials.row(i) += reparamDeriv(y, qDist, sims.row(m), epsilon.row(m), T, i, meanfield)/M;
       }
       if(S == T){ // If S=T, then we want to estimate all T states AND x0. Below we do T-S+5 to start at X_{T-S}, but when
                   // S=T we also want to estimate x0, so we need T-S+4 which just equals 4.
         for(int i = 4; i < T+5; ++i){
-          partials.row(i) += reparamDeriv(y, qLatent, latentSims.row(m), epsilon.row(m), T, i, meanfield)/M;
+          partials.row(i) += reparamDeriv(y, qDist, sims.row(m), epsilon.row(m), T, i, meanfield)/M;
         } 
       } else { // If S<T, then we want to estimate X_{T-S} to X_T. 
         for(int i = T-S+5; i < T+5; ++i){
-          partials.row(i) += reparamDeriv(y, qLatent, latentSims.row(m), epsilon.row(m), T, i, meanfield)/M;
+          partials.row(i) += reparamDeriv(y, qDist, sims.row(m), epsilon.row(m), T, i, meanfield)/M;
         }
       }
     }
@@ -367,21 +371,21 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
       updateQ(qLatent, alpha * MtHat / (sqrt(VtHat) + e), T+5); // Size of step depends on second moments and alpha
     } else {
     // AdaGrad Updating is available as it was the original method I used in the confirmation etc. 
-    // Partial updating not yet implemented
+    // Only works when S = length of y, adam is better so I never implemented updating only part of the x vector
       Mt += pow(partials, 2); // sum of squared derivatives
       for(int i = 0; i < T+5; ++i){
         if(meanfield){
           Vt(i, 0) = alpha * pow(Mt(i, 0), -0.5); // Size of step depends on squared derivatives
-          Vt(i, i+1) = alpha * pow(Mt(i, i+1), -0.5);
+          Vt(i, i+1) = alpha * pow(Mt(i, i+1), -0.5); // Diagonal of L matrix only for meanfield
         } else {
           for(int j = 0; j <= i+1; ++j){
-            Vt(i, j) = alpha * pow(Mt(i, j), -0.5);
+            Vt(i, j) = alpha * pow(Mt(i, j), -0.5); // Each row/column of L for non-meanfield
           }
         }
        }
-      updateQ(qLatent, Vt % partials, T+5);
+      updateQ(qDist, Vt % partials, T+5); // Increase values of QDist by stepsize * partial derivatives
     }
-    LB[iter] = ELBO(Y, y, pLatent, qLatent, T, T+5); // Calculate ELBO with new values
+    LB[iter] = ELBO(Y, y, pDist, qDist, T, T+5); // Calculate ELBO with new values
     diff = abs(LB[iter] - LB[iter-1]); // Check difference after one extra iteration.
   } // End of while loop
   if(iter <= maxIter){
@@ -389,9 +393,9 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
   } else {
     LB = LB.head(iter);
   }
-  // The LB vector has length maxIter+1, extract the part we actually used (+1 to include initial LB).
+  // If the ELBO converged, the LB vector has length maxIter+1, extract the part we actually used (+1 to include initial LB).
   // If the ELBO didn't converge, the loop will add one to iter before checking iter > MaxIter, so don't do +1 in this case
-  // Print some useful information to the console
+  // Print some useful information to the console during testing
   //Rcpp::Rcout << "Number of iterations: " << iter << std::endl;
   //Rcpp::Rcout << "Final ELBO: " << LB.tail(1) << std::endl; 
   //Rcpp::Rcout << "Final Change in ELBO: " << diff << std::endl;
