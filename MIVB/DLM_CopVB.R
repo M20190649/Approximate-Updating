@@ -329,12 +329,12 @@ CopulaVB = function(y, S, thetaDist, xDist, thetaParams, xParams, Vine,
     }
     for(j in 1:S){
       if(FullVine$par[T+1, j] != 0){
-        PEtaXX1[i, j] = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
-                               xParams, Vine, M, 'EtaXX', i, j, 1)
+        PEtaXX1[j] = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
+                               xParams, Vine, M, 'EtaXX', 0, j, 1)
       }
       if(FullVine$par2[T+1, j] != 0){
-        PEtaXX1[i, j] = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
-                                xParams, Vine, M, 'EtaXX', i, j, 2)
+        PEtaXX1[j] = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
+                                xParams, Vine, M, 'EtaXX', 0, j, 2)
       }
     }
     
