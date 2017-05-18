@@ -6,7 +6,7 @@ sourceCpp("DLM_MCMC.cpp")
 sourceCpp("DLM_SGA_FR.cpp")
 
 # Parameters
-mu = 2
+gamma = 2
 phi = 0.95
 sigmaSqY = 1
 sigmaSqX = 1
@@ -38,7 +38,7 @@ VBmodelfit = function(Tvec, reps, minReps, meanfield=FALSE){
         } else {
           x[t] = phi*x[t-1] + rnorm(1, 0, sqrt(sigmaSqX))
         }
-        y[t] = mu + x[t] + rnorm(1, 0, sqrt(sigmaSqY))
+        y[t] = gamma + x[t] + rnorm(1, 0, sqrt(sigmaSqY))
       }
       # Initial value of Mean vector is mostly 0, but the first autocorrelation should be a decent starting value
       # for phi, and the mean should be a decent starting value for gamma

@@ -163,7 +163,7 @@ RestrictedVineSelect = function(T, subset, k, MCMCreps, MCMC){
   # X_t - X_t+1 Tree
    XAIC = matrix(0, length(family), subset-1)
   for(i in 1:(subset-1)){
-    XAIC[,i] = BiCopAIC(pobx[,i], pobx[,i+1])
+    XAIC[,i] = BiCopAIC(pobx[,i], pobx[,i+1], family)
   }
   XCop = family[which.min(rowSums(XAIC))]
   for(i in 1:(subset-1)){

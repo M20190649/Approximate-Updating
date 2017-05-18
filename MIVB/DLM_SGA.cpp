@@ -65,8 +65,7 @@ struct MultiNormal: Distribution{
       logdet += -log(abs(chol(i, i)));
     }
     double cons = -n / 2 * log(2.0*3.141593);
-    mat sigma = chol * chol.t();
-    mat factor = chol.i() * (x.t()- mean);
+    mat factor = solve(trimatl(chol), x.t() - mean);
     mat exponent = factor.t() * factor / 2;
     return cons + logdet + exponent(0,0);
   }

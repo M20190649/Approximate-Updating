@@ -92,8 +92,8 @@ meanphi = seq(0.5, 0.99, 0.005)
 set.seed(5)
 # Max[k, i] = ELBO maximising mean for theta_i in data replication k
 # Function is fairly slow
-max = matrix(0, 100, 4)
-for(k in 1:100){
+max = matrix(0, 20, 4)
+for(k in 1:20){
   T = 250
   x0 = rnorm(1, 0, sqrt(1/(1-0.95^2)))
   x = rep(0, T)
@@ -112,8 +112,8 @@ for(k in 1:100){
   max[k, 1] = mean[which.max(elbosigy)]
   elbosigx = lbsigx(mean, var(log(MCMC$theta[2501:5000,2])), x0, x, y)
   max[k, 2] = mean[which.max(elbosigx)]
-  elbophi = lbphi(mean, var(MCMC$theta[2501:5000,3]), x0, x, y)
-  max[k, 3] = meanphi[which.max(elbosphi)]
+  elbophi = lbphi(meanphi, var(MCMC$theta[2501:5000,3]), x0, x, y)
+  max[k, 3] = meanphi[which.max(elbophi)]
   elbogamma = lbgamma(mean, var(MCMC$theta[2501:5000,4]), x0, x, y)
   max[k, 4] = mean[which.max(elbogamma)]
   print(k)
