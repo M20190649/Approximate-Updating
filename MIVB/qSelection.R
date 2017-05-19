@@ -1,4 +1,5 @@
 FitRealMarginals = function(x){
+  require(MASS)
   n = length(x)
   AIC = rep(0, 2)
   # Normal

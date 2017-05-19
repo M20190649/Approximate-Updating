@@ -7,6 +7,8 @@
 using namespace Rcpp;
 using namespace arma;
 using namespace std;
+#include <likelihood.c>
+#include <hfunc.c>
 
 // Boost does not provide a location-scale t distribution, so it is implemented manually
 struct locScaleT {
@@ -165,8 +167,9 @@ double QLogDens (vec & unifsdep, vec & sims, vec & thetaDist, double & xDist, ma
       if(VineFamily(i, j) != 0){
         int u1 = VineMatrix(j, j) -1;
         int u2 = VineMatrix(i, j) -1;
-        copulas += log(BiCopPDF(unifsdep[u1], unifsdep[u2], VineFamily(i, j), 
-                                VinePar(i, j), VinePar2(i, j)));
+        double loglik = 0;
+        LL(VineFamily(i, j), 1, unifsdep[u1], unifsdep[u2], VinePar(i, j), VinePar2(i, j), loglik);
+        copulas += loglik;
       }
     }
   }
@@ -233,7 +236,7 @@ mat VineSim function(mat & unifs, mat & VineMatrix, mat & VineFamily, mat & Vine
         z2.subcube(0, i, k, nr-1, i, k) = vind.subcube(0, i, n-mmax(i, k), nr-1, i, n-mmax(i, k));
       }
       for(int j = 0; j < nr; ++j){
-        vd(j, n-1, k) = BiCopHInv(vd(j, n-1, k), z2(j, i, k), VineFamily(i, k), VinePar(i, k), VinePar2(i, k));
+        Hinv(VineFamily(i, k), 1, vd(j, n-1, k), z2(j, i, k), VinePar(i, k), VinePar2(i, k), vd(j, n-1, k));
       }
     }
     for(int j = 0; j < nr; ++j){
@@ -242,7 +245,9 @@ mat VineSim function(mat & unifs, mat & VineMatrix, mat & VineFamily, mat & Vine
     for(int i = n-1; i >= k+1; --i){
       z1.subcube(0, i, k, nr-1, i, k) = vd.subcube(0, i, k, nr-1, i, k);
       for(int j = 0; j < nr; ++j){
-        vd(j, i-1, k) = vind(j, i-1, k) = BiCopH(z1(j, i, k), z2(j, i, k), VineFamily(i, k), VinePar(i, k), VinePar2(i, k));
+
+                Hfunc(VineFamily(i, k), 1, z1(j, i, k), z2(j, i, k), VinePar(i, k), VinePar2(i, k), vd(j, i-1, k));
+        vind(j, i-1, k) = vd(j, i-1, k);
       }
     }
   }

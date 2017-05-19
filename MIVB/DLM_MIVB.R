@@ -99,7 +99,7 @@ MIVB = function(T, S, h, sigmaSqY=1, sigmaSqX=1, phi=0.95, gamma=2, MCMCreps=T*1
   
   #VineObj = RVineMatrix(Vine$Matrix, Vine$family, Vine$par, Vine$par2)
   # Run the VB updater to time T+S
-  VBfit = CopulaVB(y[1:(T+S)], S, thetaDist, xDist, thetaParams, xParams, Vine, M, maxIter)
+  VBfit = CopulaVB(y[1:(T+S)], S, thetaDist, xDist, thetaParams, xParams, Vine, 15, 100)
 
   # Perform h step ahead forecast
   unifs = RVineSim(VBfit$Vine, 500)
