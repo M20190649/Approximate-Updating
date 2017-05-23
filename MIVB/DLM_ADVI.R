@@ -63,6 +63,45 @@ VBmodelfit = function(Tvec, reps, minReps, meanfield=FALSE){
       MFVB = DLM_SGA(y=y[1:T], S=T, M=5, maxIter=5000, initialM=initM, initialL = diag(0.1, T+5), meanfield=TRUE)
       output = rbind(output, c(MFVB$Mu[1:4], T, 2))
       
+      MCMCtheta = MCMC$theta[5001:10000,]
+      colnames(MCMCtheta) = c('SigSqY', 'SigSqX', 'Phi', 'Gamma')
+      MCMCtheta = gather(as.data.frame(MCMCtheta), variable, draw)
+      NDSig = NDVB$L %*% t(NDVB$L)
+      
+      sigxsup = seq(0, 1.5, length.out=1000)
+      sigysup = seq(2, 6, length.out=1000)
+      phisup = seq(0, 1, length.out=1000)
+      gammasup = seq(2, 4, length.out=1000)
+      SigSqY = dlnorm(sigysup, MFVB$Mu[1], MFVB$Sd[1])
+      SigSqX = dlnorm(sigxsup, MFVB$Mu[2], MFVB$Sd[2])
+      phi = dnorm(phisup, MFVB$Mu[3], MFVB$Sd[3])
+      gamma = dnorm(gammasup, MFVB$Mu[4], MFVB$Sd[4])
+      
+      MF = data.frame(support = c(sigysup, sigxsup, gammasup, phisup), density = c(SigSqY, SigSqX, gamma, phi))
+      MF$type = 'Diag'
+      MF$variable = rep(c('SigSqY', 'SigSqX', 'Gamma', 'Phi'), rep(1000, 4))
+      
+      SigSqY = dlnorm(sigysup, NDVB$Mu[1], NDSig[1, 1])
+      SigSqX = dlnorm(sigxsup, NDVB$Mu[2], NDSig[2, 2])
+      phi = dnorm(phisup, MFVB$Mu[3], MFVB$Sd[3])
+      gamma = dnorm(gammasup, MFVB$Mu[4], MFVB$Sd[4])
+      phi = dnorm(phisup, NDVB$Mu[3], NDSig[3, 3])
+      gamma = dnorm(gammasup, NDVB$Mu[4], NDSig[4, 4])
+      
+      ND = data.frame(support = c(sigysup, sigxsup, gammasup, phisup), density = c(SigSqY, SigSqX, gamma, phi))
+      ND$type = 'Non-Diag'
+      ND$variable = rep(c('SigSqY', 'SigSqX', 'Gamma', 'Phi'), rep(1000, 4))
+      
+      
+      VB = rbind(MF, ND)
+      
+      ggplot(VB) + geom_line(aes(support, density, colour=type)) + geom_density(data=MCMCtheta, aes(draw)) + facet_wrap(~variable, scales='free')
+      
+      
+      
+      
+      
+      
       # Print progress
       if(j %% 5 == 0){
         print(paste0('T = ', T, '; rep = ', j))

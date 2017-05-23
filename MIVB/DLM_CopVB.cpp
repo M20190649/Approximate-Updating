@@ -7,8 +7,9 @@
 using namespace Rcpp;
 using namespace arma;
 using namespace std;
-#include <likelihood.c>
-#include <hfunc.c>
+#include "likelihood.c"
+#include "hfunc.c"
+
 
 // Boost does not provide a location-scale t distribution, so it is implemented manually
 struct locScaleT {
@@ -22,15 +23,63 @@ locScaleT locScaleT (double l, double s, double d){
   df = d;
 }
 
-// Overloading boost's pdf and quantile function for the new distribution
+// Truncnorm is also implemented manually
+struct truncNorm {
+  double mean, var;
+  truncNorm truncNorm (double, double);
+};
+
+truncNorm truncNorm (double m, double v){
+  mean = m;
+  var = v;
+}
+
+// As is truncated loc/scale T
+struct truncT {
+  double loc, scale, df;
+  truncT truncT (double, double, double);
+};
+
+truncT truncT (double l, double s, double d){
+  loc = l;
+  scale = s;
+  df = d;
+}
+
+// Overloading boost's pdf and quantile function for the new distributions
 double pdf(locScaleT dist, double x){
-  student_t_distribution auxDist(dist.df);
-  return 1.0/dist.scale * pdf(auxDist, (x-dist.loc)/dist.scale);
+  student_t_distribution aux(dist.df);
+  return 1.0/dist.scale * pdf(aux, (x-dist.loc)/dist.scale);
 }
 
 double quantile(locScaleT dist, double p){
   student_t_distribution auxDist(dist.df);
   return quantile(auxDist, p)*dist.scale + dist.loc;
+}
+
+double pdf(truncNorm dist, double x){
+  normal_distribution aux(dist.mean, sqrt(dist.var));
+  double area = cdf(aux, 1); 
+  // While we should measure the area from -1 to 1, the probability mass below -1 is extremely close to zero
+  return pdf(aux, x) / area;
+}
+
+double quantile(truncNorm dist, double p){
+  normal_distribution aux(dist.mean, sqrt(dist.var));
+  double area = cdf(aux, 1);
+  return quantile(dist, p*area);
+}
+
+double pdf(truncT dist, double x){
+  student_t_distribution aux(dist.df)
+  double area = cdf(aux, (t-dist.loc)/dist.scale);
+  return pdf((aux, a-dist.loc)/dist.scale) / (dist.scale*area);
+}
+
+double quantile(truncT dist, double p){
+  student_t_distribution aux(dist.df);
+  double area = cdf(aux, (t-dist.loc)/dist.scale);
+  return quantile(auxDist, area*p)*dist.scale + dist.loc;
 }
 
 // Evaluate p(y, x, theta)
@@ -65,8 +114,14 @@ vec SingleMarginalTransform (vec & unifs, vec & thetaDist, double & xDist, mat &
     } else {
       lognormal_distribution dist(thetaParams[0, j], thetaParams[1, j]);
     }
-  } else if (j <= 3){
+  } else if (j == 2){
     if(thetaDist[j]==1){
+      truncNorm dist(thetaParams[0, j], thetaParams[1, j]);
+    } else {
+      truncT dist(thetaParams[0, j], thetaParams[1, j], thetaParams[2, j]);
+    }
+  } else if(j == 3) {
+      if(thetaDist[j]==1){
       normal_distribution dist(thetaParams[0, j], thetaParams[1, j]);
     } else {
       locScaleT dist(thetaParams[0, j], thetaParams[1, j], thetaParams[2, j]);
@@ -104,15 +159,23 @@ mat JointMarginalTransform (mat & unifs, vec & thetaDist, double & xDist, mat & 
       output(i, j) = quantile(dist, unifs(i, j));
     }
   }
-  for(int j = 2; j < 4; ++j){
-    if(thetaDist[j]==1){
-      normal_distribution dist(thetaParams[0, j], thetaParams[1, j]);
-    } else {
-      locScaleT dist(thetaParams[0, j], thetaParams[1, j], thetaParams[2, j]);
-    }
-    for(int i = 0; i < n; ++i){
-      output(i, j) = quantile(dist, unifs(i, j));
-    }
+  int j = 2;
+  if(thetaDist[j]==1){
+    truncNorm dist(thetaParams[0, j], thetaParams[1, j]);
+  } else {
+    truncT dist(thetaParams[0, j], thetaParams[1, j], thetaParams[2, j]);
+  }
+  for(int i = 0; i < n; ++i){
+    output(i, j) = quantile(dist, unifs(i, j));
+  }
+  j = 3;
+  if(thetaDist[j]==1){
+    normal_distribution dist(thetaParams[0, j], thetaParams[1, j]);
+  } else {
+    locScaleT dist(thetaParams[0, j], thetaParams[1, j], thetaParams[2, j]);
+  }
+  for(int i = 0; i < n; ++i){
+    output(i, j) = quantile(dist, unifs(i, j));
   }
   for(int j = 4; j < p; ++j){
     if(xDist == 2){
@@ -145,14 +208,20 @@ double QLogDens (vec & unifsdep, vec & sims, vec & thetaDist, double & xDist, ma
     }
     margins += log(pdf(dist, sims[j]));
   }
-  for(int j = 2; j < 4; ++j){
-    if(thetaDist[j]==1){
-      normal_distribution dist(thetaParams[0, j], thetaParams[1, j]);
-    } else {
-      locScaleT dist(thetaParams[0, j], thetaParams[1, j], thetaParams[2, j]);
-    }
-    margins += log(pdf(dist, sims[j]));
+  int j = 2;
+  if(thetaDist[j]==1){
+    truncNorm dist(thetaParams[0, j], thetaParams[1, j]);
+  } else {
+    truncT dist(thetaParams[0, j], thetaParams[1, j], thetaParams[2, j]);
   }
+  margins += log(pdf(dist, sims[j]));
+  j = 3;
+  if(thetaDist[j]==1){
+    normal_distribution dist(thetaParams[0, j], thetaParams[1, j]);
+  } else {
+    locScaleT dist(thetaParams[0, j], thetaParams[1, j], thetaParams[2, j]);
+  }
+  margins += log(pdf(dist, sims[j]));
   for(int j = 4; j < p; ++j){
     if(xDist == 2){
       normal_distribution dist(xParams[0, T+5-j], sqrt(xParams[1, T+5-j]));
@@ -229,7 +298,7 @@ mat VineSim function(mat & unifs, mat & VineMatrix, mat & VineFamily, mat & Vine
   x.col(0) = unifs.col(0);
   
   for(int k = n-2; k >= 0; --k){
-    for(int i = k+1; i < n; ++i){
+    for(int i = max(k+1, n-6); i < n; ++i){
       if(mmax(i, k) == m(i, k)){
         z2.subcube(0, i, k, nr-1, i, k) = vd.subcube(0, i, n-mmax(i, k), nr-1, i, n-mmax(i, k));
       } else {
@@ -242,7 +311,7 @@ mat VineSim function(mat & unifs, mat & VineMatrix, mat & VineFamily, mat & Vine
     for(int j = 0; j < nr; ++j){
       x(j, n-k-1) = vd(j, n-1, k);
     }
-    for(int i = n-1; i >= k+1; --i){
+    for(int i = n-1; i >= max(k+1, n-6); --i){
       z1.subcube(0, i, k, nr-1, i, k) = vd.subcube(0, i, k, nr-1, i, k);
       for(int j = 0; j < nr; ++j){
 
@@ -259,7 +328,6 @@ mat VineSim function(mat & unifs, mat & VineMatrix, mat & VineFamily, mat & Vine
   output.col(mTheta[0]) = x.col(3);
   return output;
 }
-
 
 // Take Partial Derivatives - Requires all of the above. 
 // Need to come up with non-numeric approach because eta derivatives all involve re-simulation from the vine.

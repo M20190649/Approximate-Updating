@@ -390,11 +390,8 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
   } // End of while loop
   if(iter <= maxIter){
     LB = LB.head(iter+1); 
-  } else {
-    LB = LB.head(iter);
   }
   // If the ELBO converged, the LB vector has length maxIter+1, extract the part we actually used (+1 to include initial LB).
-  // If the ELBO didn't converge, the loop will add one to iter before checking iter > MaxIter, so don't do +1 in this case
   // Print some useful information to the console during testing
   //Rcpp::Rcout << "Number of iterations: " << iter << std::endl;
   //Rcpp::Rcout << "Final ELBO: " << LB.tail(1) << std::endl; 

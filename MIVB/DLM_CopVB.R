@@ -62,7 +62,7 @@ MarginalTransform = function(unifs, thetaDist, xDist, thetaParams, xParams, T, j
 PLogDens = function(y, sims){
   priordens = log(densigamma(sims[1], 1, 1)) + log(densigamma(sims[2], 1, 1)) + 
     log(1/2) + dnorm(sims[4], 0, 10, log=TRUE)
-  xdens = dnorm(sims[5], 0, sims[1]/(1-sims[3]^2), log=TRUE)
+  xdens = dnorm(sims[5], 0, sims[1]/(1-0.95^2), log=TRUE)
   for(t in 6:length(sims)){
     xdens = xdens + dnorm(sims[t], sims[3]*sims[t-1], sqrt(sims[2]),log=TRUE)
   }
@@ -137,7 +137,7 @@ VineSim = function(unifs, Vine, T){
   z2 = array(0, dim = c(n, n, nr))
   x = unifs[,1]
   for(k in (n-1):1){
-    for(i in (k+1):n){
+    for(i in max(k+1, n-4):n){
       if(mmax[i, k] == m[i, k]){
         z2[i, k,] = vd[i, n-mmax[i,k]+1,]
       } else {
@@ -146,7 +146,7 @@ VineSim = function(unifs, Vine, T){
       vd[n, k,] = BiCopHinv1(vd[n,k,], z2[i,k,], Vine$family[i, k], Vine$par[i, k], Vine$par2[i, k])
     }
     x = cbind(x, vd[n, k,])
-    for(i in n:(k+1)){
+    for(i in n:max(k+1, n-5)){
       z1[i, k,] = vd[i, k,]
       vd[i-1, k,] = BiCopHfunc1(z1[i, k,], z2[i, k,], Vine$family[i, k], Vine$par[i, k], Vine$par2[i, k])
       vind[i-1, k,] = BiCopHfunc1(z1[i, k,], z2[i, k,], Vine$family[i, k], Vine$par[i, k], Vine$par2[i, k])
@@ -211,7 +211,7 @@ Partial = function(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams
       }
     }
     newdep = VineSim(unifs[1:M,], Vine2, T)
-    newsim = MarginalTransform(newdep, thetaDist, xDist, thetaParams, xParams)
+    newsim = MarginalTransform(newdep, thetaDist, xDist, thetaParams, xParams, T)
     deriv = 0
     for(i in 1:M){
       deriv = deriv + (PLogDens(y, newsim[i,]) - PLogDens(y, sims[i,]) -
@@ -279,7 +279,7 @@ CopulaVB = function(y, S, thetaDist, xDist, thetaParams, xParams, Vine,
   meanDiff = 0
   
   print('Start Loop')
-  while(lastDiff > 5*threshold & meanDiff > threshold){
+  while((lastDiff > 5*threshold) | (meanDiff > threshold) | (iter < 10)){
     iter = iter + 1
     if(iter > maxIter){
       break
@@ -385,7 +385,7 @@ CopulaVB = function(y, S, thetaDist, xDist, thetaParams, xParams, Vine,
       print(paste0('ELBO: ', LB[iter+1]))
     }
   } # Close while loop
-  return(List(thetaParams = thetaParams,
+  return(list(thetaParams = thetaParams,
               xParams = xParams,
               Vine = FullVine,
               LB = LB,
