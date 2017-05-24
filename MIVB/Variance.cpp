@@ -15,7 +15,7 @@ double pLogDens (vec y, double sigmaSq) {
   int n = y.n_elem;
   double density = -2 * log(sigmaSq) - 1.0 / sigmaSq;
   for(int i = 0; i < n; ++i){
-    density +=  -log(2*3.14159*sigmaSq)*0.5 - pow(y[i], 2) / (2*sigmaSq);
+    density +=  -log(sigmaSq)*0.5 - pow(y[i], 2) / (2*sigmaSq);
   }
   return density;
 }
