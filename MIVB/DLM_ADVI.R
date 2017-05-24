@@ -3,7 +3,7 @@ library(RcppArmadillo)
 library(ggplot2)
 library(tidyr)
 sourceCpp("DLM_MCMC.cpp")
-sourceCpp("DLM_SGA_FR.cpp")
+sourceCpp("DLM_SGA.cpp")
 
 # Parameters
 gamma = 2
@@ -17,18 +17,19 @@ alphaX = 1
 betaX = 1
 muBar = 0
 muVar = 10
-
+T = 250
+MCMCreps = 10000
 #Input: List of sample sizes, data replications, minimum MCMC reps, meanfield (diagonal) approx only
-VBmodelfit = function(Tvec, reps, minReps, meanfield=FALSE){
-  output=data.frame()
+#VBmodelfit = function(Tvec, reps, minReps, meanfield=FALSE){
+  #output=data.frame()
   
   # For each sample size
-  for(i in 1:length(Tvec)){
+  #for(i in 1:length(Tvec)){
     # and reps many data replications
-    for(j in 1:reps){
-      T=Tvec[i]
+    #for(j in 1:reps){
+     # T=Tvec[i]
       # Increase MCMC reps as T increases
-      MCMCreps = min(minReps, T*10)
+    #  MCMCreps = min(minReps, T*10)
       x0 = rnorm(1, 0, sqrt(sigmaSqX/(1-phi^2)))
       x = rep(0, T)
       y = rep(0, T)
@@ -46,49 +47,47 @@ VBmodelfit = function(Tvec, reps, minReps, meanfield=FALSE){
       
       # Run MCMC, take mean of second half of draws
       MCMC = DLM_MCMC(y, MCMCreps)
-      output = rbind(output, c(colMeans(cbind(log(MCMC$theta[(MCMCreps/2+1):MCMCreps, 1]),
-                                              log(MCMC$theta[(MCMCreps/2+1):MCMCreps, 2]),
-                                              MCMC$theta[(MCMCreps/2+1):MCMCreps, 3],
-                                              MCMC$theta[(MCMCreps/2+1):MCMCreps, 4])), T, 1))
+      #output = rbind(output, c(colMeans(cbind(log(MCMC$theta[(MCMCreps/2+1):MCMCreps, 1]),
+       #                                       log(MCMC$theta[(MCMCreps/2+1):MCMCreps, 2]),
+        #                                      MCMC$theta[(MCMCreps/2+1):MCMCreps, 3],
+         #                                     MCMC$theta[(MCMCreps/2+1):MCMCreps, 4])), T, 1))
       
       # Non-Diagonal VB, estimating values for all latent states, with 25 simulations per iteration
       # Stopping if it fails to converge after 5000 replications
       # Initial value for the lower triangular matrix of Sigma is 0.1 * I
-      if(!meanfield){
-        NDVB = DLM_SGA(y=y[1:T], S=T, M=25, maxIter=5000, initialM=initM, initialL=diag(0.1, T+5))
-        output = rbind(output, c(NDVB$Mu[1:4], T, 3))
-      }
+      #if(!meanfield){
+        NDVB = DLM_SGA(y=y[1:T], S=T, M=50, maxIter=5000, initialM=initM, initialL=diag(0.1, T+5))
+     #   output = rbind(output, c(NDVB$Mu[1:4], T, 3))
+      #}
       
       # Diagonal VB, same inputs except less simulations per iteration
       MFVB = DLM_SGA(y=y[1:T], S=T, M=5, maxIter=5000, initialM=initM, initialL = diag(0.1, T+5), meanfield=TRUE)
-      output = rbind(output, c(MFVB$Mu[1:4], T, 2))
+     # output = rbind(output, c(MFVB$Mu[1:4], T, 2))
       
       MCMCtheta = MCMC$theta[5001:10000,]
       colnames(MCMCtheta) = c('SigSqY', 'SigSqX', 'Phi', 'Gamma')
       MCMCtheta = gather(as.data.frame(MCMCtheta), variable, draw)
-      NDSig = NDVB$L %*% t(NDVB$L)
+      NDSig = sqrt(NDVB$L %*% t(NDVB$L))
       
-      sigxsup = seq(0, 1.5, length.out=1000)
-      sigysup = seq(2, 6, length.out=1000)
+      sigxsup = seq(0, 3, length.out=1000)
+      sigysup = seq(0, 5, length.out=1000)
       phisup = seq(0, 1, length.out=1000)
-      gammasup = seq(2, 4, length.out=1000)
-      SigSqY = dlnorm(sigysup, MFVB$Mu[1], MFVB$Sd[1])
-      SigSqX = dlnorm(sigxsup, MFVB$Mu[2], MFVB$Sd[2])
-      phi = dnorm(phisup, MFVB$Mu[3], MFVB$Sd[3])
-      gamma = dnorm(gammasup, MFVB$Mu[4], MFVB$Sd[4])
+      gammasup = seq(1, 3.5, length.out=1000)
+      SigSqYd = dlnorm(sigysup, MFVB$Mu[1], MFVB$Sd[1])
+      SigSqXd = dlnorm(sigxsup, MFVB$Mu[2], MFVB$Sd[2])
+      phid = dnorm(phisup, MFVB$Mu[3], MFVB$Sd[3])
+      gammad = dnorm(gammasup, MFVB$Mu[4], MFVB$Sd[4])
       
-      MF = data.frame(support = c(sigysup, sigxsup, gammasup, phisup), density = c(SigSqY, SigSqX, gamma, phi))
+      MF = data.frame(support = c(sigysup, sigxsup, gammasup, phisup), density = c(SigSqYd, SigSqXd, gammad, phid))
       MF$type = 'Diag'
       MF$variable = rep(c('SigSqY', 'SigSqX', 'Gamma', 'Phi'), rep(1000, 4))
       
-      SigSqY = dlnorm(sigysup, NDVB$Mu[1], NDSig[1, 1])
-      SigSqX = dlnorm(sigxsup, NDVB$Mu[2], NDSig[2, 2])
-      phi = dnorm(phisup, MFVB$Mu[3], MFVB$Sd[3])
-      gamma = dnorm(gammasup, MFVB$Mu[4], MFVB$Sd[4])
-      phi = dnorm(phisup, NDVB$Mu[3], NDSig[3, 3])
-      gamma = dnorm(gammasup, NDVB$Mu[4], NDSig[4, 4])
+      SigSqYd = dlnorm(sigysup, NDVB$Mu[1], NDSig[1, 1])
+      SigSqXd = dlnorm(sigxsup, NDVB$Mu[2], NDSig[2, 2])
+      phid = dnorm(phisup, NDVB$Mu[3], NDSig[3, 3])
+      gammad = dnorm(gammasup, NDVB$Mu[4], NDSig[4, 4])
       
-      ND = data.frame(support = c(sigysup, sigxsup, gammasup, phisup), density = c(SigSqY, SigSqX, gamma, phi))
+      ND = data.frame(support = c(sigysup, sigxsup, gammasup, phisup), density = c(SigSqYd, SigSqXd, gammad, phid))
       ND$type = 'Non-Diag'
       ND$variable = rep(c('SigSqY', 'SigSqX', 'Gamma', 'Phi'), rep(1000, 4))
       
@@ -103,15 +102,15 @@ VBmodelfit = function(Tvec, reps, minReps, meanfield=FALSE){
       
       
       # Print progress
-      if(j %% 5 == 0){
-        print(paste0('T = ', T, '; rep = ', j))
-      }
-    }
-  }
-  colnames(output) = c('sigma[y]^2','sigma[x]^2', 'phi', 'gamma', 'T', 'Method')
-  output = dplyr::mutate(output, Method=ifelse(Method==1, 'MCMC', ifelse(Method==2, 'ADVI: Diag', 'ADVIL Non0Diag')))
-  return(output)
-}
+  #    if(j %% 5 == 0){
+  #      print(paste0('T = ', T, '; rep = ', j))
+  #    }
+  #  }
+  #}
+  #colnames(output) = c('sigma[y]^2','sigma[x]^2', 'phi', 'gamma', 'T', 'Method')
+  #output = dplyr::mutate(output, Method=ifelse(Method==1, 'MCMC', ifelse(Method==2, 'ADVI: Diag', 'ADVIL Non0Diag')))
+  #return(output)
+#}
 
 #ADVI = VBmodelfit(c(50, 100), 100, 5000)
 #saveRDS(ADVI, 'ADVIp1.rds')
@@ -126,12 +125,12 @@ VBmodelfit = function(Tvec, reps, minReps, meanfield=FALSE){
 #ADVI3 = VBmodelfit(c(1000, 2000), 100, 10000, meanfield=TRUE)
 #saveRDS(ADVI3, 'ADVIp3.rds')
 
-ADVI1 = readRDS('ADVIp1.rds')
-ADVI2 = readRDS('ADVIp2.rds')
-ADVI3 = readRDS('ADVIp3.rds')
+#ADVI1 = readRDS('ADVIp1.rds')
+#ADVI2 = readRDS('ADVIp2.rds')
+#ADVI3 = readRDS('ADVIp3.rds')
 
-ADVI = rbind(ADVI1, ADVI2, ADVI3) %>% gather(Variable, Mean, -Method, -T)
+#ADVI = rbind(ADVI1, ADVI2, ADVI3) %>% gather(Variable, Mean, -Method, -T)
 
-ggplot(ADVI) + geom_boxplot(aes(x=Method, y=Mean)) + facet_grid(Variable~T, scales='free', labeller = label_parsed) +
-  theme(axis.text.x=element_text(angle = -90, hjust = 0, vjust = 0.5), strip.text.y = element_text(angle = 0))
+#ggplot(ADVI) + geom_boxplot(aes(x=Method, y=Mean)) + facet_grid(Variable~T, scales='free', labeller = label_parsed) +
+ # theme(axis.text.x=element_text(angle = -90, hjust = 0, vjust = 0.5), strip.text.y = element_text(angle = 0))
 

@@ -15,7 +15,6 @@ using namespace std;
 // p = T+5, the dimension of the q distribution
 // epsilon - simulated standard normal variables that are transformed to theta and x
 
-
 // All of the p and q densities are stored as distribution objects, which makes it way easier to adapt the code to new models
 struct Distribution{
   // This is the base class for the distributions, and exists so I can have Normal and Inverse Gamma pointers in the same array
@@ -53,10 +52,6 @@ struct MultiNormal: Distribution{
   void set_values(vec m, mat L){
     mean = m;
     chol = L; 
-  }
-  void increase_values(vec & m, mat & L){
-    mean += m;
-    chol += L;
   }
   double logdens(rowvec x){
     double logdet = 0;
@@ -128,16 +123,16 @@ Uniform::Uniform (double mi, double ma){
   max = ma;
 }
 
-// Function to simulate n_samples many draws from the p dimensional multivariate normal distribution for q
-cube qSim (MultiNormal* qDist, int n_samples, int p){
+// Function to simulate n many draws from the p dimensional multivariate normal distribution for q
+cube qSim (MultiNormal* qDist, int n, int p){
   // We want to return the matrix of epsilons (treat each row as a different realisation of a p-dimensional MVN(0, I))
   // We also want the transformed matrix of variables
   // Does not apply the exp transform, the code stores these as log sigma squared.
   // However the maths is written for the posterior/approximation to sigma squared instead of log sigma squared.
-  cube output(n_samples, p, 2);
-  mat epsilon = randn<mat>(n_samples, p);   
-  mat theta (n_samples, p);
-  for(int i = 0; i < n_samples; ++i){
+  cube output(n, p, 2);
+  mat epsilon = randn<mat>(n, p);   
+  mat theta (n, p);
+  for(int i = 0; i < n; ++i){
     // Each row of theta corresponds to the transform of that row of epsilon
     theta.row(i) = qDist->transform_epsilon(epsilon.row(i));
   }
@@ -147,11 +142,11 @@ cube qSim (MultiNormal* qDist, int n_samples, int p){
 }
 
 // Function to evaluate the density of log(p(y, x, theta)) for a simulated value of theta & x.
-double pdens (Normal* Y[], vec y, Distribution* pDist[], rowvec sims, int T, int p){
+double pdens (Normal* Y[], vec y, Distribution* pDist[], rowvec sims, int T){
   // Evaluates sum(log(p(yt|xt, theta))) + sum(log(p(xt | xt-1, theta))) + sum(log(p(theta))) 
   double priorDens = 0;
   // as the IG logdens function takes log(sigmaSq) as an input do not apply exp transform
-  for(int i = 0; i < p; ++i){
+  for(int i = 0; i < T+5; ++i){
     // Prior also includes all of the latent state densities p(xt | xt-1, theta)
     priorDens += pDist[i]->logdens(sims[i]);
   }
@@ -179,107 +174,115 @@ void updateP (Normal* Y[], Distribution* pDist[], rowvec sims, int T){
 } 
 
 // Evaluate the ELBO as E_q(p - q) as a sum of (p-q) from n many simulations from q.
-double ELBO (Normal* Y[], vec y, Distribution* pDist[], MultiNormal* qDist, int T, int p, int n = 250){
+double ELBO (Normal* Y[], vec y, Distribution* pDist[], MultiNormal* qDist, int T, int n = 250){
   // sample theta and x only, don't need epsilon so only keep the theta slice from qSim
-  mat sims = qSim(qDist, n, p).slice(0);
   double value = 0;
+  mat sims = qSim(qDist, n, T+5).slice(0);
   for(int i = 0; i < n; ++i){
     // Update p parameters based on that sample of q
     updateP (Y, pDist, sims.row(i), T);
     // Evaluate p - q for that sample
-    value += pdens(Y, y, pDist, sims.row(i), T, p) - qDist->logdens(sims.row(i)); 
+    value += pdens(Y, y, pDist, sims.row(i), T) - qDist->logdens(sims.row(i)); 
   }
   // Average over n realisations of q(x, theta)
   return value / n;
 }
 
-// Take the derivative of the reparameterised ELBO
-// d/dlambda (e_eps (logp(f(eps)) - logq(eps) + log|J|))
-// Input i is a marker to take the derivative of the i'th element of {theta, x}.
-// Derivative of q is different in diagonal and non-diagonal cases.
-rowvec reparamDeriv (vec y, MultiNormal* qDist, rowvec sims, rowvec epsilon, int T, int i, bool meanfield){
-  // Aim is to take the derivative of mu_i and the entire i_th row of L as one row vector
-  // dpdf = derivative of logp wrt theta
-  // dfdm = derivative of theta wrt mu (mean vector of Q)
-  // dfdL = derivative of theta wrt L (lower triangle of variance matrix)
-  // dqdm = derivative of q wrt mu (easy functional form, can skip the chain rule)
-  // dqdL = derivative of q wrt L
-  double dpdf = 0; //Initialise to 0 
+// Take the derivative of lnp(y, theta, x) wrt theta and x
+vec logJointDeriv (vec y, rowvec sims, int T, int S){
+  vec derivs(T+5, fill::zeros);
   double sigmaSqY = exp(sims[0]); // transform to sigmaSq to make p(y, theta) a little bit easier to deal with
   double sigmaSqX = exp(sims[1]);
-  double phi = sims(2);
-  double gamma = sims(3);
-  vec x = sims.tail(T+1);
-  // Next is the derivatives of p(y, x, theta) wrt theta or x.
-  if(i == 0){ //sigmaSqY
-    dpdf = -(0.5*T + 2) / sigmaSqY + 1 / pow(sigmaSqY, 2);
-    for(int t = 0; t < T; ++t){
-      dpdf += pow(y[t] - gamma - x[t], 2) / (2 * pow(sigmaSqY, 2));
-    }
-  } else if(i == 1){  //sigmaSqX
-    dpdf = -(0.5*T + 2.5) / sigmaSqX + 1 / pow(sigmaSqX, 2) + pow(x[0], 2) * (1 - pow(phi, 2)) / (2 * pow(sigmaSqX, 2));
-    for(int t = 1; t < T+1; ++t){
-      dpdf += pow(x[t] - phi*x[t-1], 2) / (2 * pow(sigmaSqX, 2));
-    }
-  } else if(i == 2){ //Phi
-    dpdf = - phi / (1 - pow(phi, 2)) + phi * pow(x[0], 2) / sigmaSqX;
-    for(int t = 1; t < T+1; ++t){
-      dpdf += x[t-1]*(x[t] - phi*x[t-1]) / sigmaSqX;
-    }
-  } else if(i == 3){ //Gamma
-    dpdf = - gamma / 100; // As the prior mean of gamma is 0
-    for(int t = 0; t < T; ++t){
-      dpdf -= (gamma + x[t] - y[t]) / sigmaSqY;
-    }
-  } else if(i == 4){ //X0
-    dpdf = (x[1]*phi -x[0]) / sigmaSqX;
-  } else if(i == T+4){ //XT
-    dpdf = (y[T] - gamma - x[T]) / sigmaSqY - (x[T] - phi*x[T-1]) / sigmaSqX;
-  } else { //X1 ... XT-1
-    int t = i - 5;
-    dpdf = (y[t] - gamma - x[t]) / sigmaSqY - (x[t] - phi*x[t-1]) / sigmaSqX +
-      phi * (x[t+1] - phi * x[t]) / sigmaSqX;
-  }
+  double phi = sims[2];
+  double gamma = sims[3];
+  rowvec x = sims.tail(T+1);
   
-  //theta or x = mu + sum(L*eps) for i > 2. Derivative wrt mu is one.
-  double dfdm = 1; 
-  // lnq = -( mu1 + mu2 + sum(log(Lii) for i = 1, ..., p) + L11eps1 + L21eps1 + L22eps2) + ln(p(eps)) (L21 = 0 if diagonal approximation)
-  // derivative wrt mu_i, i > 2 is zero
-  double dqdm = 0;  
-  vec dfdL(T+5, fill::zeros);
-  if(meanfield){
-    dfdL[i] = epsilon[i];
-  } else {
-    for(int j = 0; j <= i; ++j){ //Each L_ij (j <= i) has a derivative of epsilon_j, zero otherwise
-      dfdL[j] = epsilon[j];
+  derivs[0] = -(0.5*T + 2) / sigmaSqY + 1 / pow(sigmaSqY, 2);
+  for(int t = 0; t < T; ++t){
+    derivs[0] += pow(y[t] - gamma - x[t], 2) / (2 * pow(sigmaSqY, 2));
+  }
+  derivs[1] = -(0.5*T + 2.5) / sigmaSqX + 1 / pow(sigmaSqX, 2) + pow(x[0], 2) * (1 - pow(phi, 2)) / (2 * pow(sigmaSqX, 2));
+  for(int t = 1; t < T+1; ++t){
+    derivs[1] += pow(x[t] - phi*x[t-1], 2) / (2 * pow(sigmaSqX, 2));
+  }
+  derivs[2] = - phi / (1 - pow(phi, 2)) + phi * pow(x[0], 2) / sigmaSqX;
+  for(int t = 1; t < T+1; ++t){
+    derivs[2] += x[t-1]*(x[t] - phi*x[t-1]) / sigmaSqX;
+  }
+  derivs[3] = - gamma / 100; // As the prior mean of gamma is 0
+  for(int t = 0; t < T; ++t){
+    derivs[3] -= (gamma + x[t] - y[t]) / sigmaSqY;
+  }
+  if(S < T){
+    S -= 1;
+  }
+  for(int i = T-S+4; i < T+5; ++i){
+    if(i == 4){ //X0
+      derivs[i] = (x[1]*phi -x[0]) / sigmaSqX;
+    } else if(i == T+4){ //XT
+      derivs[i] = (y[T-1] - gamma - x[T]) / sigmaSqY - (x[T] - phi*x[T-1]) / sigmaSqX;
+    } else { //X1 ... XT-1
+      int t = i - 4;
+      derivs[i] = (y[t-1] - gamma - x[t]) / sigmaSqY - (x[t] - phi*x[t-1]) / sigmaSqX +
+        phi * (x[t+1] - phi * x[t]) / sigmaSqX;
     }
   }
- 
-  vec dqdL(T+5, fill::zeros);
-  dqdL[i] = -1/qDist->chol_diag(i); // dq/DLij is -1/Lij for i = j, otherwise = 0 
-  if(i < 2){ // special cases for sigma squared variables
-    dfdm = exp(sims[i]);
-    dfdL[i] *= exp(sims[i]);
-    dqdm = -1;
-    dqdL[i] -= epsilon[i];
-    if(!meanfield & i == 1){ // Derivative with respect to L21 (in non-diagonal case)
-      dqdL[0] -= epsilon[0];
-      dfdL[0] *= exp(sims[i]);
-    }
-  }
-  rowvec derivs(T+6, fill::zeros);
-  derivs[0] = dpdf*dfdm - dqdm;
-  derivs.tail(T+5) = dpdf*dfdL.t() - dqdL.t();
   return derivs;
 }
 
-void updateQ (MultiNormal* qDist, mat updates, int p){
-  // via lambda(t+1) = lambda(t) + Pt dELBO/dlambda
-  // updates is a p x p+1 matrix
-  // updates contains mu derivatives in first column, L derivatives in the rest
-  vec mean = updates.col(0);
-  mat chol = updates.submat(0, 1, p-1, p); // all columns except column 1, so from (0, 1) to (p-1, p)
-  qDist->increase_values(mean, chol);
+// Take the derivative of the reparameterised ELBO wrt mu vector
+vec muDeriv (vec y, rowvec sims, int T, int S){
+  vec dLogPdTX = logJointDeriv(y, sims, T, S);
+  vec dTXdMu (T+5, fill::ones);
+  dTXdMu[0] = exp(sims[0]);
+  dTXdMu[1] = exp(sims[1]);
+  vec dJdMu(T+5, fill::zeros);
+  dJdMu[0] = 1;
+  dJdMu[1] = 1;
+  vec out = dLogPdTX % dTXdMu + dJdMu;
+  return out;
+}
+
+// Take the derivative of the reparameterised ELBO wrt L matrix
+mat LDeriv (vec y, MultiNormal* qDist, rowvec sims, rowvec epsilon, int T, int S, bool meanfield){
+  vec dLogPdTX = logJointDeriv(y, sims, T, S);
+  mat dTXdL (T+5, T+5, fill::zeros);
+  mat dJdL (T+5, T+5, fill::zeros);
+  
+  dTXdL(0, 0) = epsilon[0] * exp(sims[0]);
+  dTXdL(1, 0) = epsilon[0] * exp(sims[1]);
+  dTXdL(1, 1) = epsilon[1] * exp(sims[1]);
+  dJdL(0, 0) = pow(qDist->chol_diag(0), -1) + epsilon[0];
+  dJdL(1, 0) = epsilon[1];
+  dJdL(1, 1) = pow(qDist->chol_diag(1), -1) + epsilon[1];
+  
+  for(int i = 2; i < 4; ++i){
+    for(int j = 0; j <= i; ++j){
+      if(i == j){
+        dTXdL(i, j) = epsilon[j];
+        dJdL(i, j) = pow(qDist->chol_diag(i), -1);
+      } else if(!meanfield){
+        dTXdL(i, j) = epsilon[j];
+      }
+    }
+  }
+  if(S < T){
+    S -= 1;
+  }
+  for(int i = T-S+4; i < T+5; ++i){
+    for(int j = 0; j <= i; ++j){
+      if(i == j){
+        dTXdL(i, j) = epsilon[j];
+        dJdL(i, j) = pow(qDist->chol_diag(i), -1);
+      } else if(!meanfield){
+        dTXdL(i, j) = epsilon[j];
+      }
+    }
+  }
+  for(int i = 0; i < T+5; ++i){
+    dTXdL.col(i) = dLogPdTX % dTXdL.col(i);
+  }
+  return dTXdL + dJdL;
 }
 
 // Stochastic Gradient Ascent for the DLM.
@@ -289,7 +292,7 @@ void updateQ (MultiNormal* qDist, mat updates, int p){
 // Adam works better. meanfield = Diagonal approximation true/false
 // [[Rcpp::export]]
 Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL, double threshold=0.01, 
-                   double alpha=0.01, double beta1=0.9, double beta2=0.999, bool Adam=true, bool meanfield=false){
+                   double alpha=0.05, double beta1=0.9, double beta2=0.999, bool meanfield=false){
   // T is treated as the total length of y, which is T+S in the written report.
   // So we use data up to y_{T-S} then update using y_{T-S+1:T} instead of data up to y_{T} then update to y_{T+S}
   int T = y.n_elem;
@@ -299,13 +302,20 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
     return Rcpp::List::create();
   }
   // Initialise everything we are going to need
-  mat e(T+5, T+6);
-  e.fill(pow(10, -8));
-  mat Mt(T+5, T+6, fill::zeros); // doubles as AdaGrad's Gt
-  mat Vt(T+5, T+6, fill::zeros); // doubles as AdaGrad's Pt
-  mat MtHat;
-  mat VtHat;
-  mat partials(T+5, T+6); // Partials will be reset to zero at the start of every iteration
+  double e = pow(10, -8);
+  vec MtMu (T+5, fill::zeros);
+  vec VtMu (T+5, fill::zeros);
+  vec MtMuHat (T+5);
+  vec VtMuHat (T+5);
+  vec partialsMu(T+5);
+  vec pMusq(T+5);
+
+  mat MtL (T+5, T+5, fill::zeros);
+  mat VtL (T+5, T+5, fill::zeros);
+  mat MtLHat (T+5, T+5);
+  mat VtLHat (T+5, T+5);
+  mat partialsL(T+5, T+5);
+  mat pLsq(T+5, T+5);
   
   // Set up distribution objects. We will use the pointers to these as arguments for the functions SGA_DLM calls.
   Normal* Y[T];
@@ -327,9 +337,8 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
   // Vector of ELBO value for each iteration
   vec LB(maxIter+1, fill::zeros);
   // ELBO for initial values
-  LB[0] = ELBO(Y, y, pDist, qDist, T, T+5);
+  LB[0] = ELBO(Y, y, pDist, qDist, T);
   double diff = threshold + 1;
-  
   // Repeat until convergence, make sure it doesnt just stop after one - 20 is pretty arbitary but small enough to not matter
   while((diff > threshold) | (iter < 20)){
     iter += 1;
@@ -337,7 +346,10 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
       break;
     }
     // Reset partial derivatives
-    partials.fill(0);
+    partialsMu.fill(0);
+    partialsL.fill(0);
+    pMusq.fill(0);
+    pLsq.fill(0);
     // Simulate M times from q
     cube simsCube = qSim(qDist, M, T+5);
     // It is easier to split the cube into two matrices now, as calling a row of a matrix of a cube via Sims.slice(i).row(j) doesn't work. 
@@ -346,52 +358,34 @@ Rcpp::List DLM_SGA(vec y, int S, int M, int maxIter, vec initialM, mat initialL,
     mat sims = simsCube.slice(0); 
     mat epsilon = simsCube.slice(1);
     // Derivatives are an average of our M samples
-    for(int m = 0; m < M; ++m){ 
-      // Take the partial derivative with respect to mu_i and i'th row of L in the same function.
-      for(int i = 0; i < 4; ++i){ // Calculate Partial Derivatives wrt global parameters
-        partials.row(i) += reparamDeriv(y, qDist, sims.row(m), epsilon.row(m), T, i, meanfield)/M;
-      }
-      if(S == T){ // If S=T, then we want to estimate all T states AND x0. Below we do T-S+5 to start at X_{T-S}, but when
-                  // S=T we also want to estimate x0, so we need T-S+4 which just equals 4.
-        for(int i = 4; i < T+5; ++i){
-          partials.row(i) += reparamDeriv(y, qDist, sims.row(m), epsilon.row(m), T, i, meanfield)/M;
-        } 
-      } else { // If S<T, then we want to estimate X_{T-S} to X_T. 
-        for(int i = T-S+5; i < T+5; ++i){
-          partials.row(i) += reparamDeriv(y, qDist, sims.row(m), epsilon.row(m), T, i, meanfield)/M;
-        }
-      }
+    for(int m = 0; m < M; ++m){
+      vec pMu = muDeriv(y, sims.row(m), T, S);
+      partialsMu += pMu/M;
+      pMusq += pow(pMu, 2)/M;
+      mat pL = LDeriv(y, qDist, sims.row(m), epsilon.row(m), T, S, meanfield);
+      partialsL += pL/M;
+      pLsq += pow(pL, 2)/M;
     }
-    // ADAM Updating, seems to converge faster and more reliably than AdaGrad
-    if(Adam){
-      Mt = beta1*Mt + (1-beta1)*partials; // Creates biased estimates of first and second moment
-      Vt = beta2*Vt + (1-beta2)*pow(partials, 2);
-      MtHat = Mt / (1 - pow(beta1, iter)); // Corrects bias
-      VtHat = Vt / (1 - pow(beta2, iter));
-      updateQ(qDist, alpha * MtHat / (sqrt(VtHat) + e), T+5); // Size of step depends on second moments and alpha
-    } else {
-    // AdaGrad Updating is available as it was the original method I used in the confirmation etc. 
-    // Only works when S = length of y, adam is better so I never implemented updating only part of the x vector
-      Mt += pow(partials, 2); // sum of squared derivatives
-      for(int i = 0; i < T+5; ++i){
-        if(meanfield){
-          Vt(i, 0) = alpha * pow(Mt(i, 0), -0.5); // Size of step depends on squared derivatives
-          Vt(i, i+1) = alpha * pow(Mt(i, i+1), -0.5); // Diagonal of L matrix only for meanfield
-        } else {
-          for(int j = 0; j <= i+1; ++j){
-            Vt(i, j) = alpha * pow(Mt(i, j), -0.5); // Each row/column of L for non-meanfield
-          }
-        }
-       }
-      updateQ(qDist, Vt % partials, T+5); // Increase values of QDist by stepsize * partial derivatives
-    }
-    LB[iter] = ELBO(Y, y, pDist, qDist, T, T+5); // Calculate ELBO with new values
-    diff = abs(LB[iter] - LB[iter-1]); // Check difference after one extra iteration.
+    MtMu = beta1*MtMu + (1-beta1)*partialsMu; // Creates biased estimates of first and second moment
+    VtMu = beta2*VtMu + (1-beta2)*pMusq;
+    MtMuHat = MtMu / (1 - pow(beta1, iter)); // Corrects bias
+    VtMuHat = VtMu / (1 - pow(beta2, iter));
+    
+    MtL = beta1*MtL + (1-beta1)*partialsL; // Creates biased estimates of first and second moment
+    VtL = beta2*VtL + (1-beta2)*pLsq;
+    MtLHat = MtL / (1 - pow(beta1, iter)); // Corrects bias
+    VtLHat = VtL / (1 - pow(beta2, iter));
+    
+    qDist->set_values(qDist->mean + alpha*MtMuHat / sqrt(VtMuHat + e),
+                      qDist->chol + alpha*MtLHat / sqrt(VtLHat + e));
+    // Calculate ELBO with new values
+    LB[iter] = ELBO(Y, y, pDist, qDist, T, T+5);
+    diff = abs(LB[iter] - LB[iter-1]);
   } // End of while loop
   if(iter <= maxIter){
     LB = LB.head(iter+1); 
   }
-  // If the ELBO converged, the LB vector has length maxIter+1, extract the part we actually used (+1 to include initial LB).
+  // If the ELBO converged, the LB vector has been filled in up to Iter+1, extract the part we actually used (+1 to include initial LB).
   // Print some useful information to the console during testing
   //Rcpp::Rcout << "Number of iterations: " << iter << std::endl;
   //Rcpp::Rcout << "Final ELBO: " << LB.tail(1) << std::endl; 
