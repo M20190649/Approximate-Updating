@@ -18,10 +18,9 @@ double pLogDens(vec x, double sigmaSq, double phi){
 }
 
 double qLogDens(vec epsilon, vec mu, mat L){
-  double logdet = -(mu[0] + L(0, 0)*epsilon[0] + log(L(0, 0)) + log(L(1, 1)));
-  double eps = 1.0*log(2.0*3.14159) - 0.5 * (pow(epsilon[0], 2) + pow(epsilon[1], 2));
-  return logdet + eps;
-  return logdet;
+  double logdet = -(mu[0] + L(0, 0)*epsilon[0] + log(abs(L(0, 0))) + log(abs(L(1, 1))));
+  double eps = - 0.5 * (pow(epsilon[0], 2) + pow(epsilon[1], 2));
+  return eps - logdet;
 }
 
 double ELBO(vec x, vec mu, mat L, int n=100){
@@ -37,57 +36,54 @@ double ELBO(vec x, vec mu, mat L, int n=100){
 
 vec pDeriv (vec x, double sigmaSq, double phi){
   double T = x.n_elem - 1;
-  double dsigmaSq = -0.5*(T + 5) / sigmaSq + pow(sigmaSq, -1) + pow(x[0], 2) * (1 - pow(phi, 2)) / (2 * pow(sigmaSq, 2));
+  
+  double dsigmaSq = -0.5*(T + 5) / sigmaSq + pow(sigmaSq, -2) + 
+    pow(x[0], 2) * (1 - pow(phi, 2)) / (2 * pow(sigmaSq, 2));
+  
   double dphi = -phi / (1 - pow(phi, 2)) + phi * pow(x[0], 2) / sigmaSq;
-  for(int t = 1; t < T+1; ++T){
-    dsigmaSq -= pow(x[t] - phi*x[t-1], 2) / (2*pow(sigmaSq, 2));
+  
+  for(int t = 1; t < T+1; ++t){
+    dsigmaSq += pow(x[t] - phi*x[t-1], 2) / (2 * pow(sigmaSq, 2));
     dphi += x[t-1] * (x[t] - phi*x[t-1]) / sigmaSq;
   }
   vec deriv = {dsigmaSq, dphi};
   return deriv;
 }
 
-vec muDeriv (vec x, rowvec epsilon, vec mu, mat L){
-  double sigmaSq = exp(mu[0] + L(0, 0)*epsilon[0]);
-  double phi = mu[1] + L(1, 0)*epsilon[0] + L(1, 1)*epsilon[1];
-  vec dpdt = pDeriv(x, sigmaSq, phi);
+vec muDeriv (vec dpdt, double sigmaSq){
   vec dtdm = {sigmaSq, 1};
   vec djdm = {1, 0};
   return dpdt % dtdm + djdm;
 }
 
-mat LDeriv (vec x, rowvec epsilon, vec mu, mat L){
-  double sigmaSq = exp(mu[0] + L(0, 0)*epsilon[0]);
-  double phi = mu[1] + L(1, 0)*epsilon[0] + L(1, 1)*epsilon[1];
-  vec dpdt = pDeriv(x, sigmaSq, phi);
-  mat dtdL(2, 2);
-  mat djdL(2, 2);
+mat LDeriv (vec dpdt, double sigmaSq, vec epsilon, mat L){
+  mat dtdL(2, 2, fill::zeros);
+  mat djdL(2, 2, fill::zeros);
+  mat dpdtM(2, 2);
+  dpdtM.each_col() = dpdt;
   
   dtdL(0, 0) = epsilon[0]*sigmaSq;
-  dtdL.row(1) = epsilon;
+  dtdL.row(1) = epsilon.t();
   djdL(0, 0) = epsilon[0] + 1.0/L(0, 0);
   djdL(1, 1) = 1.0/L(1, 1);
   
-  dtdL.col(0) = dtdL.col(0) % dpdt;
-  dtdL.col(1) = dtdL.col(1) % dpdt;
-  
-  return dtdL + djdL;
+  return dpdtM % dtdL + djdL;
 }
 
 // [[Rcpp::export]]
-Rcpp::List SGA_AR1(vec x, int M, int maxIter, vec Mu, mat L, double threshold=0.01, 
-                   double alpha=0.05, double beta1=0.9, double beta2=0.999){
+Rcpp::List SGA_AR1(vec x, int M, int maxIter, vec Mu, mat L, double threshold=0.001, 
+                   double alpha=0.1, double beta1=0.9, double beta2=0.999){
   double e = pow(10, -8);
   
-  vec MtMu(2);
-  vec VtMu(2);
+  vec MtMu(2, fill::zeros);
+  vec VtMu(2, fill::zeros);
   vec MtMuHat(2);
   vec VtMuHat(2);
   vec pMu(2);
   vec pMuSq(2);
   
-  mat MtL(2, 2);
-  mat VtL(2, 2);
+  mat MtL(2, 2, fill::zeros);
+  mat VtL(2, 2, fill::zeros);
   mat MtLHat(2, 2);
   mat VtLHat(2, 2);
   mat pL(2, 2);
@@ -95,10 +91,10 @@ Rcpp::List SGA_AR1(vec x, int M, int maxIter, vec Mu, mat L, double threshold=0.
   
   int iter = 0;
   vec LB(maxIter+1, fill::zeros);
+ 
   LB[0] = ELBO(x, Mu, L);
   double diff = threshold + 1;
-  
-  while(diff > threshold | iter < 10){
+  while(diff > threshold | iter < 100){
     iter += 1;
     if(iter > maxIter){
       break;
@@ -107,13 +103,14 @@ Rcpp::List SGA_AR1(vec x, int M, int maxIter, vec Mu, mat L, double threshold=0.
     pMuSq.fill(0);
     pL.fill(0);
     pLSq.fill(0);
-    
-    mat epsilon = randn<mat>(M, 2);
+    mat epsilon = randn<mat>(2, M);
     for(int m = 0; m < M; ++m){
-      vec dmu = muDeriv(x, epsilon.row(m), Mu, L);
+      vec transf = Mu + L * epsilon.col(m);
+      vec dpdt = pDeriv(x, exp(transf[0]), transf[1]);
+      vec dmu = muDeriv(dpdt, exp(transf[0]));
       pMu += dmu/M;
       pMuSq += pow(dmu, 2)/M;
-      mat dl = LDeriv(x, epsilon.row(m), Mu, L);
+      mat dl = LDeriv(dpdt, exp(transf[0]), epsilon.col(m), L);
       pL += dl/M;
       pLSq += pow(dl, 2)/M;
     }
@@ -126,9 +123,10 @@ Rcpp::List SGA_AR1(vec x, int M, int maxIter, vec Mu, mat L, double threshold=0.
     VtL = beta2*VtL + (1-beta2)*pLSq;
     MtLHat = MtL / (1 - pow(beta1, iter)); // Corrects bias
     VtLHat = VtL / (1 - pow(beta2, iter));
-    
-    Mu += alpha * MtMuHat / (sqrt(VtMuHat) + e);
-    L += alpha * MtLHat / (sqrt(VtLHat) + e);
+    if(iter > 1){
+      Mu += alpha * MtMuHat / (sqrt(VtMuHat) + e);
+      L += alpha * MtLHat / (sqrt(VtLHat) + e);
+    }
     LB[iter] = ELBO(x, Mu, L);
     diff = abs(LB[iter] - LB[iter-1]);
   }

@@ -3,6 +3,7 @@
 
 #include <RcppArmadillo.h>
 #include <math.h>
+#include <boost/math/distributions.hpp>
 using namespace Rcpp;
 using namespace arma;
 using namespace std;
@@ -37,19 +38,17 @@ vec FFUpdatercpp(vec y, double phi, double gamma, double sigmaSqY, double sigmaS
 // [[Rcpp::export]]
 rowvec FFBScpp(vec y, rowvec theta){
   int T = y.size();
-  //subtract the mean from y
-  y -= theta[3];
   //forward filter steps
   vec att(T, fill::ones); //0 - (T-1) -> x1 - xT
   vec ptt(T, fill::ones);
   rowvec draws(T+3); //0 - T -> x0 - xT
-  double at;
+  double at = theta[3];  //E(x1 | E(x0) = gamma)
   double pt = pow(theta[2], 2)*theta[1] + theta[1];
   double vt = y[0];
-  att[0] = pt * vt / (pt + theta[0]);
+  att[0] = pt * vt / (pt + theta[0]); //E(x1 | y1, x0)
   ptt[0] = pt - pow(pt, 2) / (pt + theta[0]);
   for(int t = 1; t < T; ++t){
-    at = theta[2]*att[t-1];
+    at = theta[3] + theta[2]*(att[t-1]-theta[3]); 
     pt = pow(theta[2], 2)*ptt[t-1] + theta[1];
     vt = y[t] - at;
     att[t] = at + pt * vt / (pt + theta[0]);
@@ -79,6 +78,27 @@ rowvec FFBScpp(vec y, rowvec theta){
   return draws;
 }
 
+double logPhiDens(rowvec x, double sigmaSqX, double phi, double gamma){
+  int T = x.n_elem-1;
+  double term1 = 0.5 * log(1-pow(phi, 2));
+  double term2 = - 1.0 / (2*sigmaSqX);
+  double term3 = (1-pow(phi, 2)) * pow(x[0] - gamma, 2);
+  double term4 = 0;
+  for(int t = 1; t < T+1; ++t){
+    term4 += pow(x[t] - gamma - phi * (x[t-1] - gamma), 2);
+  }
+  return term1 + term2 * (term3 + term4);
+}
+
+double logTruncDens (double x, double mu, double sd){
+  boost::math::normal_distribution<> aux (mu, sd);
+  double numer = log(pdf(aux, x));
+  boost::math::normal_distribution<> min(mu, sd);
+  boost::math::normal_distribution<> max(mu, sd);
+  double denom = log(sd) + log(cdf(max, 1) - cdf(min, -1));
+  return numer - denom;
+}
+
 // Main MCMC algorithm
 // [[Rcpp::export]]
 Rcpp::List DLM_MCMC(vec y, int reps){
@@ -90,47 +110,54 @@ Rcpp::List DLM_MCMC(vec y, int reps){
   
   double sigmaSqYShape = T/2 + 1;
   double sigmaSqXShape = T/2 + 1.5;
-  double sigmaSqYScale;
-  double sigmaSqXScale;
-  double meanPhiNumer;
-  double meanPhiDenom;
-  double meanGammaNumer;
-  double meanGammaDenom;
+  double accept = 0;
 
   for(int i = 1; i < reps; ++i){
     //sigmaSqY ~ IG(shape, scale)
-    sigmaSqYScale = 1;
+    double sigmaSqYScale = 1;
     for(int t = 0; t < T; ++t){
-      sigmaSqYScale += pow(y[t] - x(i-1, t+1) - theta(i-1, 3), 2) / 2;
+      sigmaSqYScale += pow(y[t] - x(i-1, t+1), 2) / 2;
     }
     theta(i, 0) = (1 / randg<vec>(1, distr_param(sigmaSqYShape, 1/sigmaSqYScale)))[0];
     
     //sigmaSqX ~ IG(shape, scale)
-    sigmaSqXScale = 1 + pow(x(i, 0), 2) / 2;
+    double sigmaSqXScale = 1 + (1-pow(theta(i-1, 2), 2)) * pow(x(i-1, 0) - theta(i-1, 3), 2) / 2;
     for(int t = 0; t < T; ++t){
-      sigmaSqXScale += pow(x(i-1, t+1) - theta(i-1, 2)*x(i-1, t), 2) / 2;
+      sigmaSqXScale += pow(x(i-1, t+1) - theta(i-1, 3) - theta(i-1, 2)*(x(i-1, t) - theta(i-1, 3)), 2) / 2;
     }
     theta(i, 1) = (1 / randg<vec>(1, distr_param(sigmaSqXShape, 1/sigmaSqXScale)))[0];
     
-    //phi ~ TruncNormal(mean, var, low = -1, high = 1) - Not truncated right now, working fine as is.
-    // Should implement it properly
-    meanPhiNumer = meanPhiDenom = 0;
-    for(int t = 0; t < T; ++t){
-      meanPhiNumer += x(i-1, t) * x(i-1, t+1);
-      meanPhiDenom += pow(x(i-1, t), 2);
+    //phi ~ MH with RW Truncnorm candidate
+    bool flag = true;
+    double candidate;
+    while(flag){
+      candidate = theta(i-1, 2) + 0.1 * randn<vec>(1)[0];
+      if(candidate < 1 & candidate > -1){
+        flag = false;
+      }
     }
-    theta(i, 2) = (meanPhiNumer/meanPhiDenom + sqrt(theta(i, 1)/meanPhiDenom) * randn<vec>(1))[0];
+    double canQDens = logTruncDens (candidate, theta(i-1, 2), 0.1);
+    double oldQDens = logTruncDens (theta(i-1, 2), candidate, 0.1);
+    double canPDens = logPhiDens (x.row(i-1), theta(i, 1), candidate, theta(i-1, 3));
+    double oldPDens = logPhiDens (x.row(i-1), theta(i, 1), theta(i-1, 2), theta(i-1, 3));
+    double ratio = exp(canPDens - oldPDens - canQDens + oldQDens);
+    if (randu<vec>(1)[0] < ratio){
+      theta(i, 2) = candidate;
+      accept += 1;
+    } else {
+      theta(i, 2) = theta(i-1, 2);
+    }
     
     //gamma ~ Normal(mean, var)
-    meanGammaNumer = 0;
-    meanGammaDenom = 10*T + theta(i, 0);
-    for(int t = 0; t < T; ++t){
-      meanGammaNumer += 10 * y[t] - x(i-1, t+1);
+    double denom = theta(i, 1) + 100 * (T + T*pow(theta(i, 2), 2) - 2*T*theta(i, 2) + 1 - pow(theta(i, 2), 2));
+    double meanNumer = (1 - pow(theta(i, 2), 2)) * x(i-1, 0);
+    double varNumer = 100 * theta(i, 1);
+    for(int t = 1; t < T+1; ++t){
+      meanNumer += x(i-1, t) + pow(theta(i, 2), 2)*x(i-1, t-1) - theta(i, 2) * (x(i-1, t-1) + x(i-1, t)); 
     }
-    theta(i, 3) = (meanGammaNumer/meanGammaDenom + sqrt(10*theta(i, 0)/meanGammaDenom) * randn<vec>(1))[0];
-    
+    theta(i, 3) = meanNumer / denom + sqrt(varNumer / denom) * randn<vec>(1)[0];
     x.row(i) = FFBScpp(y, theta.row(i));
   }
-  
+  Rcpp::Rcout << accept / reps << std::endl;
   return Rcpp::List::create(Rcpp::Named("theta") = theta, Rcpp::Named("x") = x);
 }

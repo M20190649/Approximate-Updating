@@ -1,7 +1,7 @@
 library(Rcpp)
 library(RcppArmadillo)
 library(tidyverse)
-library(truncnorm)
+library(msm)
 sourceCpp('AR1.cpp')
 logPhiDens = function(x, phi, sigmaSq){
   term1 = 1/2 * log(1-phi^2)
@@ -17,9 +17,9 @@ MCMC = function(x, reps=10000, dataset){
   for(i in 2:reps){
     sigD[i] = 1/rgamma(1, (T+3)/2, 1 + 1/2 * sum((x[2:(T+1)] - phiD[i-1]*x[1:T])^2) + 1/2 * (1 - phiD[i-1]^2) * x[1]^2)
     
-    candidate = rtruncnorm(1, -1, 1, phiD[i-1], 0.1)
-    canQDens = log(dtruncnorm(candidate, -1, 1, phiD[i-1], 0.1))
-    oldQDens = log(dtruncnorm(phiD[i-1], -1, 1, candidate, 0.1))
+    candidate = rtnorm(1, phiD[i-1], 0.1, -1, 1)
+    canQDens = dtnorm(candidate, phiD[i-1], 0.1, -1, 1, log=TRUE)
+    oldQDens = dtnorm(phiD[i-1], candidate, 0.1, -1, 1, log=TRUE)
     canPDens = logPhiDens(x, candidate, sigD[i])
     oldPDens = logPhiDens(x, phiD[i-1], sigD[i])
     ratio = min(1, exp(canPDens - oldPDens - canQDens + oldQDens))
@@ -32,15 +32,14 @@ MCMC = function(x, reps=10000, dataset){
   }
   print(accept/reps)
   return(data.frame(c(sigD[(reps/2+1):reps], phiD[(reps/2+1):reps]), 
-                    rep(c('SigmaSq', 'Phi'), rep(reps/2, 2)),
+                    rep(c('sigma^2', 'phi'), rep(reps/2, 2)),
                     dataset))
 }
 
 T = 500
 sigmaSq = 1
-phi = 0.9
-reps = 4
-
+phi = 0.8
+reps = 6
 VB = data.frame()
 MCMCdf = data.frame()
 
@@ -50,26 +49,34 @@ for(i in 1:reps){
   for(t in 2:(T+1)){
     x[t] = rnorm(1, phi*x[t-1], sqrt(sigmaSq))
   }
-  MCMCdf = rbind(MCMCdf, MCMC(x, 10000, i))
+  MCMCfit = MCMC(x, 2000, i)
+  MCMCdf = rbind(MCMCdf, MCMCfit)
+  smu = -1#mean(log(MCMCfit[1:1000, 1]))
+  ssd = 0.5#sd(log(MCMCfit[1:1000, 1]))
+  pmu = 0#mean(MCMCfit[1001:2000, 1])
+  psd = 0.5#sd(MCMCfit[1001:2000, 1])
   
-  initMu = rep(0, 0)
-  initL = diag(0.1, 2)
-  VBfit = SGA_AR1(x, 25, 5000, initMu, initL)
-  VBsd = diag(sqrt(VBFit$L %*% t(VBFit$L)))
-  supportPhi = seq(-0.99, 0.99, length.out=500)
-  supportSigmaSq = seq(0.01, 3, length.out=500)
-  dSigmaSq = dlnorm(supportSigmaSq, VBfit$Mu[1], Vbsd[1])
-  dPhi = dnorm(supportPhi, VBfit$Mu[2], VBsd[2]))
+  initMu = c(smu, pmu)
+  initL = diag(c(ssd, psd))
+  VBfit = SGA_AR1(x, 100, 5000, initMu, initL, alpha=0.1)
+  VBsd = sqrt(diag(VBfit$L %*% t(VBfit$L)))
+  supportPhi = seq(-1.2, 1.2, length.out=500)
+  supportSigmaSq = seq(0.01, 1.5, length.out=500)
+  dSigmaSq = dlnorm(supportSigmaSq, VBfit$Mu[1], VBsd[1])
+  dPhi = dnorm(supportPhi, VBfit$Mu[2], VBsd[2])
+  dsStart = dlnorm(supportSigmaSq, smu, ssd)
+  dpStart = dnorm(supportPhi, pmu, psd)
   
-  df = data.frame(c(supportSigmaSq, supportPhi), c(dSigmaSq, dPhi), 
-                  rep(c('SigmaSq', 'Phi'), rep(500, 2)),
-                  i)
+  df = data.frame(c(supportSigmaSq, supportPhi), c(dSigmaSq, dPhi, dsStart, dpStart), 
+                  rep(c('sigma^2', 'phi'), rep(500, 2)), rep(c('converged', 'starting'), rep(1000, 2)), i)
   VB = rbind(VB, df)
 }
 
 colnames(MCMCdf) = c('draws', 'variable', 'dataset')
-colnames(VB) = c('support', 'density', 'variable', 'dataset')
+colnames(VB) = c('support', 'density', 'variable', 'lambda', 'dataset')
 
 ggplot() + geom_density(data=MCMCdf, aes(x=draws)) + 
-  geom_line(data=VB, aes(x=support, y=density), colour='red') +
-   facet_grid(dataset ~ variable)
+  geom_line(data=VB, aes(x=support, y=density, colour=lambda)) +
+  facet_grid(variable ~ dataset, scales='free', labeller=label_parsed) + 
+  theme(strip.text.x = element_blank(), strip.text.y = element_text(angle=0),
+        axis.ticks.y = element_blank(), axis.text.y=element_blank(), axis.title=element_blank())

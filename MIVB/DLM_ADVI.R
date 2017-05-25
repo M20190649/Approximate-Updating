@@ -1,46 +1,52 @@
 library(Rcpp)
 library(RcppArmadillo)
-library(ggplot2)
-library(tidyr)
+library(tidyverse)
 sourceCpp("DLM_MCMC.cpp")
-sourceCpp("DLM_SGA.cpp")
+#sourceCpp("DLMSplit.cpp")
 
 # Parameters
-gamma = 2
-phi = 0.95
+gamma = 0.5
+phi = 0.8
 sigmaSqY = 1
 sigmaSqX = 1
-# Hyperparameters
-alphaY = 1
-betaY = 1
-alphaX = 1
-betaX = 1
-muBar = 0
-muVar = 10
+
 T = 250
 MCMCreps = 10000
-#Input: List of sample sizes, data replications, minimum MCMC reps, meanfield (diagonal) approx only
-#VBmodelfit = function(Tvec, reps, minReps, meanfield=FALSE){
-  #output=data.frame()
+reps = 4
+i=1
+
+VB = data.frame()
+MCMCdf = data.frame()
+for(i in 1:reps){
+  x0 = rnorm(1, gamma / (1-phi), sqrt(sigmaSqX/(1-phi^2)))
+  x = rep(0, T)
+  y = rep(0, T)
+  for(t in 1:T){
+    if(t == 1){
+      x[t] = gamma + phi*(x0 - gamma) + rnorm(1, 0, sqrt(sigmaSqX)) 
+    } else {
+      x[t] = gamma + phi*(x[t-1] - gamma) + rnorm(1, 0, sqrt(sigmaSqX))
+    }
+    y[t] = x[t] + rnorm(1, 0, sqrt(sigmaSqY))
+  }
+  MCMCfit = DLM_MCMC(y, MCMCreps)
+  colnames(MCMCfit$theta) = c('sigma^2[y]', 'sigma^2[x]', 'phi', 'gamma')
+  MCMCl = gather(as.data.frame(MCMCfit$theta), variable, draw)
+  MCMCl$dataset = i
+  MCMCdf = rbind(MCMCdf, MCMCl)
   
-  # For each sample size
-  #for(i in 1:length(Tvec)){
-    # and reps many data replications
-    #for(j in 1:reps){
-     # T=Tvec[i]
-      # Increase MCMC reps as T increases
-    #  MCMCreps = min(minReps, T*10)
-      x0 = rnorm(1, 0, sqrt(sigmaSqX/(1-phi^2)))
-      x = rep(0, T)
-      y = rep(0, T)
-      for(t in 1:T){
-        if(t == 1){
-          x[t] = phi*x0 + rnorm(1, 0, sqrt(sigmaSqX)) 
-        } else {
-          x[t] = phi*x[t-1] + rnorm(1, 0, sqrt(sigmaSqX))
-        }
-        y[t] = gamma + x[t] + rnorm(1, 0, sqrt(sigmaSqY))
-      }
+  initMuTheta = colMeans(cbind(log(MCMCfit$theta[(MCMCreps/2 + 1):MCMCreps, 1:2]), MCMCfit$theta[(MCMCreps/2 + 1):MCMCreps, 3:4]))
+  initLTheta = apply(cbind(log(MCMCfit$theta[(MCMCreps/2 + 1):MCMCreps, 1:2]), MCMCfit$theta[(MCMCreps/2 + 1):MCMCreps, 3:4]), 2, sd)
+  initMuX = colMeans(MCMCfit$x[(MCMCreps/2 + 1):MCMCreps, 1:(T+1)])
+  initLX = apply(MCMCfit$x[(MCMCreps/2 + 1):MCMCreps, 1:(T+1)], 2, sd)
+  
+  initMu = c(initMuTheta, initMuX)
+  initL = diag(c(initLTheta, initLX))
+
+  
+}
+
+     
       # Initial value of Mean vector is mostly 0, but the first autocorrelation should be a decent starting value
       # for phi, and the mean should be a decent starting value for gamma
       initM = c(0, 0, cor(y[2:T],y[2:T-1]), mean(y), rep(0, T+1))
