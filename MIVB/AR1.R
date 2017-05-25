@@ -55,11 +55,11 @@ for(i in 1:reps){
   initMu = rep(0, 0)
   initL = diag(0.1, 2)
   VBfit = SGA_AR1(x, 25, 5000, initMu, initL)
-  
+  VBsd = diag(sqrt(VBFit$L %*% t(VBFit$L)))
   supportPhi = seq(-0.99, 0.99, length.out=500)
   supportSigmaSq = seq(0.01, 3, length.out=500)
-  dPhi = dnorm(supportPhi, VBfit$Mu[2], sqrt(sum(VBfit$L[2, ]^2)))
-  dSigmaSq = dlnorm(supportSigmaSq, VBfit$Mu[1], Vbfit$L[1, 1])
+  dSigmaSq = dlnorm(supportSigmaSq, VBfit$Mu[1], Vbsd[1])
+  dPhi = dnorm(supportPhi, VBfit$Mu[2], VBsd[2]))
   
   df = data.frame(c(supportSigmaSq, supportPhi), c(dSigmaSq, dPhi), 
                   rep(c('SigmaSq', 'Phi'), rep(500, 2)),

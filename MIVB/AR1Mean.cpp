@@ -7,69 +7,66 @@ using namespace Rcpp;
 using namespace arma;
 using namespace std;
 
-double pLogDens(vec x, double sigmaSq, double phi){
+double pLogDens(vec x, double sigmaSq, double phi, double gamma){
   int T = x.n_elem - 1;
-  double density = -0.5*(T+5)*log(sigmaSq) + 0.5*log(1-pow(phi, 2)) - pow(sigmaSq, -1);
-  density -= pow(x[0], 2) * (1 - pow(phi, 2)) / (2 * sigmaSq);
+  double density = -0.5*(T+5)*log(sigmaSq) + 0.5*log(1-pow(phi, 2)) - pow(sigmaSq, -1) - pow(gamma, 2)/200;
+  density -= pow(x[0] - gamma/(1-phi), 2) * (1 - pow(phi, 2)) / (2 * sigmaSq);
   for(int t = 1; t < T+1; ++t){
-    density -= pow(x[t] - phi*x[t-1], 2) / (2*sigmaSq);
+    density -= pow(x[t] - gamma - phi*(x[t-1]-gamma), 2) / (2*sigmaSq);
   }
   return density;
 }
 
 double qLogDens(vec epsilon, vec mu, mat L){
-  double logdet = -(mu[0] + L(0, 0)*epsilon[0] + log(L(0, 0)) + log(L(1, 1)));
-  double eps = 1.0*log(2.0*3.14159) - 0.5 * (pow(epsilon[0], 2) + pow(epsilon[1], 2));
+  double logdet = -(mu[0] + L(0, 0)*epsilon[0] + log(L(0, 0)) + log(L(1, 1)) + log(L(2, 2)));
+  double eps = 1.5*log(2.0*3.14159) - 0.5 * (pow(epsilon[0], 2) + pow(epsilon[1], 2) + pow(epsilon[2], 2));
   return logdet + eps;
-  return logdet;
 }
 
 double ELBO(vec x, vec mu, mat L, int n=100){
   double elbo = 0;
   for(int i = 0; i < n; ++i){
-    vec epsilon = randn<vec>(2);
-    double sigmaSq = exp(mu[0] + L(0, 0)*epsilon[0]);
-    double phi = mu[1] + L(1, 0)*epsilon[0] + L(1, 1)*epsilon[1];
-    elbo += pLogDens(x, sigmaSq, phi) - qLogDens(epsilon, mu, L);
+    vec epsilon = randn<vec>(3);
+    vec trans = mu + L * epsilon;
+    elbo += pLogDens(x, exp(trans[0]), trans[1], trans[2]) - qLogDens(epsilon, mu, L);
   }
   return elbo/n;
 }
 
-vec pDeriv (vec x, double sigmaSq, double phi){
+vec pDeriv (vec x, double sigmaSq, double phi, double gamma){
   double T = x.n_elem - 1;
-  double dsigmaSq = -0.5*(T + 5) / sigmaSq + pow(sigmaSq, -1) + pow(x[0], 2) * (1 - pow(phi, 2)) / (2 * pow(sigmaSq, 2));
-  double dphi = -phi / (1 - pow(phi, 2)) + phi * pow(x[0], 2) / sigmaSq;
+  double dsigmaSq = -0.5*(T + 5) / sigmaSq + pow(sigmaSq, -1) + pow(x[0]-gamma/(1-phi), 2) * (1 - pow(phi, 2)) / (2 * pow(sigmaSq, 2));
+  double dphi = -phi / (1 - pow(phi, 2)) - 1.0 / sigmaSq * ((gamma + x[0]*(phi-1))*(gamma-x[0]*(phi-1)*phi) / (pow(1-phi, 2)));
+  double dgamma = -gamma/100 + 1.0 / sigmaSq * ((phi+1)*(gamma+x[0]*(phi-1))/(phi-1));
   for(int t = 1; t < T+1; ++T){
-    dsigmaSq -= pow(x[t] - phi*x[t-1], 2) / (2*pow(sigmaSq, 2));
-    dphi += x[t-1] * (x[t] - phi*x[t-1]) / sigmaSq;
+    dsigmaSq -= pow(x[t] - gamma - phi*(x[t-1]-gamma), 2) / (2*pow(sigmaSq, 2));
+    dphi += (x[t-1] - gamma) * (x[t] - gamma - phi*(x[t-1]-gamma)) / sigmaSq;
+    dgamma += (1 - phi) / sigmaSq * (x[t] - gamma - phi*(x[t-1]-gamma));
   }
-  vec deriv = {dsigmaSq, dphi};
+  vec deriv = {dsigmaSq, dphi, dgamma};
   return deriv;
 }
 
-vec muDeriv (vec x, rowvec epsilon, vec mu, mat L){
-  double sigmaSq = exp(mu[0] + L(0, 0)*epsilon[0]);
-  double phi = mu[1] + L(1, 0)*epsilon[0] + L(1, 1)*epsilon[1];
-  vec dpdt = pDeriv(x, sigmaSq, phi);
-  vec dtdm = {sigmaSq, 1};
-  vec djdm = {1, 0};
+vec muDeriv (vec dpdt, double sigmaSq){
+  vec dtdm = {sigmaSq, 1, 1};
+  vec djdm = {1, 0, 0};
   return dpdt % dtdm + djdm;
 }
 
-mat LDeriv (vec x, rowvec epsilon, vec mu, mat L){
-  double sigmaSq = exp(mu[0] + L(0, 0)*epsilon[0]);
-  double phi = mu[1] + L(1, 0)*epsilon[0] + L(1, 1)*epsilon[1];
-  vec dpdt = pDeriv(x, sigmaSq, phi);
-  mat dtdL(2, 2);
-  mat djdL(2, 2);
+mat LDeriv (vec x, vec epsilon, vec mu, mat L, vec dpdt){
+  mat dtdL(3, 3);
+  mat djdL(3, 3);
   
-  dtdL(0, 0) = epsilon[0]*sigmaSq;
-  dtdL.row(1) = epsilon;
+  dtdL(0, 0) = epsilon[0]*exp(mu[0]+L(0,0)*epsilon[0]);
+  dtdL.row(1) = epsilon.head(2).t();
+  dtdL.row(2) = epsilon.t();
   djdL(0, 0) = epsilon[0] + 1.0/L(0, 0);
   djdL(1, 1) = 1.0/L(1, 1);
+  djdL(2, 2) = 1.0/L(1, 1);
   
   dtdL.col(0) = dtdL.col(0) % dpdt;
   dtdL.col(1) = dtdL.col(1) % dpdt;
+  dtdL.col(2) = dtdl.col(2) % dpdt;
   
   return dtdL + djdL;
 }
@@ -79,19 +76,19 @@ Rcpp::List SGA_AR1(vec x, int M, int maxIter, vec Mu, mat L, double threshold=0.
                    double alpha=0.05, double beta1=0.9, double beta2=0.999){
   double e = pow(10, -8);
   
-  vec MtMu(2);
-  vec VtMu(2);
-  vec MtMuHat(2);
-  vec VtMuHat(2);
-  vec pMu(2);
-  vec pMuSq(2);
+  vec MtMu(3);
+  vec VtMu(3);
+  vec MtMuHat(3);
+  vec VtMuHat(3);
+  vec pMu(3);
+  vec pMuSq(3);
   
-  mat MtL(2, 2);
-  mat VtL(2, 2);
-  mat MtLHat(2, 2);
-  mat VtLHat(2, 2);
-  mat pL(2, 2);
-  mat pLSq(2, 2);
+  mat MtL(3, 3);
+  mat VtL(3, 3);
+  mat MtLHat(3, 3);
+  mat VtLHat(3, 3);
+  mat pL(3, 3);
+  mat pLSq(3, 3);
   
   int iter = 0;
   vec LB(maxIter+1, fill::zeros);
@@ -108,12 +105,14 @@ Rcpp::List SGA_AR1(vec x, int M, int maxIter, vec Mu, mat L, double threshold=0.
     pL.fill(0);
     pLSq.fill(0);
     
-    mat epsilon = randn<mat>(M, 2);
+    mat epsilon = randn<mat>(2, M);
     for(int m = 0; m < M; ++m){
-      vec dmu = muDeriv(x, epsilon.row(m), Mu, L);
+      vec trans = Mu + L * epsilon.col(m);
+      vec dpdt = pDeriv(x, exp(trans[0]), trans[1], trans[2]);
+      vec dmu = muDeriv(dpdt, exp(trans[0]));
       pMu += dmu/M;
       pMuSq += pow(dmu, 2)/M;
-      mat dl = LDeriv(x, epsilon.row(m), Mu, L);
+      mat dl = LDeriv(x, epsilon.col(m), Mu, L, dpdt);
       pL += dl/M;
       pLSq += pow(dl, 2)/M;
     }
@@ -140,5 +139,4 @@ Rcpp::List SGA_AR1(vec x, int M, int maxIter, vec Mu, mat L, double threshold=0.
                             Rcpp::Named("ELBO") = LB,
                             Rcpp::Named("Iter") = iter);
 }
-  
-  
+
