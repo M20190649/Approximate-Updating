@@ -155,8 +155,12 @@ Rcpp::List DLM_MCMC(vec y, int reps){
     for(int t = 1; t < T+1; ++t){
       meanNumer += x(i-1, t) + pow(theta(i, 2), 2)*x(i-1, t-1) - theta(i, 2) * (x(i-1, t-1) + x(i-1, t)); 
     }
+    meanNumer *= 100;
     theta(i, 3) = meanNumer / denom + sqrt(varNumer / denom) * randn<vec>(1)[0];
     x.row(i) = FFBScpp(y, theta.row(i));
+    if(i % 2000 == 0){
+      Rcpp::Rcout << meanNumer / denom<< std::endl;
+    }
   }
   Rcpp::Rcout << accept / reps << std::endl;
   return Rcpp::List::create(Rcpp::Named("theta") = theta, Rcpp::Named("x") = x);

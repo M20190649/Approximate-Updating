@@ -48,7 +48,7 @@ for(i in 1:reps){
   initMuX = colMeans(MCMCfit$x[(MCMCreps/2 + 1):MCMCreps, 1:(T+1)])
   initLX = apply(MCMCfit$x[(MCMCreps/2 + 1):MCMCreps, 1:(T+1)], 2, sd)
   
-  initMuTheta[1:3] = c(-1.5, -1.5, 0)
+  initMuTheta = c(-1.5, -1.5, 0, -2)
   #initLTheta[3:4] = c(0.3, 1)
   
   initMu = c(initMuTheta, initMuX)

@@ -84,8 +84,8 @@ mat LDeriv (vec dpdt, double sigmaSqY, double sigmaSqX, vec epsilon, mat L, int 
   dpdtM.each_col() = dpdt;
   
   for(int i = 0; i < T+5; ++i){
-    dtdL(i, i) = epsilon[i];
-    if(i < 4 | xderiv){
+    if((i < 4) | xderiv){
+      dtdL(i, i) = epsilon[i];
       djdL(i, i) = 1.0/L(i, i);
     }
   }
