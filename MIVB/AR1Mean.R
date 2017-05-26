@@ -78,8 +78,8 @@ for(i in 1:reps){
   ssd = 0.5#sd(log(MCMCfit[1:1000, 1]))
   pmu = 0#mean(MCMCfit[1001:2000, 1])
   psd = 0.3#sd(MCMCfit[1001:2000, 1])
-  gmu = -0.5#mean(MCMCfit[2001:3000, 1])
-  gsd = 0.5#sd(MCMCfit[2001:3000, 1])
+  gmu = 0#mean(MCMCfit[2001:3000, 1])
+  gsd = 1#sd(MCMCfit[2001:3000, 1])
   
   initMu = c(smu, pmu, gmu)
   initL = diag(c(ssd, psd, gsd))
@@ -87,7 +87,7 @@ for(i in 1:reps){
   
   supportPhi = seq(-0.8, 1.05, length.out=500)
   supportSigmaSq = seq(0.01, 2, length.out=500)
-  supportGamma = seq(-1.5, 1.8, length.out=500)
+  supportGamma = seq(-1.5, 2, length.out=500)
   VBsd = sqrt(diag(VBfit$L %*% t(VBfit$L)))
   dSigmaSq = dlnorm(supportSigmaSq, VBfit$Mu[1], VBsd[1])
   dPhi = dnorm(supportPhi, VBfit$Mu[2], VBsd[2])
