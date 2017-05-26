@@ -73,34 +73,37 @@ vec muDeriv (vec dpdt, double sigmaSqY, double sigmaSqX, int T){
   return dpdt % dtdm + djdm;
 }
 
-mat LDeriv (vec dpdt, double sigmaSqY, double sigmaSqX, vec epsilon, mat L, int T){
+mat LDeriv (vec dpdt, double sigmaSqY, double sigmaSqX, vec epsilon, mat L, int T, bool meanfield){
   mat dtdL(T+5, T+5, fill::zeros);
   mat djdL(T+5, T+5, fill::zeros);
   mat dpdtM(T+5, T+5);
   dpdtM.each_col() = dpdt;
   
   for(int i = 0; i < T+5; ++i){
-    for(int j = 0; j <= i; ++j){
-      dtdL(i, j) = epsilon[j];
-    }
-  }
-  dtdL(0, 0) *= sigmaSqY;
-  dtdL(1, 0) *= sigmaSqX;
-  dtdL(1, 1) *= sigmaSqX;
-  
-  for(int i = 0; i < T+5; ++i){
+    dtdL(i, i) = epsilon[i];
     djdL(i, i) = 1.0/L(i, i);
   }
+  dtdL(0, 0) *= sigmaSqY;
+  dtdL(1, 1) *= sigmaSqX;
   djdL(0, 0) += epsilon[0];
-  djdL(1, 0) += epsilon[0];
   djdL(1, 1) += epsilon[1];
+ 
+  if(!meanfield){
+    for(int i = 1; i < T+5; ++i){
+      for(int j = 0; j < i; ++j){
+        dtdL(i, j) = epsilon[j];
+      }
+    }
+    dtdL(1, 0) *= sigmaSqX;
+    djdL(1, 0) += epsilon[0];
+  }
   
   return dpdtM % dtdL + djdL;
 }
 
 // [[Rcpp::export]]
-Rcpp::List SGA_DLM(vec y, int M, int maxIter, vec Mu, mat L, double threshold=0.001, 
-                    double alpha=0.1, double beta1=0.9, double beta2=0.999){
+Rcpp::List SGA_DLM(vec y, int M, int maxIter, vec Mu, mat L, bool meanfield=false, 
+	double threshold=0.001, double alpha=0.1, double beta1=0.9, double beta2=0.999){
   double e = pow(10, -8);
   int T = y.n_elem;
   
@@ -140,7 +143,7 @@ Rcpp::List SGA_DLM(vec y, int M, int maxIter, vec Mu, mat L, double threshold=0.
       vec dmu = muDeriv(dpdt, exp(transf[0]), exp(transf[1]), T);
       pMu += dmu/M;
       pMuSq += pow(dmu, 2)/M;
-      mat dl = LDeriv(dpdt, exp(transf[0]), exp(transf[1]), epsilon.col(m), L, T);
+      mat dl = LDeriv(dpdt, exp(transf[0]), exp(transf[1]), epsilon.col(m), L, T, meanfield);
       pL += dl/M;
       pLSq += pow(dl, 2)/M;
     }
@@ -164,6 +167,7 @@ Rcpp::List SGA_DLM(vec y, int M, int maxIter, vec Mu, mat L, double threshold=0.
   if(iter <= maxIter){
     LB = LB.head(iter+1); 
   }
+  Rcpp::Rcout << iter << std::endl;
   return Rcpp::List::create(Rcpp::Named("Mu") = Mu,
                             Rcpp::Named("L") = L,
                             Rcpp::Named("ELBO") = LB,

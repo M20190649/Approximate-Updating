@@ -2,7 +2,7 @@ library(Rcpp)
 library(RcppArmadillo)
 library(tidyverse)
 sourceCpp("DLM_MCMC.cpp")
-#sourceCpp("DLMSplit.cpp")
+sourceCpp("DLMSplit.cpp")
 
 # Parameters
 gamma = 0.5
@@ -12,8 +12,7 @@ sigmaSqX = 1
 
 T = 250
 MCMCreps = 10000
-reps = 4
-i=1
+reps = 1
 
 VB = data.frame()
 MCMCdf = data.frame()
@@ -30,113 +29,57 @@ for(i in 1:reps){
     y[t] = x[t] + rnorm(1, 0, sqrt(sigmaSqY))
   }
   MCMCfit = DLM_MCMC(y, MCMCreps)
-  colnames(MCMCfit$theta) = c('sigma^2[y]', 'sigma^2[x]', 'phi', 'gamma')
-  MCMCl = gather(as.data.frame(MCMCfit$theta), variable, draw)
+  colnames(MCMCfit$theta) = c('sigma[y]^2', 'sigma[x]^2', 'phi', 'gamma')
+  colnames(MCMCfit$x) = c(paste0('X[',0:(T-1), ']'), 'X[T]', 'aTT', 'pTT')
+  MCMCfit$x = as.data.frame(MCMCfit$x)
+  MCMCl = gather(as.data.frame(cbind(MCMCfit$theta, select(MCMCfit$x, 1, T+1))), variable, draw)
   MCMCl$dataset = i
   MCMCdf = rbind(MCMCdf, MCMCl)
   
   initMuTheta = colMeans(cbind(log(MCMCfit$theta[(MCMCreps/2 + 1):MCMCreps, 1:2]), MCMCfit$theta[(MCMCreps/2 + 1):MCMCreps, 3:4]))
   initLTheta = apply(cbind(log(MCMCfit$theta[(MCMCreps/2 + 1):MCMCreps, 1:2]), MCMCfit$theta[(MCMCreps/2 + 1):MCMCreps, 3:4]), 2, sd)
-  initMuX = colMeans(MCMCfit$x[(MCMCreps/2 + 1):MCMCreps, 1:(T+1)])
+  initMuX = colMeans(MCMCfit$x[(MCMCreps/2 + 1):MCMCreps, 1:(T+1), 1:(T+1)])
   initLX = apply(MCMCfit$x[(MCMCreps/2 + 1):MCMCreps, 1:(T+1)], 2, sd)
   
   initMu = c(initMuTheta, initMuX)
   initL = diag(c(initLTheta, initLX))
-
   
+  VBfit = SGA_DLM(y, 100, 5000, initMu, initL, meanfield=TRUE)
+  
+  supportReal = seq(-2, 4, length.out=500)
+  supportPos = seq(0.01, 4, length.out=500)
+
+  VBsd = sqrt(diag(VBfit$L %*% t(VBfit$L)))
+  dSigmaSqY = dlnorm(supportPos, VBfit$Mu[1], VBsd[1])
+  dSigmaSqX = dlnorm(supportPos, VBfit$Mu[2], VBsd[2])
+  dPhi = dnorm(supportReal, VBfit$Mu[3], VBsd[3])
+  dGamma = dnorm(supportReal, VBfit$Mu[4], VBsd[4])
+  dX0 = dnorm(supportReal, VBfit$Mu[5], VBsd[5])
+  dXT = dnorm(supportReal, VBfit$Mu[T+5], VBsd[T+5])
+
+  dsyStart = dlnorm(supportPos, initMuTheta[1], initLTheta[1])
+  dsxStart = dlnorm(supportPos, initMuTheta[2], initLTheta[2])
+  dpStart = dnorm(supportReal, initMuTheta[3], initLTheta[3])
+  dgStart = dnorm(supportReal, initMuTheta[4], initLTheta[4])
+  dX0Start = dnorm(supportReal, initMuX[1], initLX[1])
+  dXTStart = dnorm(supportReal, initMuX[T+1], initLX[T+1])
+  
+  df = data.frame(c(rep(supportPos, 2), rep(supportReal, 4)),
+                  c(dSigmaSqY, dSigmaSqX, dPhi, dGamma, dX0, dXT, dsyStart, dsxStart, dpStart, dgStart, dX0Start, dXTStart), 
+                  rep(c('sigma[y]^2', 'sigma[x]^2', 'phi', 'gamma', 'X[0]', 'X[T]'), rep(500, 6)), 
+                  rep(c('converged', 'starting'), rep(3000, 2)), i)
+  VB = rbind(VB, df)
 }
 
+colnames(MCMCdf) = c('variable', 'draws', 'dataset')
+colnames(VB) = c('support', 'density', 'variable', 'lambda', 'dataset')
+
+ggplot() + geom_density(data=MCMCdf, aes(x=draws)) + 
+  geom_line(data=VB, aes(x=support, y=density, colour=lambda)) +
+  facet_grid(variable~dataset, scales='free', labeller=label_parsed) + 
+  theme(strip.text.x = element_blank(), strip.text.y = element_text(angle=0),
+        axis.ticks.y = element_blank(), axis.text.y=element_blank(), axis.title=element_blank())
+
+  
      
-      # Initial value of Mean vector is mostly 0, but the first autocorrelation should be a decent starting value
-      # for phi, and the mean should be a decent starting value for gamma
-      initM = c(0, 0, cor(y[2:T],y[2:T-1]), mean(y), rep(0, T+1))
-      
-      # Run MCMC, take mean of second half of draws
-      MCMC = DLM_MCMC(y, MCMCreps)
-      #output = rbind(output, c(colMeans(cbind(log(MCMC$theta[(MCMCreps/2+1):MCMCreps, 1]),
-       #                                       log(MCMC$theta[(MCMCreps/2+1):MCMCreps, 2]),
-        #                                      MCMC$theta[(MCMCreps/2+1):MCMCreps, 3],
-         #                                     MCMC$theta[(MCMCreps/2+1):MCMCreps, 4])), T, 1))
-      
-      # Non-Diagonal VB, estimating values for all latent states, with 25 simulations per iteration
-      # Stopping if it fails to converge after 5000 replications
-      # Initial value for the lower triangular matrix of Sigma is 0.1 * I
-      #if(!meanfield){
-        NDVB = DLM_SGA(y=y[1:T], S=T, M=50, maxIter=5000, initialM=initM, initialL=diag(0.1, T+5))
-     #   output = rbind(output, c(NDVB$Mu[1:4], T, 3))
-      #}
-      
-      # Diagonal VB, same inputs except less simulations per iteration
-      MFVB = DLM_SGA(y=y[1:T], S=T, M=5, maxIter=5000, initialM=initM, initialL = diag(0.1, T+5), meanfield=TRUE)
-     # output = rbind(output, c(MFVB$Mu[1:4], T, 2))
-      
-      MCMCtheta = MCMC$theta[5001:10000,]
-      colnames(MCMCtheta) = c('SigSqY', 'SigSqX', 'Phi', 'Gamma')
-      MCMCtheta = gather(as.data.frame(MCMCtheta), variable, draw)
-      NDSig = sqrt(NDVB$L %*% t(NDVB$L))
-      
-      sigxsup = seq(0, 3, length.out=1000)
-      sigysup = seq(0, 5, length.out=1000)
-      phisup = seq(0, 1, length.out=1000)
-      gammasup = seq(1, 3.5, length.out=1000)
-      SigSqYd = dlnorm(sigysup, MFVB$Mu[1], MFVB$Sd[1])
-      SigSqXd = dlnorm(sigxsup, MFVB$Mu[2], MFVB$Sd[2])
-      phid = dnorm(phisup, MFVB$Mu[3], MFVB$Sd[3])
-      gammad = dnorm(gammasup, MFVB$Mu[4], MFVB$Sd[4])
-      
-      MF = data.frame(support = c(sigysup, sigxsup, gammasup, phisup), density = c(SigSqYd, SigSqXd, gammad, phid))
-      MF$type = 'Diag'
-      MF$variable = rep(c('SigSqY', 'SigSqX', 'Gamma', 'Phi'), rep(1000, 4))
-      
-      SigSqYd = dlnorm(sigysup, NDVB$Mu[1], NDSig[1, 1])
-      SigSqXd = dlnorm(sigxsup, NDVB$Mu[2], NDSig[2, 2])
-      phid = dnorm(phisup, NDVB$Mu[3], NDSig[3, 3])
-      gammad = dnorm(gammasup, NDVB$Mu[4], NDSig[4, 4])
-      
-      ND = data.frame(support = c(sigysup, sigxsup, gammasup, phisup), density = c(SigSqYd, SigSqXd, gammad, phid))
-      ND$type = 'Non-Diag'
-      ND$variable = rep(c('SigSqY', 'SigSqX', 'Gamma', 'Phi'), rep(1000, 4))
-      
-      
-      VB = rbind(MF, ND)
-      
-      ggplot(VB) + geom_line(aes(support, density, colour=type)) + geom_density(data=MCMCtheta, aes(draw)) + facet_wrap(~variable, scales='free')
-      
-      
-      
-      
-      
-      
-      # Print progress
-  #    if(j %% 5 == 0){
-  #      print(paste0('T = ', T, '; rep = ', j))
-  #    }
-  #  }
-  #}
-  #colnames(output) = c('sigma[y]^2','sigma[x]^2', 'phi', 'gamma', 'T', 'Method')
-  #output = dplyr::mutate(output, Method=ifelse(Method==1, 'MCMC', ifelse(Method==2, 'ADVI: Diag', 'ADVIL Non0Diag')))
-  #return(output)
-#}
-
-#ADVI = VBmodelfit(c(50, 100), 100, 5000)
-#saveRDS(ADVI, 'ADVIp1.rds')
-
-#testFit %>% gather(Variable, Mean, -Method, -T) -> testFit
-
-#ggplot(testFit) + geom_boxplot(aes(x=Method, y=Mean)) + facet_grid(Variable~T, scales='free')
-
-#ADVI2 = VBmodelfit(c(250, 500), 100, 5000)
-#saveRDS(ADVI2, 'ADVIp2.rds')
-
-#ADVI3 = VBmodelfit(c(1000, 2000), 100, 10000, meanfield=TRUE)
-#saveRDS(ADVI3, 'ADVIp3.rds')
-
-#ADVI1 = readRDS('ADVIp1.rds')
-#ADVI2 = readRDS('ADVIp2.rds')
-#ADVI3 = readRDS('ADVIp3.rds')
-
-#ADVI = rbind(ADVI1, ADVI2, ADVI3) %>% gather(Variable, Mean, -Method, -T)
-
-#ggplot(ADVI) + geom_boxplot(aes(x=Method, y=Mean)) + facet_grid(Variable~T, scales='free', labeller = label_parsed) +
- # theme(axis.text.x=element_text(angle = -90, hjust = 0, vjust = 0.5), strip.text.y = element_text(angle = 0))
-
+  

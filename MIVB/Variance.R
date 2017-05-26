@@ -26,8 +26,8 @@ for(i in 1:reps){
   igb = 0.25
   
   # Fit the VB approx for both distributions
-  VBln = SGA_Var(y=y, lognormal=TRUE, initPar1=lnmu, initPar2=lndelta, alpha=0.13)
-  VBig = SGA_Var(y=y, lognormal=FALSE, initPar1=iga, initPar2=igb, alpha=0.5)
+  VBln = SGA_Var(y=y, M=250, lognormal=TRUE, initPar1=lnmu, initPar2=lndelta, alpha=0.13)
+  VBig = SGA_Var(y=y, M=250, lognormal=FALSE, initPar1=iga, initPar2=igb, alpha=0.5)
   
   # Evaluate density over a grid for fitted densities, starting densities and true density
   support = seq(0.01, 2, length.out=500)
