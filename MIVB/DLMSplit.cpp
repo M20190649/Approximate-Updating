@@ -29,7 +29,7 @@ double qLogDens(vec epsilon, vec mu, mat L){
   return eps - logdet;
 }
 
-double ELBO(vec y,  vec mu, mat L, int n=100){
+double ELBO(vec y,  vec mu, mat L, int n=25){
   double elbo = 0;
   int T = y.n_elem;
   for(int i = 0; i < n; ++i){
@@ -40,11 +40,12 @@ double ELBO(vec y,  vec mu, mat L, int n=100){
   return elbo/n;
 }
 
-vec pDeriv (vec y, vec x, double sigmaSqY, double sigmaSqX, double phi, double gamma){
+vec pDeriv (vec y, vec x, double sigmaSqY, double sigmaSqX, double phi, double gamma, bool xderiv){
   double T = y.n_elem;
-  vec derivs(T+5);
+  vec derivs(T+5, fill::zeros);
   derivs[0] = -0.5*(T + 4) / sigmaSqY + pow(sigmaSqY, -2);
-  derivs[1] = -0.5*(T + 5) / sigmaSqX + pow(sigmaSqX, -2) + (1-pow(phi, 2)) * pow(x[0] - gamma, 2) / (2 * pow(sigmaSqX, 2));
+  derivs[1] = -0.5*(T + 5) / sigmaSqX + pow(sigmaSqX, -2) + 
+    (1-pow(phi, 2)) * pow(x[0] - gamma, 2) / (2 * pow(sigmaSqX, 2));
   derivs[2] = -phi / (1 - pow(phi, 2)) +  phi / sigmaSqX * pow(x[0] - gamma, 2);
   derivs[3] = -gamma/100 + (1-pow(phi, 2)) * (x[0] - gamma) / sigmaSqX;
   for(int t = 1; t < T+1; ++t){
@@ -53,7 +54,10 @@ vec pDeriv (vec y, vec x, double sigmaSqY, double sigmaSqX, double phi, double g
     derivs[2] += (x[t-1] - gamma) * (x[t] - gamma - phi*(x[t-1]-gamma)) / sigmaSqX;
     derivs[3] += (1 - phi) * (x[t] - gamma - phi*(x[t-1]-gamma)) / sigmaSqX;
   }
-  derivs[4] = (phi*x[1] + gamma*(1-phi)) / sigmaSqX;
+  if(!xderiv){
+    return derivs;
+  }
+  derivs[4] = (phi*x[1] - x[0] + gamma*(1-phi)) / sigmaSqX;
   for(int i = 5; i < T+4; ++i){
     int t = i - 4;
     derivs[i] = (y[t-1] - x[t]) / sigmaSqY - (x[t] - gamma - phi*(x[t-1]-gamma)) / sigmaSqX +
@@ -73,7 +77,7 @@ vec muDeriv (vec dpdt, double sigmaSqY, double sigmaSqX, int T){
   return dpdt % dtdm + djdm;
 }
 
-mat LDeriv (vec dpdt, double sigmaSqY, double sigmaSqX, vec epsilon, mat L, int T, bool meanfield){
+mat LDeriv (vec dpdt, double sigmaSqY, double sigmaSqX, vec epsilon, mat L, int T, bool meanfield, bool xderiv){
   mat dtdL(T+5, T+5, fill::zeros);
   mat djdL(T+5, T+5, fill::zeros);
   mat dpdtM(T+5, T+5);
@@ -81,7 +85,9 @@ mat LDeriv (vec dpdt, double sigmaSqY, double sigmaSqX, vec epsilon, mat L, int 
   
   for(int i = 0; i < T+5; ++i){
     dtdL(i, i) = epsilon[i];
-    djdL(i, i) = 1.0/L(i, i);
+    if(i < 4 | xderiv){
+      djdL(i, i) = 1.0/L(i, i);
+    }
   }
   dtdL(0, 0) *= sigmaSqY;
   dtdL(1, 1) *= sigmaSqX;
@@ -102,8 +108,8 @@ mat LDeriv (vec dpdt, double sigmaSqY, double sigmaSqX, vec epsilon, mat L, int 
 }
 
 // [[Rcpp::export]]
-Rcpp::List SGA_DLM(vec y, int M, int maxIter, vec Mu, mat L, bool meanfield=false, 
-	double threshold=0.001, double alpha=0.1, double beta1=0.9, double beta2=0.999){
+Rcpp::List SGA_DLM(vec y, int M, int maxIter, vec Mu, mat L, bool meanfield=false, bool xderiv=true,
+	double threshold=0.01, double alpha=0.05, double beta1=0.9, double beta2=0.999){
   double e = pow(10, -8);
   int T = y.n_elem;
   
@@ -139,13 +145,13 @@ Rcpp::List SGA_DLM(vec y, int M, int maxIter, vec Mu, mat L, bool meanfield=fals
     mat epsilon = randn<mat>(T+5, M);
     for(int m = 0; m < M; ++m){
       vec transf = Mu + L * epsilon.col(m);
-      vec dpdt = pDeriv(y, transf.tail(T+1), exp(transf[0]), exp(transf[1]), transf[2], transf[3]);
+      vec dpdt = pDeriv(y, transf.tail(T+1), exp(transf[0]), exp(transf[1]), transf[2], transf[3], xderiv);
       vec dmu = muDeriv(dpdt, exp(transf[0]), exp(transf[1]), T);
       pMu += dmu/M;
       pMuSq += pow(dmu, 2)/M;
-      mat dl = LDeriv(dpdt, exp(transf[0]), exp(transf[1]), epsilon.col(m), L, T, meanfield);
-      pL += dl/M;
-      pLSq += pow(dl, 2)/M;
+      //mat dl = LDeriv(dpdt, exp(transf[0]), exp(transf[1]), epsilon.col(m), L, T, meanfield, xderiv);
+      //pL += dl/M;
+      //pLSq += pow(dl, 2)/M;
     }
     
     MtMu = beta1*MtMu + (1-beta1)*pMu; // Creates biased estimates of first and second moment

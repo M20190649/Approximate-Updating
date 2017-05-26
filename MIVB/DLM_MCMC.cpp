@@ -108,24 +108,24 @@ Rcpp::List DLM_MCMC(vec y, int reps){
   rowvec initial = {1, 1, 0, 0};
   theta.row(0) = initial;
   
-  double sigmaSqYShape = T/2 + 1;
-  double sigmaSqXShape = T/2 + 1.5;
+  double sigmaSqYShape = 0.5*T + 1;
+  double sigmaSqXShape = 0.5*T + 1.5;
   double accept = 0;
 
   for(int i = 1; i < reps; ++i){
     //sigmaSqY ~ IG(shape, scale)
     double sigmaSqYScale = 1;
-    for(int t = 0; t < T; ++t){
-      sigmaSqYScale += pow(y[t] - x(i-1, t+1), 2) / 2;
+    for(int t = 1; t < T+1; ++t){
+      sigmaSqYScale += pow(y[t-1] - x(i-1, t), 2) / 2;
     }
-    theta(i, 0) = (1 / randg<vec>(1, distr_param(sigmaSqYShape, 1/sigmaSqYScale)))[0];
+    theta(i, 0) = (1.0 / randg<vec>(1, distr_param(sigmaSqYShape, 1.0/sigmaSqYScale)))[0];
     
     //sigmaSqX ~ IG(shape, scale)
     double sigmaSqXScale = 1 + (1-pow(theta(i-1, 2), 2)) * pow(x(i-1, 0) - theta(i-1, 3), 2) / 2;
-    for(int t = 0; t < T; ++t){
-      sigmaSqXScale += pow(x(i-1, t+1) - theta(i-1, 3) - theta(i-1, 2)*(x(i-1, t) - theta(i-1, 3)), 2) / 2;
+    for(int t = 1; t < T+1; ++t){
+      sigmaSqXScale += pow(x(i-1, t) - theta(i-1, 3) - theta(i-1, 2)*(x(i-1, t-1) - theta(i-1, 3)), 2) / 2;
     }
-    theta(i, 1) = (1 / randg<vec>(1, distr_param(sigmaSqXShape, 1/sigmaSqXScale)))[0];
+    theta(i, 1) = (1.0 / randg<vec>(1, distr_param(sigmaSqXShape, 1.0/sigmaSqXScale)))[0];
     
     //phi ~ MH with RW Truncnorm candidate
     bool flag = true;
