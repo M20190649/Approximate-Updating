@@ -12,7 +12,7 @@ sigmaSqX = 1
 
 T = 250
 MCMCreps = 10000
-reps = 1
+reps = 2
 xderiv = FALSE
 supportReal = seq(-3, 3, length.out=500)
 supportPos = seq(0.01, 3, length.out=500)
@@ -49,12 +49,12 @@ for(i in 1:reps){
   initLX = apply(MCMCfit$x[(MCMCreps/2 + 1):MCMCreps, 1:(T+1)], 2, sd)
   
   initMuTheta = c(-1.5, -1.5, 0, -2)
-  #initLTheta[3:4] = c(0.3, 1)
+  initLTheta = rep(0.1, 4)
   
   initMu = c(initMuTheta, initMuX)
   initL = diag(c(initLTheta, initLX))
   
-  VBfit = SGA_DLM(y, 50, 5000, initMu, initL, meanfield=TRUE, xderiv=xderiv, alpha=0.1)
+  VBfit = SGA_DLM(y, 50, 5000, initMu, initL, meanfield=TRUE, xderiv=xderiv, alpha=0.1, variance=TRUE)
   
   VBsd = sqrt(diag(VBfit$L %*% t(VBfit$L)))
   dSigmaSqY = dlnorm(supportPos, VBfit$Mu[1], VBsd[1])

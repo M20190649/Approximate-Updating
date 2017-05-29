@@ -108,7 +108,7 @@ mat LDeriv (vec dpdt, double sigmaSqY, double sigmaSqX, vec epsilon, mat L, int 
 }
 
 // [[Rcpp::export]]
-Rcpp::List SGA_DLM(vec y, int M, int maxIter, vec Mu, mat L, bool meanfield=false, bool xderiv=true,
+Rcpp::List SGA_DLM(vec y, int M, int maxIter, vec Mu, mat L, bool meanfield=false, bool xderiv=true, bool variance=true,
 	double threshold=0.01, double alpha=0.05, double beta1=0.9, double beta2=0.999){
   double e = pow(10, -8);
   int T = y.n_elem;
@@ -149,9 +149,11 @@ Rcpp::List SGA_DLM(vec y, int M, int maxIter, vec Mu, mat L, bool meanfield=fals
       vec dmu = muDeriv(dpdt, exp(transf[0]), exp(transf[1]), T);
       pMu += dmu/M;
       pMuSq += pow(dmu, 2)/M;
-      //mat dl = LDeriv(dpdt, exp(transf[0]), exp(transf[1]), epsilon.col(m), L, T, meanfield, xderiv);
-      //pL += dl/M;
-      //pLSq += pow(dl, 2)/M;
+      if(variance){
+        mat dl = LDeriv(dpdt, exp(transf[0]), exp(transf[1]), epsilon.col(m), L, T, meanfield, xderiv);
+        pL += dl/M;
+        pLSq += pow(dl, 2)/M;
+      }
     }
     
     MtMu = beta1*MtMu + (1-beta1)*pMu; // Creates biased estimates of first and second moment
