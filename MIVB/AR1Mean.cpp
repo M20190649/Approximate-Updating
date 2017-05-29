@@ -79,7 +79,7 @@ mat LDeriv (vec dpdt, double sigmaSq, vec epsilon, mat L){
 }
 
 // [[Rcpp::export]]
-Rcpp::List SGA_AR1M(vec x, int M, int maxIter, vec Mu, mat L, double threshold=0.001, 
+Rcpp::List SGA_AR1M(vec x, int M, int maxIter, vec Mu, mat L, double threshold=0.001,
                    double alpha=0.1, double beta1=0.9, double beta2=0.999){
   double e = pow(10, -8);
   

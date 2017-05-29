@@ -13,10 +13,10 @@ sigmaSqX = 1
 T = 250
 MCMCreps = 10000
 reps = 2
-xderiv = FALSE
 supportReal = seq(-3, 3, length.out=500)
 supportPos = seq(0.01, 3, length.out=500)
-
+xderiv = TRUE
+var = FALSE
 VB = data.frame()
 MCMCdf = data.frame()
 for(i in 1:reps){
@@ -49,12 +49,13 @@ for(i in 1:reps){
   initLX = apply(MCMCfit$x[(MCMCreps/2 + 1):MCMCreps, 1:(T+1)], 2, sd)
   
   initMuTheta = c(-1.5, -1.5, 0, -2)
-  initLTheta = rep(0.1, 4)
+  initMuX = rep(0, T+1)
+  #initLTheta = rep(0.1, 4)
   
   initMu = c(initMuTheta, initMuX)
   initL = diag(c(initLTheta, initLX))
   
-  VBfit = SGA_DLM(y, 50, 5000, initMu, initL, meanfield=TRUE, xderiv=xderiv, alpha=0.1, variance=TRUE)
+  VBfit = SGA_DLM(y, 1, 5000, initMu, initL, meanfield=TRUE, xderiv=xderiv, alpha=0.1, variance=var)
   
   VBsd = sqrt(diag(VBfit$L %*% t(VBfit$L)))
   dSigmaSqY = dlnorm(supportPos, VBfit$Mu[1], VBsd[1])
@@ -91,7 +92,7 @@ colnames(MCMCdf) = c('variable', 'draws', 'dataset')
 colnames(VB) = c('support', 'density', 'variable', 'lambda', 'dataset')
 
 MCMCfil <- MCMCdf %>% group_by(variable, dataset) %>%
-  filter(draws > quantile(draws, 0.005) & draws < quantile(draws, 0.995))
+  filter(draws > quantile(draws, 0.025) & draws < quantile(draws, 0.975))
 
 ggplot() + geom_density(data=MCMCfil, aes(x=draws)) + 
   geom_line(data=VB, aes(x=support, y=density, colour=lambda)) +
