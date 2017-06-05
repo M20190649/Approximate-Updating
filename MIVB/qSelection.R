@@ -222,16 +222,16 @@ RestrictedVineSelect = function(T, subset, k, MCMCreps, MCMC){
 }
 
 SimDLM = function(T, S, h, sigmaSqY=1, sigmaSqX=2, phi=0.95, gamma=2){
-  x0 = rnorm(1, 0, sqrt(sigmaSqX/(1-phi^2)))
+  x0 = rnorm(1, gamma / (1-phi), sqrt(sigmaSqX/(1-phi^2)))
   x = rep(0, T+S+h)
   y = rep(0, T+S+h)
   for(t in 1:(T+S+h)){
     if(t == 1){
-      x[t] = phi*x0 + rnorm(1, 0, sqrt(sigmaSqX)) 
+      x[t] = gamma + phi*(x0-gamma) + rnorm(1, 0, sqrt(sigmaSqX)) 
     } else {
-      x[t] = phi*x[t-1] + rnorm(1, 0, sqrt(sigmaSqX))
+      x[t] = gamma + phi*(x[t-1]-gamma) + rnorm(1, 0, sqrt(sigmaSqX))
     }
-    y[t] = gamma + x[t] + rnorm(1, 0, sqrt(sigmaSqY))
+    y[t] = x[t] + rnorm(1, 0, sqrt(sigmaSqY))
   }
   return(y)
 }
