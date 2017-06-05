@@ -5,7 +5,17 @@ library(MASS)
 library(pscl)
 sourceCpp("DLM_MCMC.cpp")
 source('qSelection.R')
-source('DLM_CopVB.R')
+sourceCpp('likelihood.cpp')
+sourceCpp('DLM_CopVB.cpp')
+
+T = 250
+S = 50
+h = 3
+sigmaSqY = 1
+sigmaSqX = 1
+phi = 0.9
+gamma = 0.5
+MCMCreps = 100000
 
 
 MIVB = function(T, S, h, sigmaSqY=1, sigmaSqX=1, phi=0.95, gamma=2, MCMCreps=T*10){
@@ -50,8 +60,10 @@ MIVB = function(T, S, h, sigmaSqY=1, sigmaSqX=1, phi=0.95, gamma=2, MCMCreps=T*1
     xTvar = MCMC$x[u, T+3]
     XTS = FFUpdatercpp(y[(T+1):(T+S)], phiDraw, gammaDraw, sigyDraw, sigxDraw, xTmean, xTvar)
     phiprod = rep(1, h)
-    for(i in 2:(h)){
-      phiprod[i] = phiDraw^2 * phiprod[i-1]
+    if(h > 1){
+      for(i in 2:(h)){
+        phiprod[i] = phiDraw^2 * phiprod[i-1]
+      }
     }
     ydensf = ydensf + dnorm(ysupport, gammaDraw + phiDraw^(h)*xTmean, 
                           sqrt(sigyDraw + sum(sigxDraw*phiprod) + phiDraw^(2*(h))*xTvar))/500
@@ -100,7 +112,9 @@ MIVB = function(T, S, h, sigmaSqY=1, sigmaSqX=1, phi=0.95, gamma=2, MCMCreps=T*1
   #VineObj = RVineMatrix(Vine$Matrix, Vine$family, Vine$par, Vine$par2)
   # Run the VB updater to time T+S
   Sys.time()
-  VBfit = CopulaVB(y[1:(T+S)], S, thetaDist, xDist, thetaParams, xParams, Vine, 2, 1)
+
+  
+  VBfit = CopulaSGA(y[1:(T+S)], S, thetaDist, xDist, thetaParams, xParams, Vine$Matrix, Vine$Family, Vine$par, Vine$par2, M=25, maxIter=0)
   Sys.time()
   
   # Perform h step ahead forecast

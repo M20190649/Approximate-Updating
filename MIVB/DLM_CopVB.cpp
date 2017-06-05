@@ -7,93 +7,93 @@
 using namespace Rcpp;
 using namespace arma;
 using namespace std;
-#include "likelihood.c"
-#include "hfunc.c"
+using namespace boost::math;
+#include "likelihood.cpp"
 
 
 // Boost does not provide a location-scale t distribution, so it is implemented manually
 struct locScaleT {
   double loc, scale, df;
-  locScaleT locScaleT (double, double, double);
+  locScaleT (double l, double s, double d){
+    loc = l;
+    scale = s;
+    df = d;
+  }
 };
 
-locScaleT locScaleT (double l, double s, double d){
-  loc = l;
-  scale = s;
-  df = d;
-}
+
 
 // Truncnorm is also implemented manually
 struct truncNorm {
   double mean, var;
-  truncNorm truncNorm (double, double);
-};
+  truncNorm (double m, double v){
+    mean = m;
+    var = v;
+  }
+  };
 
-truncNorm truncNorm (double m, double v){
-  mean = m;
-  var = v;
-}
 
 // As is truncated loc/scale T
 struct truncT {
   double loc, scale, df;
-  truncT truncT (double, double, double);
+  truncT (double l, double s, double d){
+    loc = l;
+    scale = s;
+    df = d;
+  }
 };
 
-truncT truncT (double l, double s, double d){
-  loc = l;
-  scale = s;
-  df = d;
-}
+
 
 // Overloading boost's pdf and quantile function for the new distributions
 double pdf(locScaleT dist, double x){
-  student_t_distribution aux(dist.df);
+  boost::math::students_t_distribution<> aux(dist.df);
   return 1.0/dist.scale * pdf(aux, (x-dist.loc)/dist.scale);
 }
 
 double quantile(locScaleT dist, double p){
-  student_t_distribution auxDist(dist.df);
+  boost::math::students_t_distribution<> auxDist(dist.df);
   return quantile(auxDist, p)*dist.scale + dist.loc;
 }
 
 double pdf(truncNorm dist, double x){
-  normal_distribution aux(dist.mean, sqrt(dist.var));
+  boost::math::normal_distribution<> aux(dist.mean, sqrt(dist.var));
   double area = cdf(aux, 1); 
   // While we should measure the area from -1 to 1, the probability mass below -1 is extremely close to zero
   return pdf(aux, x) / area;
 }
 
 double quantile(truncNorm dist, double p){
-  normal_distribution aux(dist.mean, sqrt(dist.var));
+  boost::math::normal_distribution<> aux(dist.mean, sqrt(dist.var));
   double area = cdf(aux, 1);
   return quantile(dist, p*area);
 }
 
 double pdf(truncT dist, double x){
-  student_t_distribution aux(dist.df)
-  double area = cdf(aux, (t-dist.loc)/dist.scale);
-  return pdf((aux, a-dist.loc)/dist.scale) / (dist.scale*area);
+  boost::math::students_t_distribution<> aux(dist.df);
+  double area = cdf(aux, (1.0-dist.loc)/dist.scale);
+  return pdf(aux, (x-dist.loc)/dist.scale) / (dist.scale*area);
 }
 
 double quantile(truncT dist, double p){
-  student_t_distribution aux(dist.df);
-  double area = cdf(aux, (t-dist.loc)/dist.scale);
-  return quantile(auxDist, area*p)*dist.scale + dist.loc;
+  boost::math::students_t_distribution<> aux(dist.df);
+  double area = cdf(aux, (1.0-dist.loc)/dist.scale);
+  return quantile(aux, area*p)*dist.scale + dist.loc;
 }
 
 // Evaluate p(y, x, theta)
 double PLogDens (vec & y, vec & sims){
-  inverse_gamma_distribution sigSqY(1, 1);
-  inverse_gamma_distribution sigSqX(1, 1);
-  normal_distribution gamma(0, 10);
+  int T = y.n_elem;
+  boost::math::inverse_gamma_distribution<> sigSqY(1, 1);
+  boost::math::inverse_gamma_distribution<> sigSqX(1, 1);
+  boost::math::normal_distribution<> gamma(0, 10);
   double dataDens = 0;
-  double priorDens = log(pdf(sigSqY, sims[0])) + log(pdf(sigSqX, sims[1])) + log(1/2) + log(pdf(gamma(sims[3])));
-  normal_distribution x0(0, sqrt(sims[1] / (1 - pow(sims[2], 2))));
+  double priorDens = log(pdf(sigSqY, sims[0])) + log(pdf(sigSqX, sims[1])) + log(0.5) + log(pdf(gamma, sims[3]));
+  boost::math::normal_distribution<> x0(sims[3] / (1 - sims[2]), sqrt(sims[1] / (1 - pow(sims[2], 2))));
   priorDens += log(pdf(x0, sims[4]));
-  for(int t = 5; t < T+5; ++5){
-    normal_distribution xt(sims[2]*sims[t-1], sqrt(sims[1]));
-    normal_distribution yt(sims[3]+sims[t], sqrt(sims[0]));
+  for(int t = 5; t < T+5; ++t){
+    boost::math::normal_distribution<> xt(sims[3] + sims[2]*(sims[t-1]-sims[3]), sqrt(sims[1]));
+    boost::math::normal_distribution<> yt(sims[t], sqrt(sims[0]));
     priorDens += log(pdf(xt, sims[t]));
     dataDens += log(pdf(yt, y[t-5]));
   }
@@ -101,90 +101,136 @@ double PLogDens (vec & y, vec & sims){
 }
 
 // Transform a vector of uniforms to a vector of realisations from a single variable
-vec SingleMarginalTransform (vec & unifs, vec & thetaDist, double & xDist, mat & thetaParmas, mat & xParams, int T, int j){
+vec SingleMarginalTransform (vec & unifs, vec & thetaDist, double & xDist, mat & thetaParams, mat & xParams, int T, int j){
   vec output;
   int n = unifs.n_elem;
   if(j <= 1){
     if(thetaDist[j]==1){
-      weibull_distribution dist(thetaParams[0, j], thetaParams[1, j]);
+      boost::math::weibull_distribution<> dist(thetaParams(0, j), thetaParams(1, j));
+      for(int i = 0; i < n; ++i){
+        output[i] = quantile(dist, unifs[i]);
+      }
     } else if(thetaDist[j]==2){
-      gamma_distribution dist(thetaParams[0, j], thetaParams[1, j]);
-    } else if(thataDist[j]==3){
-      inverse_gamma_distribution dist(thetaParams[0, j], thetaParams[1, j]);
+     boost::math::gamma_distribution<> dist(thetaParams(0, j), thetaParams(1, j));
+      for(int i = 0; i < n; ++i){
+        output[i] = quantile(dist, unifs[i]);
+      }
+    } else if(thetaDist[j]==3){
+     boost::math::inverse_gamma_distribution<> dist(thetaParams(0, j), thetaParams(1, j));
+      for(int i = 0; i < n; ++i){
+        output[i] = quantile(dist, unifs[i]);
+      }
     } else {
-      lognormal_distribution dist(thetaParams[0, j], thetaParams[1, j]);
+     boost::math::lognormal_distribution<> dist(thetaParams(0, j), thetaParams(1, j));
+      for(int i = 0; i < n; ++i){
+        output[i] = quantile(dist, unifs[i]);
+      }
     }
   } else if (j == 2){
     if(thetaDist[j]==1){
-      truncNorm dist(thetaParams[0, j], thetaParams[1, j]);
+      truncNorm dist(thetaParams(0, j), thetaParams(1, j));
+      for(int i = 0; i < n; ++i){
+        output[i] = quantile(dist, unifs[i]);
+      }
     } else {
-      truncT dist(thetaParams[0, j], thetaParams[1, j], thetaParams[2, j]);
+      truncT dist(thetaParams(0, j), thetaParams(1, j), thetaParams(2, j));
+      for(int i = 0; i < n; ++i){
+        output[i] = quantile(dist, unifs[i]);
+      }
     }
   } else if(j == 3) {
       if(thetaDist[j]==1){
-      normal_distribution dist(thetaParams[0, j], thetaParams[1, j]);
+        boost::math::normal_distribution<> dist(thetaParams(0, j), thetaParams(1, j));
+        for(int i = 0; i < n; ++i){
+          output[i] = quantile(dist, unifs[i]);
+        }
     } else {
-      locScaleT dist(thetaParams[0, j], thetaParams[1, j], thetaParams[2, j]);
+      locScaleT dist(thetaParams(0, j), thetaParams(1, j), thetaParams(2, j));
+      for(int i = 0; i < n; ++i){
+        output[i] = quantile(dist, unifs[i]);
+      }
     }
   } else {
     if(xDist == 2){
-      normal_distribution dist(xParams[0, T+5-j], sqrt(xParams[1, T+5-j]));
+     boost::math::normal_distribution<> dist(xParams(0, T+5-j), sqrt(xParams(1, T+5-j)));
+      for(int i = 0; i < n; ++i){
+        output[i] = quantile(dist, unifs[i]);
+      }
     } else {
-      locScaleT dist(xParams[0, T+5-j], xParams[1, T+5-j], xParams[2, T+5-j]);
+      locScaleT dist(xParams(0, T+5-j), xParams(1, T+5-j), xParams(2, T+5-j));
+      for(int i = 0; i < n; ++i){
+        output[i] = quantile(dist, unifs[i]);
+      }
     }
   }
-  for(int i = 0; i < n; ++i){
-    output[i] = quantile(dist, unifs[i]);
-  }
+
   return output;
 }
 
 // Transform a matrix of uniforms to a matrix of realisations of theta & xt
-mat JointMarginalTransform (mat & unifs, vec & thetaDist, double & xDist, mat & thetaParmas, mat & xParams, int T){
+mat JointMarginalTransform (mat & unifs, vec & thetaDist, double & xDist, mat & thetaParams, mat & xParams, int T){
   int n = unifs.n_rows;
   int p = unifs.n_cols;
   mat output(n, p);
   
   for(int j = 0; j < 2; ++j){
     if(thetaDist[j]==1){
-      weibull_distribution dist(thetaParams[0, j], thetaParams[1, j]);
+      boost::math::weibull_distribution<> dist(thetaParams(0, j), thetaParams(1, j));
+      for(int i = 0; i < n; ++i){
+        output(i, j) = quantile(dist, unifs(i, j));
+      }
     } else if(thetaDist[j]==2){
-      gamma_distribution dist(thetaParams[0, j], thetaParams[1, j]);
-    } else if(thataDist[j]==3){
-      inverse_gamma_distribution dist(thetaParams[0, j], thetaParams[1, j]);
+      boost::math::gamma_distribution<> dist(thetaParams(0, j), thetaParams(1, j));
+      for(int i = 0; i < n; ++i){
+        output(i, j) = quantile(dist, unifs(i, j));
+      }
+    } else if(thetaDist[j]==3){
+      boost::math::inverse_gamma_distribution<> dist(thetaParams(0, j), thetaParams(1, j));
+      for(int i = 0; i < n; ++i){
+        output(i, j) = quantile(dist, unifs(i, j));
+      }
     } else {
-      lognormal_distribution dist(thetaParams[0, j], thetaParams[1, j]);
-    }
-    for(int i = 0; i < n; ++i){
-      output(i, j) = quantile(dist, unifs(i, j));
+      boost::math::lognormal_distribution<> dist(thetaParams(0, j), thetaParams(1, j));
+      for(int i = 0; i < n; ++i){
+        output(i, j) = quantile(dist, unifs(i, j));
+      }
     }
   }
   int j = 2;
   if(thetaDist[j]==1){
-    truncNorm dist(thetaParams[0, j], thetaParams[1, j]);
+    truncNorm dist(thetaParams(0, j), thetaParams(1, j));
+    for(int i = 0; i < n; ++i){
+      output(i, j) = quantile(dist, unifs(i, j));
+    }
   } else {
-    truncT dist(thetaParams[0, j], thetaParams[1, j], thetaParams[2, j]);
-  }
-  for(int i = 0; i < n; ++i){
-    output(i, j) = quantile(dist, unifs(i, j));
+    truncT dist(thetaParams(0, j), thetaParams(1, j), thetaParams(2, j));
+    for(int i = 0; i < n; ++i){
+      output(i, j) = quantile(dist, unifs(i, j));
+    }
   }
   j = 3;
   if(thetaDist[j]==1){
-    normal_distribution dist(thetaParams[0, j], thetaParams[1, j]);
+    boost::math::normal_distribution<> dist(thetaParams(0, j), thetaParams(1, j));
+    for(int i = 0; i < n; ++i){
+      output(i, j) = quantile(dist, unifs(i, j));
+    }
   } else {
-    locScaleT dist(thetaParams[0, j], thetaParams[1, j], thetaParams[2, j]);
-  }
-  for(int i = 0; i < n; ++i){
-    output(i, j) = quantile(dist, unifs(i, j));
+    locScaleT dist(thetaParams(0, j), thetaParams(1, j), thetaParams(2, j));
+    for(int i = 0; i < n; ++i){
+      output(i, j) = quantile(dist, unifs(i, j));
+    }
   }
   for(int j = 4; j < p; ++j){
     if(xDist == 2){
-      normal_distribution dist(xParams[0, T+5-j], sqrt(xParams[1, T+5-j]));
+      boost::math::normal_distribution<> dist(xParams(0, T+5-j), sqrt(xParams(1, T+5-j)));
+      for(int i = 0; i < n; ++i){
+        output(i, j) = quantile(dist, unifs(i, j));
+      }
     } else {
-      locScaleT dist(xParams[0, T+5-j], xParams[1, T+5-j], xParams[2, T+5-j]);
-    }
-    for(int i = 0; i < n; ++i){
-      output(i, j) = quantile(dist, unifs(i, j));
+      locScaleT dist(xParams(0, T+5-j), xParams(1, T+5-j), xParams(2, T+5-j));
+      for(int i = 0; i < n; ++i){
+        output(i, j) = quantile(dist, unifs(i, j));
+      }
     }
   }
   return output;
@@ -192,43 +238,50 @@ mat JointMarginalTransform (mat & unifs, vec & thetaDist, double & xDist, mat & 
 
 // Evaluate q(x, theta) - Requires BiCopPdf to be implemented in c++
 double QLogDens (vec & unifsdep, vec & sims, vec & thetaDist, double & xDist, mat & thetaParams,
-                 mat & xParams, mat & VineMatrix, mat & VineFamily, mat & VinePar1, mat & VinePar2){
+                 mat & xParams, mat & VineMatrix, mat & VineFamily, mat & VinePar1, mat & VinePar2, int T){
   double margins = 0;
   int p = unifsdep.n_elem;
   
   for(int j = 0; j < 2; ++j){
     if(thetaDist[j]==1){
-      weibull_distribution dist(thetaParams[0, j], thetaParams[1, j]);
+      boost::math::weibull_distribution<> dist(thetaParams(0, j), thetaParams(1, j));
+      margins += log(pdf(dist, sims[j]));
     } else if(thetaDist[j]==2){
-      gamma_distribution dist(thetaParams[0, j], thetaParams[1, j]);
-    } else if(thataDist[j]==3){
-      inverse_gamma_distribution dist(thetaParams[0, j], thetaParams[1, j]);
+      boost::math::gamma_distribution<> dist(thetaParams(0, j), thetaParams(1, j));
+      margins += log(pdf(dist, sims[j]));
+    } else if(thetaDist[j]==3){
+      boost::math::inverse_gamma_distribution<> dist(thetaParams(0, j), thetaParams(1, j));
+      margins += log(pdf(dist, sims[j]));
     } else {
-      lognormal_distribution dist(thetaParams[0, j], thetaParams[1, j]);
+      boost::math::lognormal_distribution<> dist(thetaParams(0, j), thetaParams(1, j));
+      margins += log(pdf(dist, sims[j]));
     }
-    margins += log(pdf(dist, sims[j]));
   }
   int j = 2;
   if(thetaDist[j]==1){
-    truncNorm dist(thetaParams[0, j], thetaParams[1, j]);
+    truncNorm dist(thetaParams(0, j), thetaParams(1, j));
+    margins += log(pdf(dist, sims[j]));
   } else {
-    truncT dist(thetaParams[0, j], thetaParams[1, j], thetaParams[2, j]);
+    truncT dist(thetaParams(0, j), thetaParams(1, j), thetaParams(2, j));
+    margins += log(pdf(dist, sims[j]));
   }
-  margins += log(pdf(dist, sims[j]));
   j = 3;
   if(thetaDist[j]==1){
-    normal_distribution dist(thetaParams[0, j], thetaParams[1, j]);
+    boost::math::normal_distribution<> dist(thetaParams(0, j), thetaParams(1, j));
+    margins += log(pdf(dist, sims[j]));
   } else {
-    locScaleT dist(thetaParams[0, j], thetaParams[1, j], thetaParams[2, j]);
+    locScaleT dist(thetaParams(0, j), thetaParams(1, j), thetaParams(2, j));
+    margins += log(pdf(dist, sims[j]));
   }
-  margins += log(pdf(dist, sims[j]));
+  
   for(int j = 4; j < p; ++j){
     if(xDist == 2){
-      normal_distribution dist(xParams[0, T+5-j], sqrt(xParams[1, T+5-j]));
+      boost::math::normal_distribution<> dist(xParams(0, T+5-j), sqrt(xParams(1, T+5-j)));
+      margins += log(pdf(dist, sims[j]));
     } else {
-      locScaleT dist(xParams[0, T+5-j], xParams[1, T+5-j], xParams[2, T+5-j]);
+      locScaleT dist(xParams(0, T+5-j), xParams(1, T+5-j), xParams(2, T+5-j));
+      margins += log(pdf(dist, sims[j]));
     }
-    margins += log(pdf(dist, sims[j]));
   }
   double copulas = 0;
   for(int i = T; i < T+5; ++i){
@@ -237,7 +290,8 @@ double QLogDens (vec & unifsdep, vec & sims, vec & thetaDist, double & xDist, ma
         int u1 = VineMatrix(j, j) -1;
         int u2 = VineMatrix(i, j) -1;
         double loglik = 0;
-        LL(VineFamily(i, j), 1, unifsdep[u1], unifsdep[u2], VinePar(i, j), VinePar2(i, j), loglik);
+        int n = 1;
+        LL(&VineFamily(i, j), &n, &unifsdep[u1], &unifsdep[u2], &VinePar1(i, j), &VinePar2(i, j), &loglik);
         copulas += loglik;
       }
     }
@@ -247,38 +301,34 @@ double QLogDens (vec & unifsdep, vec & sims, vec & thetaDist, double & xDist, ma
 
 // Evaluate ELBO - Requires QLogDens
 double ELBO (mat & unifsdep, mat & sims, vec & y, vec & thetaDist, double & xDist, mat & thetaParams, mat & xParams,
-                     mat & VineMatrix, mat & VineFamily, mat & VinePar, mat & VinePar2, int N){
+                     mat & VineMatrix, mat & VineFamily, mat & VinePar, mat & VinePar2, int & N){
   double elbo = 0;
+  int T = y.n_elem;
   for(int i = 0; i < N; ++i){
-    elbo += PLogDens(y, sims.row(i)) - QLogDens(unifsdep.row(i), sims.row(i), thetaDist, xDist, thetaParams, xParams, 
-                     VineMatrix, VineFamily, VinePar, VinePar2);
+    vec simscol = sims.row(i).t();
+    vec unifsdepcol = unifsdep.row(i).t();
+    elbo += PLogDens(y, simscol) - QLogDens(unifsdepcol, simscol, thetaDist, xDist, thetaParams, xParams, 
+                     VineMatrix, VineFamily, VinePar, VinePar2, T);
   }
   return elbo/N;
 }
 
 // Simulate from the Vine - Requires H & HInv Functions
-mat VineSim function(mat & unifs, mat & VineMatrix, mat & VineFamily, mat & VinePar, mat & VinePar2, int T){
-  int n = unifs.n_col;
-  int nr = unifs.n_row;
+mat VineSim (mat & unifs, mat & VineMatrix, mat & VineFamily, mat & VinePar, mat & VinePar2, int T){
+  int n = unifs.n_cols;
+  int nr = unifs.n_rows;
   mat m = VineMatrix;
-  vec mTheta = (m.diag).tail(4);
+  vec mTheta = {m(T+1, T+1), m(T+2, T+2), m(T+3, T+3), m(T+4, T+4)};
   for(int i = 0; i < 4; ++i){
     for(int j = 0; j < 4; ++j){
-      switch(m[T+i, T+j]){
-        case 0 :
-          break;
-        case mTheta[0]:
-          m[T+i, T+j] = 4;
-          break;
-        case mTheta[1];
-          m[T+i, T+j] = 3;
-          break;
-        case mTheta[2];
-          m[T+i, T+j] = 2;
-          break;
-        case mTheta[3];
-          m[T+i, T+j] = 1;
-          break;
+      if(m(T+i, T+j) == mTheta(0)){
+        m(T+i, T+j) = 4;
+      } else if(m(T+i, T+j) == mTheta(1)){
+        m(T+i, T+j) = 3;
+      } else if(m(T+i, T+j) == mTheta(2)){
+        m(T+i, T+j) = 2;
+      } else if(m(T+i, T+j) == mTheta(3)){
+        m(T+i, T+j) = 1;
       }
     }
   }
@@ -305,7 +355,8 @@ mat VineSim function(mat & unifs, mat & VineMatrix, mat & VineFamily, mat & Vine
         z2.subcube(0, i, k, nr-1, i, k) = vind.subcube(0, i, n-mmax(i, k), nr-1, i, n-mmax(i, k));
       }
       for(int j = 0; j < nr; ++j){
-        Hinv(VineFamily(i, k), 1, vd(j, n-1, k), z2(j, i, k), VinePar(i, k), VinePar2(i, k), vd(j, n-1, k));
+        int f = 1;
+        Hinv(&VineFamily(i, k), &f, &vd(j, n-1, k), &z2(j, i, k), &VinePar(i, k), &VinePar2(i, k), &vd(j, n-1, k));
       }
     }
     for(int j = 0; j < nr; ++j){
@@ -314,8 +365,8 @@ mat VineSim function(mat & unifs, mat & VineMatrix, mat & VineFamily, mat & Vine
     for(int i = n-1; i >= max(k+1, n-6); --i){
       z1.subcube(0, i, k, nr-1, i, k) = vd.subcube(0, i, k, nr-1, i, k);
       for(int j = 0; j < nr; ++j){
-
-                Hfunc(VineFamily(i, k), 1, z1(j, i, k), z2(j, i, k), VinePar(i, k), VinePar2(i, k), vd(j, i-1, k));
+        int f = 1;
+        Hfunc(&VineFamily(i, k), &f, &z1(j, i, k), &z2(j, i, k), &VinePar(i, k), &VinePar2(i, k), &vd(j, i-1, k));
         vind(j, i-1, k) = vd(j, i-1, k);
       }
     }
@@ -333,39 +384,47 @@ mat VineSim function(mat & unifs, mat & VineMatrix, mat & VineFamily, mat & Vine
 // Need to come up with non-numeric approach because eta derivatives all involve re-simulation from the vine.
 // Unless the fully c++ vine sim is super fast.
 double Partial(mat & unifs, mat & unifsdep, mat & sims, vec & y, int T, int S, vec & thetaDist, double & xDist, mat & thetaParams,
-               mat &xParams, mat & VineMatrix, mat & VineFamily, mat & VinePar, mat & VinePar2, int M, char what, int i, int j bool par1 = true){
+               mat &xParams, mat & VineMatrix, mat & VineFamily, mat & VinePar, mat & VinePar2, int M, int what, int i, int j, bool par1 = true){
   double h = 0.0000001;
   double deriv = 0;
-  if(what == 'LamT'){
+  if(what == 1){
     mat thetaParams2 = thetaParams;
     thetaParams2(i, j) += h;
-    vec newsim = sims;
-    newsim.col(j) = SingleMarginalTransform(unifsdep.col(j), thetaDist, xDist, thetaParams2, xParams, T, j);
+    mat newsim = sims;
+    vec unidep = unifsdep.row(j).t();
+    newsim.col(j) = SingleMarginalTransform(unidep, thetaDist, xDist, thetaParams2, xParams, T, j);
     for(int i = 0; i < M; ++i){
-      deriv += (PLogDens(y, newsim.row(i)) - PLogDens(y, sims.row(i)) -
-        QLogDens(unifsdep.row(i), newsim.row(i), thetaDist, xDist, thetaParams2, xParams, VineMatrix, VineFamily, VinePar, VinePar2) +
-        QLogDens(unifsdep.row(i), sims.row(i), thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2))/h;
+      vec newsimcol = newsim.row(i).t();
+      vec simcol = sims.row(i).t();
+      vec unidepcol = unifsdep.row(i).t();
+      deriv += (PLogDens(y, newsimcol) - PLogDens(y, simcol) -
+        QLogDens(unidepcol, newsimcol, thetaDist, xDist, thetaParams2, xParams, VineMatrix, VineFamily, VinePar, VinePar2, T) +
+        QLogDens(unidepcol, simcol, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2, T))/h;
     }
-  } else if (what == 'LamX'){
+  } else if (what == 2){
     mat xParams2 = xParams;
     xParams(i, j) += h;
-    newsim = sims;
-    newsim.col(j+5+T-S) = SingleMarginalTransform(unifsdep.col(j+5+T-S), thetaDist, xDist, thetaParams, xParams2, T, j+5+T-S);
+    mat newsim = sims;
+    vec unifsdepcol = unifsdep.row(j+5+T-S).t();
+    newsim.col(j+5+T-S) = SingleMarginalTransform(unifsdepcol, thetaDist, xDist, thetaParams, xParams2, T, j+5+T-S);
     for(int i = 0; i < M; ++i){
-      deriv += (PLogDens(y, newsim.row(i)) - PLogDens(y, sims.row(i)) -
-        QLogDens(unifsdep.row(i), newsim.row(i), thetaDist, xDist, thetaParams, xParams2, VineMatrix, VineFamily, VinePar, VinePar2) +
-        QLogDens(unifsdep.row(i), sims.row(i), thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2))/h;
+      vec newsimcol = newsim.row(i).t();
+      vec simcol = sims.row(i).t();
+      vec unidepcol = unifsdep.row(i).t();
+      deriv += (PLogDens(y, newsimcol) - PLogDens(y, simcol) -
+        QLogDens(unidepcol, newsimcol, thetaDist, xDist, thetaParams, xParams2, VineMatrix, VineFamily, VinePar, VinePar2, T) +
+        QLogDens(unidepcol, simcol, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2, T))/h;
     }
   } else {
     mat Vine2Par = VinePar;
     mat Vine2Par2 = VinePar2;
-    if (what == 'EtaT') {
+    if (what == 3) {
       if (par1){
         Vine2Par(T+2+i, T+1+j) += h;
       } else {
         Vine2Par2(T+2+i, T+1+j) += h;
       }
-    } else if(what == 'EtaX') {
+    } else if(what == 4) {
       if (par1){
         Vine2Par(T+1+i, j) += h;
       } else {
@@ -378,41 +437,47 @@ double Partial(mat & unifs, mat & unifsdep, mat & sims, vec & y, int T, int S, v
         Vine2Par2(T+1, j) += h;
       }
     }
-    mat newdep = VineSim(unifs.submat(0, 0, M-1, T+5), VineMatrix, VineFamily, VinePar, VinePar2, T);
-    mat newsim = JointMarginalTransform(newdep, thetaDist, xDist, thetaParams, xParams);
+    mat unifsSub = unifs.submat(0, 0, M-1, T+5);
+    mat newdep = VineSim(unifsSub, VineMatrix, VineFamily, VinePar, VinePar2, T);
+    mat newsim = JointMarginalTransform(newdep, thetaDist, xDist, thetaParams, xParams, T);
     for(int i = 0; i < M; ++i){
-      deriv += (PLogDens(y, newsim.row(i)) - PLogDens(y, sims.row(i)) -
-        QLogDens(newdep.row(i), newsim.row(i), thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, Vine2Par, Vine2Par2) +
-        QLogDens(unifsdep.row(i), sims.row(i), thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2))/h;
+      vec newsimcol = newsim.row(i).t();
+      vec simcol = sims.row(i).t();
+      vec unidepcol = unifsdep.row(i).t();
+      deriv += (PLogDens(y, newsimcol) - PLogDens(y, simcol) -
+        QLogDens(unidepcol, newsimcol, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, Vine2Par, Vine2Par2, T) +
+        QLogDens(unidepcol, simcol, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2, T))/h;
     }
   }
   return deriv / M;
 }
 
 //[[Rcpp::export]]
-Rcpp::List CopulaSGA (vec y, int S, vec thetaDist, double xDist, mat thetaParams, mat xParams, mat VineMatrix, mat VineFamily, mat VinePar, 
+Rcpp::List CopulaSGA (vec y, int S, vec thetaDist, double xDist, mat thetaParams, mat xParams1, mat VineMatrix, mat VineFamily, mat VinePar, 
       mat VinePar2, int M, int maxIter, double threshold=0.01, double alpha=0.01, double beta1=0.9, double beta2=0.999, double e = 0.0000001){
   int T = y.n_elem;
-  mat temp = xParams;
-  mat xParams(xDist+1, T, fill::randu);
-  xParams.submat(0, S, xDist+1, T) = temp;
-  delete temp;
-  
+  int dimx = 2;
+  if(xDist == 2) {
+    dimx = 3;
+  }
+  mat xParams(dimx, T, fill::randu);
+  xParams.submat(0, S, dimx, T) = xParams1;
+
   mat MtLamT, VtLamT(3, 4, fill::zeros);
   mat MtLamX, VtLamX(xDist+1, S, fill::zeros);
   mat MtEtaT1, VtEtaT1, MtEtaT2, VtEtaT2(4, 4, fill::zeros);
   mat MtEtaX1, VtEtaX1,  MtEtaX2, VtEtaX2(4, S, fill::zeros);
-  vec MtEtaXX1, VtEtaXX1, MtEtaXX2, VtEtaXX2(S, fill::zeros
+  vec MtEtaXX1, VtEtaXX1, MtEtaXX2, VtEtaXX2(S, fill::zeros);
   
-  FullVineMatrix(T+5, T+5, fill::zeros);
-  FullVineFamily(T+5, T+5, fill::zeros);
-  FullVinePar(T+5, T+5, fill::zeros);
-  FullVinePar2(T+5, T+5, fill::zeros);
+  mat FullVineMatrix(T+5, T+5, fill::zeros);
+  mat FullVineFamily(T+5, T+5, fill::zeros);
+  mat FullVinePar(T+5, T+5, fill::zeros);
+  mat FullVinePar2(T+5, T+5, fill::zeros);
   for(int i = 0; i < T+1; ++i){
     FullVineMatrix(i, i) = 5 + i;
   }
-  for(int i = 1; i < T+1){
-    for(int j = 0; j < i){
+  for(int i = 1; i < T+1; ++i){
+    for(int j = 0; j < i; ++j){
       FullVineMatrix(i, j) = i - j + 4;
     }
   }
@@ -434,19 +499,16 @@ Rcpp::List CopulaSGA (vec y, int S, vec thetaDist, double xDist, mat thetaParams
   VineFamily = FullVineFamily;
   VinePar = FullVinePar;
   VinePar2 = FullVinePar2;
-  delete FullVineMatrix;
-  delete FullVineFamily;
-  delete FullVinePar;
-  delete FullVinePar2;
-  
+
   int iter = 0;
   mat unifs = randu<mat>(max(25, M), T+5);
   mat unifsdep = VineSim(unifs, VineMatrix, VineFamily, VinePar, VinePar2, T);
   mat sims = JointMarginalTransform(unifsdep, thetaDist, xDist, thetaParams, xParams, T);
   vec LB(maxIter + 1);
-  LB(iter) = ELBO(unifsdep, sims, y, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2, 25);
+  int LBrep = 25;
+  LB(iter) = ELBO(unifsdep, sims, y, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2, LBrep);
   double lastDiff = threshold + 1;
-  double meandiff = 0;
+  double meanDiff = 0;
   while(lastDiff > 5*threshold & meanDiff > threshold){
     iter += 1;
     if(iter > maxIter){
@@ -465,24 +527,24 @@ Rcpp::List CopulaSGA (vec y, int S, vec thetaDist, double xDist, mat thetaParams
       }
       for(int i = 0; i < u; ++i){
         PLamT(i, j) = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
-              xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 'LamT', i, j);
+              xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 1, i, j);
       }
     }
     for(int j = 0; j < S; ++j){
       for(int i = 0; i <= xDist; ++i){
         PLamX(i, j) = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
-              xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 'LamX', i, j);
+              xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 2, i, j);
       }
     }
     for(int i = 0; i < 3; ++i){
       for(int j = 0; j <= i; ++j){
         if(VinePar(T+2+i, T+2+j) != 0){
           PEtaT1(i, j) = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
-                 xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 'EtaT', i, j);
+                 xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 3, i, j);
         }
         if(VinePar2(T+2+i, T+2+j) != 0){
           PEtaT2(i, j) = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
-                 xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 'EtaT', i, j, false);
+                 xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 3, i, j, false);
         }
       }
     }
@@ -490,22 +552,22 @@ Rcpp::List CopulaSGA (vec y, int S, vec thetaDist, double xDist, mat thetaParams
       for(int i = 0; i < 4; ++i){
         if(VinePar(T+1+i, j) != 0){
           PEtaX1(i, j) = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
-                 xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 'EtaX', i, j);
+                 xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 4, i, j);
         }
         if(VinePar2(T+1+i, j) != 0){
           PEtaX2(i, j) = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
-                 xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 'EtaX', i, j, false);
+                 xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 4, i, j, false);
         }
       }
     }
     for(int j = 0; j < S; ++j){
       if(VinePar(T, j) != 0){
-        PEtaXX1(i, j) = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
-               xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 'EtaXX', 0, j);
+        PEtaXX1(j) = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
+               xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 5, 0, j);
       }
       if(VinePar2(T, j) != 0){
-        PEtaXX2(i, j) = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
-               xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 'EtaXX', 0, j, false);
+        PEtaXX2(j) = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
+               xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 5, 0, j, false);
       }
     }
     MtLamT = beta1*MtLamT + (1-beta1)*PLamT;
@@ -538,7 +600,7 @@ Rcpp::List CopulaSGA (vec y, int S, vec thetaDist, double xDist, mat thetaParams
     unifs = randu<mat>(max(25, M), T+5);
     unifsdep = VineSim(unifs, VineMatrix, VineFamily, VinePar, VinePar2, T);
     sims = JointMarginalTransform(unifsdep, thetaDist, xDist, thetaParams, xParams, T);
-    LB(iter) = ELBO(unifsdep, sims, y, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2, 25);
+    LB(iter) = ELBO(unifsdep, sims, y, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2, LBrep);
     if(iter > 10){
       lastDiff = abs(LB(iter) - LB(iter-1));
       meanDiff = mean(LB.subvec(iter-4, iter) - LB.subvec(iter-5, iter-1));
@@ -554,7 +616,7 @@ Rcpp::List CopulaSGA (vec y, int S, vec thetaDist, double xDist, mat thetaParams
                             Rcpp::Named("Vine") = Rcpp::List::create(
                               Rcpp::Named("Matrix") = VineMatrix,
                               Rcpp::Named("Family") = VineFamily,
-                              Rcpp::Named('Par') = VinePar,
-                              Rcpp::Named('Par2') = VinePar2));
+                              Rcpp::Named("Par") = VinePar,
+                              Rcpp::Named("Par2") = VinePar2));
 }
       
