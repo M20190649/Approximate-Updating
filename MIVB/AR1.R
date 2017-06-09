@@ -3,14 +3,14 @@ library(RcppArmadillo)
 library(tidyverse)
 library(msm)
 sourceCpp('AR1.cpp')
-logPhiDens = function(x, phi, sigmaSq){
+logPhiDens_AR1 = function(x, phi, sigmaSq){
   term1 = 1/2 * log(1-phi^2)
   term2 = -1/(2*sigmaSq)
   term3 = phi^2 * (sum(x[1:T]^2) - x[1]^2)
   term4 = -2 * phi * sum(x[1:T]*x[2:(T+1)])
   return(term1 + term2 * (term3 + term4))
 }
-MCMC = function(x, reps=10000, dataset){
+MCMC_AR1 = function(x, reps=10000, dataset){
   phiD = rep(0, reps)
   sigD = rep(0, reps)
   accept = 0
@@ -20,8 +20,8 @@ MCMC = function(x, reps=10000, dataset){
     candidate = rtnorm(1, phiD[i-1], 0.1, -1, 1)
     canQDens = dtnorm(candidate, phiD[i-1], 0.1, -1, 1, log=TRUE)
     oldQDens = dtnorm(phiD[i-1], candidate, 0.1, -1, 1, log=TRUE)
-    canPDens = logPhiDens(x, candidate, sigD[i])
-    oldPDens = logPhiDens(x, phiD[i-1], sigD[i])
+    canPDens = logPhiDens_AR1(x, candidate, sigD[i])
+    oldPDens = logPhiDens_AR1(x, phiD[i-1], sigD[i])
     ratio = min(1, exp(canPDens - oldPDens - canQDens + oldQDens))
     if(runif(1) < ratio){
       phiD[i] = candidate
@@ -39,7 +39,7 @@ MCMC = function(x, reps=10000, dataset){
 T = 500
 sigmaSq = 1
 phi = 0.8
-reps = 6
+reps = 2
 VB = data.frame()
 MCMCdf = data.frame()
 
@@ -49,10 +49,10 @@ for(i in 1:reps){
   for(t in 2:(T+1)){
     x[t] = rnorm(1, phi*x[t-1], sqrt(sigmaSq))
   }
-  MCMCfit = MCMC(x, 2000, i)
+  MCMCfit = MCMC_AR1(x, 2000, i)
   MCMCdf = rbind(MCMCdf, MCMCfit)
   smu = -1#mean(log(MCMCfit[1:1000, 1]))
-  ssd = 0.5#sd(log(MCMCfit[1:1000, 1]))
+  ssd = 1#sd(log(MCMCfit[1:1000, 1]))
   pmu = 0#mean(MCMCfit[1001:2000, 1])
   psd = 0.5#sd(MCMCfit[1001:2000, 1])
   

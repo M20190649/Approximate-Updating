@@ -5,7 +5,6 @@ library(MASS)
 library(pscl)
 sourceCpp("DLM_MCMC.cpp")
 source('qSelection.R')
-sourceCpp('likelihood.cpp')
 sourceCpp('DLM_CopVB.cpp')
 
 T = 250

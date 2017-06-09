@@ -17,7 +17,7 @@ using namespace std;
 cube qSim (MultiNormal* qLatent, int n_samples, int p){
   // We want to return the matrix of epsilons (treat each row as a different realisation of a p-dimensional N(0, I))
   // We also want the transformed matrix of variables
-  // Does not apply the exp transform, the algorithm is storing it as log sigma squared. exp is only applied to evaluate log(p(theta, x, y))
+  // Does not apply the exp transform, the algorithm is T+Sstoring it as log sigma squared. exp is only applied to evaluate log(p(theta, x, y))
   // Maths is written as if we had a distribution for sigma squared instead of log sigma squared.
   cube output(n_samples, p, 2);
   mat epsilon = randn<mat>(n_samples, p);   

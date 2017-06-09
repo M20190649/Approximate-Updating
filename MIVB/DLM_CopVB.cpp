@@ -4,11 +4,12 @@
 #include <RcppArmadillo.h>
 #include <math.h>
 #include <boost/math/distributions.hpp> // Making use of many of the distributions in Boost
+#include "likelihood.h"
 using namespace Rcpp;
 using namespace arma;
 using namespace std;
 using namespace boost::math;
-#include "likelihood.cpp"
+
 
 
 // Boost does not provide a location-scale t distribution, so it is implemented manually
@@ -21,8 +22,6 @@ struct locScaleT {
   }
 };
 
-
-
 // Truncnorm is also implemented manually
 struct truncNorm {
   double mean, var;
@@ -30,8 +29,7 @@ struct truncNorm {
     mean = m;
     var = v;
   }
-  };
-
+};
 
 // As is truncated loc/scale T
 struct truncT {
@@ -42,8 +40,6 @@ struct truncT {
     df = d;
   }
 };
-
-
 
 // Overloading boost's pdf and quantile function for the new distributions
 double pdf(locScaleT dist, double x){
@@ -81,23 +77,17 @@ double quantile(truncT dist, double p){
   return quantile(aux, area*p)*dist.scale + dist.loc;
 }
 
-// Evaluate p(y, x, theta)
-double PLogDens (vec & y, vec & sims){
-  int T = y.n_elem;
-  boost::math::inverse_gamma_distribution<> sigSqY(1, 1);
-  boost::math::inverse_gamma_distribution<> sigSqX(1, 1);
-  boost::math::normal_distribution<> gamma(0, 10);
-  double dataDens = 0;
-  double priorDens = log(pdf(sigSqY, sims[0])) + log(pdf(sigSqX, sims[1])) + log(0.5) + log(pdf(gamma, sims[3]));
-  boost::math::normal_distribution<> x0(sims[3] / (1 - sims[2]), sqrt(sims[1] / (1 - pow(sims[2], 2))));
-  priorDens += log(pdf(x0, sims[4]));
-  for(int t = 5; t < T+5; ++t){
-    boost::math::normal_distribution<> xt(sims[3] + sims[2]*(sims[t-1]-sims[3]), sqrt(sims[1]));
-    boost::math::normal_distribution<> yt(sims[t], sqrt(sims[0]));
-    priorDens += log(pdf(xt, sims[t]));
-    dataDens += log(pdf(yt, y[t-5]));
+double pLogDens(vec &y, vec x, double sigmaSqY, double sigmaSqX, double phi, double gamma){
+  int TS = y.n_elem;
+  double prior = - pow(gamma, 2) / 200  -  2 * log(sigmaSqY)  -  2 * log(sigmaSqX)  -  1.0/sigmaSqY  -  1.0/sigmaSqX  +
+    19.0 * log(1 + phi)  +  0.5 * log(1 - phi);
+  double states = 0.5*log(1-pow(phi, 2))  -  0.5*log(sigmaSqX)  -  (1-pow(phi, 2)) * pow(x[0]-gamma, 2) / (2*sigmaSqX);
+  double data = 0;
+  for(int t = 1; t < TS+1; ++t){
+    states -= pow(x[t]-gamma-phi*(x[t-1]-gamma), 2) / (2*sigmaSqX);
+    data -= pow(y[t-1]-x[t], 2) / (2*sigmaSqY);
   }
-  return dataDens + priorDens;
+  return data  +  states  +  prior;
 }
 
 // Transform a vector of uniforms to a vector of realisations from a single variable
@@ -307,17 +297,22 @@ double ELBO (mat & unifsdep, mat & sims, vec & y, vec & thetaDist, double & xDis
   for(int i = 0; i < N; ++i){
     vec simscol = sims.row(i).t();
     vec unifsdepcol = unifsdep.row(i).t();
-    elbo += PLogDens(y, simscol) - QLogDens(unifsdepcol, simscol, thetaDist, xDist, thetaParams, xParams, 
-                     VineMatrix, VineFamily, VinePar, VinePar2, T);
+    vec x = simscol.tail(T+1);
+    double sigmaSqX = exp(simscol[0]);
+    double sigmaSqY = exp(simscol[1]);
+    elbo += pLogDens(y, x, sigmaSqX, sigmaSqY, simscol[2], simscol[3]) -
+      QLogDens(unifsdepcol, simscol, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2, T);
   }
   return elbo/N;
 }
 
 // Simulate from the Vine - Requires H & HInv Functions
+// [[Rcpp::export]]
 mat VineSim (mat & unifs, mat & VineMatrix, mat & VineFamily, mat & VinePar, mat & VinePar2, int T){
-  int n = unifs.n_cols;
-  int nr = unifs.n_rows;
+  int n = T + 5;
+  int nSamples = unifs.n_rows;
   mat m = VineMatrix;
+  // Re-arrange Vine Matrix so diagonal is from n to 1.
   vec mTheta = {m(T+1, T+1), m(T+2, T+2), m(T+3, T+3), m(T+4, T+4)};
   for(int i = 0; i < 4; ++i){
     for(int j = 0; j < 4; ++j){
@@ -339,45 +334,79 @@ mat VineSim (mat & unifs, mat & VineMatrix, mat & VineFamily, mat & VinePar, mat
       mmax(i, j) = m.row(j).tail(n-i).max();
     }
   }
-  cube vd(nr, n, n, fill::zeros);
-  cube vind(nr, n, n, fill::zeros);
-  vd.slice(n-1) = unifs;
-  cube z1(nr, n, n, fill::zeros);
-  cube z2(nr, n, n, fill::zeros);
-  mat x(nr, n);
-  x.col(0) = unifs.col(0);
   
-  for(int k = n-2; k >= 0; --k){
-    for(int i = max(k+1, n-6); i < n; ++i){
-      if(mmax(i, k) == m(i, k)){
-        z2.subcube(0, i, k, nr-1, i, k) = vd.subcube(0, i, n-mmax(i, k), nr-1, i, n-mmax(i, k));
-      } else {
-        z2.subcube(0, i, k, nr-1, i, k) = vind.subcube(0, i, n-mmax(i, k), nr-1, i, n-mmax(i, k));
+  cube vd(nSamples, n, n, fill::zeros), vind(nSamples, n, n, fill::zeros);
+  vd.slice(n-1) = unifs;
+  cube z1(nSamples, n, n, fill::zeros), z2(nSamples, n, n, fill::zeros);
+  mat x(nSamples, n, fill::ones);
+  x.col(0) = unifs.col(0);
+  int nVine = 1;
+  
+  // Vine Algorithm looping through number of samples to take
+  for(int j = 0; j < nSamples; ++j){
+    for(int k = n-2; k >= 0; --k){
+      for(int i = max(k+1, n-5); i < n; ++i){
+        if(mmax(i, k) == m(i, k)){
+          z2(j, i, k) = vd(j, i, n-mmax(i, k)-1);
+        } else {
+          z2(j, i, k) = vind(j, i, n-mmax(i, k)-1);
+        }
+        Hinv(&VineFamily(i, k), &nVine, &vd(j, n-1, k), &z2(j, i, k), &VinePar(i, k), &VinePar2(i, k), &vd(j, n-1, k));
       }
-      for(int j = 0; j < nr; ++j){
-        int f = 1;
-        Hinv(&VineFamily(i, k), &f, &vd(j, n-1, k), &z2(j, i, k), &VinePar(i, k), &VinePar2(i, k), &vd(j, n-1, k));
-      }
-    }
-    for(int j = 0; j < nr; ++j){
+      
       x(j, n-k-1) = vd(j, n-1, k);
-    }
-    for(int i = n-1; i >= max(k+1, n-6); --i){
-      z1.subcube(0, i, k, nr-1, i, k) = vd.subcube(0, i, k, nr-1, i, k);
-      for(int j = 0; j < nr; ++j){
-        int f = 1;
-        Hfunc(&VineFamily(i, k), &f, &z1(j, i, k), &z2(j, i, k), &VinePar(i, k), &VinePar2(i, k), &vd(j, i-1, k));
+      for(int i = n-1; i >= max(k+1, n-6); --i){
+        z1(j, i, k) = vd(j, i, k);
+        Hfunc(&VineFamily(i, k), &nVine, &z1(j, i, k), &z2(j, i, k), &VinePar(i, k), &VinePar2(i, k), &vd(j, i-1, k));
         vind(j, i-1, k) = vd(j, i-1, k);
       }
     }
   }
-  mat output(nr, n);
-  output.submat(0, 4, nr, n) = x.submat(0, 4, nr, n);
+  
+  // Re-arrange rows to match original Vine Matrix input.
+  mat output(nSamples, n);
+  output.submat(0, 4, nSamples-1, n-1) = x.submat(0, 4, nSamples-1, n-1);
   output.col(mTheta[3]) = x.col(0);
   output.col(mTheta[2]) = x.col(1);
   output.col(mTheta[1]) = x.col(2);
   output.col(mTheta[0]) = x.col(3);
   return output;
+}
+
+// dlog(p(y, x, theta)) / dx and dtheta
+vec pDeriv (vec &y, vec &x, double &sigmaSqY, double &sigmaSqX, double &phi, double &gamma, int &T, int &S, bool &xderiv){
+  vec derivs(T+S+5, fill::zeros);
+  derivs[0] = -0.5 * (T+S+4) / sigmaSqY  +  pow(sigmaSqY, -2);
+  derivs[1] = -0.5 * (T+S+5) / sigmaSqX  +  pow(sigmaSqX, -2)  + 
+    (1-pow(phi, 2)) * pow(x[0]-gamma, 2) / (2*pow(sigmaSqX, 2));
+  derivs[2] = -phi / (1-pow(phi, 2))  +   phi / sigmaSqX * pow(x[0]-gamma, 2)  +
+    19.0 * phi / (1 + phi)  -  0.5 * phi / (1 - phi);
+  derivs[3] = -gamma/100  +  (1-pow(phi, 2)) * (x[0]-gamma) / sigmaSqX;
+  for(int t = 1; t < T+S+1; ++t){
+    derivs[0] += pow(y[t-1]-x[t], 2) / (2*pow(sigmaSqY, 2));
+    derivs[1] += pow(x[t]-gamma-phi*(x[t-1]-gamma), 2) / (2*pow(sigmaSqX, 2));
+    derivs[2] += (x[t-1]-gamma) * (x[t]-gamma-phi*(x[t-1]-gamma)) / sigmaSqX;
+    derivs[3] += (1-phi) * (x[t]-gamma-phi*(x[t-1]-gamma)) / sigmaSqX;
+  }
+  if(!xderiv){
+    return derivs;
+  }
+  if(S == 0){
+    derivs[4] = (phi*x[1]-x[0]+gamma*(1-phi)) / sigmaSqX;
+    for(int i = 5; i < T+4; ++i){
+      int t = i - 4;
+      derivs[i] = (y[t-1]-x[t]) / sigmaSqY  -  (x[t]-gamma-phi*(x[t-1]-gamma)) / sigmaSqX  +
+        phi * (x[t+1]-gamma-phi*(x[t]-gamma)) / sigmaSqX;
+    }
+  } else {
+    for(int i = T+5; i < T+S+4; ++i){
+      int t = i - 4;
+      derivs[i] = (y[t-1]-x[t]) / sigmaSqY  -  (x[t]-gamma-phi*(x[t-1]-gamma)) / sigmaSqX +
+        phi * (x[t+1]-gamma-phi*(x[t]-gamma)) / sigmaSqX;
+    }
+  }
+  derivs[T+S+4] = (y[T+S-1]-x[T+S]) / sigmaSqY  -  (x[T+S]-gamma-phi*(x[T+S-1]-gamma)) / sigmaSqX;
+  return derivs;
 }
 
 // Take Partial Derivatives - Requires all of the above. 
@@ -392,61 +421,64 @@ double Partial(mat & unifs, mat & unifsdep, mat & sims, vec & y, int T, int S, v
     thetaParams2(i, j) += h;
     mat newsim = sims;
     vec unidep = unifsdep.row(j).t();
-    newsim.col(j) = SingleMarginalTransform(unidep, thetaDist, xDist, thetaParams2, xParams, T, j);
+    newsim.col(j) = SingleMarginalTransform(unidep, thetaDist, xDist, thetaParams2, xParams, T+S, j);
     for(int i = 0; i < M; ++i){
       vec newsimcol = newsim.row(i).t();
       vec simcol = sims.row(i).t();
       vec unidepcol = unifsdep.row(i).t();
-      deriv += (PLogDens(y, newsimcol) - PLogDens(y, simcol) -
-        QLogDens(unidepcol, newsimcol, thetaDist, xDist, thetaParams2, xParams, VineMatrix, VineFamily, VinePar, VinePar2, T) +
-        QLogDens(unidepcol, simcol, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2, T))/h;
+      deriv += (pLogDens(y, newsimcol.tail(T+1), exp(newsimcol[0]), exp(newsimcol[1]), newsimcol[2], newsimcol[3]) -
+        pLogDens(y, simcol.tail(T+1), exp(simcol[0]), exp(simcol[1]), simcol[2], simcol[3]) -
+        QLogDens(unidepcol, newsimcol, thetaDist, xDist, thetaParams2, xParams, VineMatrix, VineFamily, VinePar, VinePar2, T+S) +
+        QLogDens(unidepcol, simcol, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2, T+S))/h;
     }
   } else if (what == 2){
     mat xParams2 = xParams;
     xParams(i, j) += h;
     mat newsim = sims;
-    vec unifsdepcol = unifsdep.row(j+5+T-S).t();
-    newsim.col(j+5+T-S) = SingleMarginalTransform(unifsdepcol, thetaDist, xDist, thetaParams, xParams2, T, j+5+T-S);
+    vec unifsdepcol = unifsdep.row(j+5+T).t();
+    newsim.col(j+5+T) = SingleMarginalTransform(unifsdepcol, thetaDist, xDist, thetaParams, xParams2, T+S, j+5+T);
     for(int i = 0; i < M; ++i){
       vec newsimcol = newsim.row(i).t();
       vec simcol = sims.row(i).t();
       vec unidepcol = unifsdep.row(i).t();
-      deriv += (PLogDens(y, newsimcol) - PLogDens(y, simcol) -
-        QLogDens(unidepcol, newsimcol, thetaDist, xDist, thetaParams, xParams2, VineMatrix, VineFamily, VinePar, VinePar2, T) +
-        QLogDens(unidepcol, simcol, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2, T))/h;
+      deriv += (pLogDens(y, newsimcol.tail(T+1), exp(newsimcol[0]), exp(newsimcol[1]), newsimcol[2], newsimcol[3]) -
+        pLogDens(y, simcol.tail(T+1), exp(simcol[0]), exp(simcol[1]), simcol[2], simcol[3]) -
+        QLogDens(unidepcol, newsimcol, thetaDist, xDist, thetaParams, xParams2, VineMatrix, VineFamily, VinePar, VinePar2, T+S) +
+        QLogDens(unidepcol, simcol, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2, T+S))/h;
     }
   } else {
     mat Vine2Par = VinePar;
     mat Vine2Par2 = VinePar2;
     if (what == 3) {
       if (par1){
-        Vine2Par(T+2+i, T+1+j) += h;
+        Vine2Par(T+S+2+i, T+S+1+j) += h;
       } else {
-        Vine2Par2(T+2+i, T+1+j) += h;
+        Vine2Par2(T+S+2+i, T+S+1+j) += h;
       }
     } else if(what == 4) {
       if (par1){
-        Vine2Par(T+1+i, j) += h;
+        Vine2Par(T+S+1+i, j) += h;
       } else {
-        Vine2Par2(T+1+i, j) += h;
+        Vine2Par2(T+S+1+i, j) += h;
       }
     } else {
       if (par1){
-        Vine2Par(T+1, j) += h;
+        Vine2Par(T+S+1, j) += h;
       } else {
-        Vine2Par2(T+1, j) += h;
+        Vine2Par2(T+S+1, j) += h;
       }
     }
-    mat unifsSub = unifs.submat(0, 0, M-1, T+5);
-    mat newdep = VineSim(unifsSub, VineMatrix, VineFamily, VinePar, VinePar2, T);
-    mat newsim = JointMarginalTransform(newdep, thetaDist, xDist, thetaParams, xParams, T);
+    mat unifsSub = unifs.submat(0, 0, M-1, T+S+5);
+    mat newdep = VineSim(unifsSub, VineMatrix, VineFamily, VinePar, VinePar2, T+S);
+    mat newsim = JointMarginalTransform(newdep, thetaDist, xDist, thetaParams, xParams, T+S);
     for(int i = 0; i < M; ++i){
       vec newsimcol = newsim.row(i).t();
       vec simcol = sims.row(i).t();
       vec unidepcol = unifsdep.row(i).t();
-      deriv += (PLogDens(y, newsimcol) - PLogDens(y, simcol) -
-        QLogDens(unidepcol, newsimcol, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, Vine2Par, Vine2Par2, T) +
-        QLogDens(unidepcol, simcol, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2, T))/h;
+      deriv += (pLogDens(y, newsimcol.tail(T+1), exp(newsimcol[0]), exp(newsimcol[1]), newsimcol[2], newsimcol[3]) -
+        pLogDens(y, simcol.tail(T+1), exp(simcol[0]), exp(simcol[1]), simcol[2], simcol[3]) -
+        QLogDens(unidepcol, newsimcol, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, Vine2Par, Vine2Par2, T+S) +
+        QLogDens(unidepcol, simcol, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2, T+S))/h;
     }
   }
   return deriv / M;
@@ -455,41 +487,41 @@ double Partial(mat & unifs, mat & unifsdep, mat & sims, vec & y, int T, int S, v
 //[[Rcpp::export]]
 Rcpp::List CopulaSGA (vec y, int S, vec thetaDist, double xDist, mat thetaParams, mat xParams1, mat VineMatrix, mat VineFamily, mat VinePar, 
       mat VinePar2, int M, int maxIter, double threshold=0.01, double alpha=0.01, double beta1=0.9, double beta2=0.999, double e = 0.0000001){
-  int T = y.n_elem;
+  // initialisation {
+  int T = y.n_elem - S;
   int dimx = 2;
   if(xDist == 2) {
     dimx = 3;
   }
-  mat xParams(dimx, T, fill::randu);
-  xParams.submat(0, S, dimx, T) = xParams1;
+  mat xParams(dimx, T+S+1, fill::randu);
+  xParams.submat(0, S, dimx-1, T+S) = xParams1;
 
-  mat MtLamT, VtLamT(3, 4, fill::zeros);
-  mat MtLamX, VtLamX(xDist+1, S, fill::zeros);
-  mat MtEtaT1, VtEtaT1, MtEtaT2, VtEtaT2(4, 4, fill::zeros);
-  mat MtEtaX1, VtEtaX1,  MtEtaX2, VtEtaX2(4, S, fill::zeros);
-  vec MtEtaXX1, VtEtaXX1, MtEtaXX2, VtEtaXX2(S, fill::zeros);
+  mat MtLamT(3, 4, fill::zeros), VtLamT(3, 4, fill::zeros),
+      MtLamX(xDist+1, S, fill::zeros), VtLamX(xDist+1, S, fill::zeros),
+      MtEtaT1(4, 4, fill::zeros), VtEtaT1(4, 4, fill::zeros), MtEtaT2(4, 4, fill::zeros), VtEtaT2(4, 4, fill::zeros),
+      MtEtaX1(4, S, fill::zeros), VtEtaX1(4, S, fill::zeros),  MtEtaX2(4, S, fill::zeros), VtEtaX2(4, S, fill::zeros);
+  vec MtEtaXX1(S, fill::zeros), VtEtaXX1(S, fill::zeros), MtEtaXX2(S, fill::zeros), VtEtaXX2(S, fill::zeros);
   
-  mat FullVineMatrix(T+5, T+5, fill::zeros);
-  mat FullVineFamily(T+5, T+5, fill::zeros);
-  mat FullVinePar(T+5, T+5, fill::zeros);
-  mat FullVinePar2(T+5, T+5, fill::zeros);
-  for(int i = 0; i < T+1; ++i){
+  mat FullVineMatrix(T+S+5, T+S+5, fill::zeros), FullVineFamily(T+S+5, T+S+5, fill::zeros),
+      FullVinePar(T+S+5, T+S+5, fill::zeros), FullVinePar2(T+S+5, T+S+5, fill::zeros);
+  for(int i = 0; i < T+S+1; ++i){
     FullVineMatrix(i, i) = 5 + i;
   }
-  for(int i = 1; i < T+1; ++i){
+  for(int i = 1; i < T+S+1; ++i){
     for(int j = 0; j < i; ++j){
       FullVineMatrix(i, j) = i - j + 4;
     }
   }
-  FullVineMatrix.submat(S, S, T+4, T+4) = VineMatrix;
-  FullVineFamily.submat(S, S, T+4, T+4) = VineFamily;
-  FullVinePar.submat(S, S, T+4, T+4) = VinePar;
-  FullVinePar2.submat(S, S, T+4, T+4) = VinePar2;
+  
+  FullVineMatrix.submat(S, S, T+S+4, T+S+4) = VineMatrix;
+  FullVineFamily.submat(S, S, T+S+4, T+S+4) = VineFamily;
+  FullVinePar.submat(S, S, T+S+4, T+S+4) = VinePar;
+  FullVinePar2.submat(S, S, T+S+4, T+S+4) = VinePar2;
   for(int i = 0; i < S; ++i){
-    for(int t = T+1; t < T+5; ++t){
+    for(int t = T+S+1; t < T+S+5; ++t){
       FullVineMatrix(t, i) = FullVineMatrix(t, S);
     }
-    for(int t = T; t < T+5; ++t){
+    for(int t = T+S; t < T+S+5; ++t){
       FullVineFamily(t, i) = FullVineFamily(t, S);
       FullVinePar(t, i) = FullVinePar(t, S);
       FullVinePar2(t, i) = FullVinePar2(t, S);
@@ -499,21 +531,28 @@ Rcpp::List CopulaSGA (vec y, int S, vec thetaDist, double xDist, mat thetaParams
   VineFamily = FullVineFamily;
   VinePar = FullVinePar;
   VinePar2 = FullVinePar2;
-
+  //}
+  
+  // loop control {
   int iter = 0;
-  mat unifs = randu<mat>(max(25, M), T+5);
-  mat unifsdep = VineSim(unifs, VineMatrix, VineFamily, VinePar, VinePar2, T);
-  mat sims = JointMarginalTransform(unifsdep, thetaDist, xDist, thetaParams, xParams, T);
+  mat unifs = randu<mat>(max(25, M), T+S+5);
+  mat unifsdep = VineSim(unifs, VineMatrix, VineFamily, VinePar, VinePar2, T+S);
+  mat sims = JointMarginalTransform(unifsdep, thetaDist, xDist, thetaParams, xParams, T+S);
   vec LB(maxIter + 1);
   int LBrep = 25;
   LB(iter) = ELBO(unifsdep, sims, y, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2, LBrep);
-  double lastDiff = threshold + 1;
-  double meanDiff = 0;
-  while(lastDiff > 5*threshold & meanDiff > threshold){
+  double meanLB = 1;
+  double meanLBold;
+  double diff = threshold + 1;
+  
+  while(diff > threshold){
     iter += 1;
     if(iter > maxIter){
       break;
     }
+    // }
+    
+    // derivatives {
     mat PLamT(3, 4, fill::zeros);
     mat PLamX(xDist+1, S, fill::zeros);
     mat PEtaT1, PEtaT2(4, 4, fill::zeros);
@@ -538,11 +577,11 @@ Rcpp::List CopulaSGA (vec y, int S, vec thetaDist, double xDist, mat thetaParams
     }
     for(int i = 0; i < 3; ++i){
       for(int j = 0; j <= i; ++j){
-        if(VinePar(T+2+i, T+2+j) != 0){
+        if(VinePar(T+S+2+i, T+S+2+j) != 0){
           PEtaT1(i, j) = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
                  xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 3, i, j);
         }
-        if(VinePar2(T+2+i, T+2+j) != 0){
+        if(VinePar2(T+S+2+i, T+S+2+j) != 0){
           PEtaT2(i, j) = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
                  xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 3, i, j, false);
         }
@@ -550,26 +589,29 @@ Rcpp::List CopulaSGA (vec y, int S, vec thetaDist, double xDist, mat thetaParams
     }
     for(int j = 0; j < S; ++j){
       for(int i = 0; i < 4; ++i){
-        if(VinePar(T+1+i, j) != 0){
+        if(VinePar(T+S+1+i, j) != 0){
           PEtaX1(i, j) = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
                  xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 4, i, j);
         }
-        if(VinePar2(T+1+i, j) != 0){
+        if(VinePar2(T+S+1+i, j) != 0){
           PEtaX2(i, j) = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
                  xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 4, i, j, false);
         }
       }
     }
     for(int j = 0; j < S; ++j){
-      if(VinePar(T, j) != 0){
+      if(VinePar(T+S, j) != 0){
         PEtaXX1(j) = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
                xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 5, 0, j);
       }
-      if(VinePar2(T, j) != 0){
+      if(VinePar2(T+S, j) != 0){
         PEtaXX2(j) = Partial(unifs, unifsdep, sims, y, T, S, thetaDist, xDist, thetaParams,
                xParams, VineMatrix, VineFamily, VinePar, VinePar2, M, 5, 0, j, false);
       }
     }
+    // }
+    
+    // updating parameters {
     MtLamT = beta1*MtLamT + (1-beta1)*PLamT;
     MtLamX = beta1*MtLamX + (1-beta1)*PLamX;
     MtEtaT1 = beta1*MtEtaT1 + (1-beta1)*PEtaT1;
@@ -597,20 +639,33 @@ Rcpp::List CopulaSGA (vec y, int S, vec thetaDist, double xDist, mat thetaParams
     VinePar.submat(T, 0, T, S-1) += alpha * (MtEtaXX1/(1-pow(beta1, iter))) / (sqrt(VtEtaXX1/(1-pow(beta2, iter)))+e);
     VinePar2.submat(T, 0, T, S-1) += alpha * (MtEtaXX2/(1-pow(beta1, iter))) / (sqrt(VtEtaXX2/(1-pow(beta2, iter)))+e);
     
+    // }
+    
+    // loop control {
     unifs = randu<mat>(max(25, M), T+5);
     unifsdep = VineSim(unifs, VineMatrix, VineFamily, VinePar, VinePar2, T);
     sims = JointMarginalTransform(unifsdep, thetaDist, xDist, thetaParams, xParams, T);
     LB(iter) = ELBO(unifsdep, sims, y, thetaDist, xDist, thetaParams, xParams, VineMatrix, VineFamily, VinePar, VinePar2, LBrep);
-    if(iter > 10){
-      lastDiff = abs(LB(iter) - LB(iter-1));
-      meanDiff = mean(LB.subvec(iter-4, iter) - LB.subvec(iter-5, iter-1));
+    if(iter % 5 == 0){
+      meanLBold = meanLB;
+      meanLB = 0.2 * (LB[iter]+LB[iter-1]+LB[iter-2]+LB[iter-3]+LB[iter-4]);
+      diff = abs(meanLB - meanLBold);
     }
-  }
+    if(iter % 100 == 0 & diff > threshold){
+      Rcpp::Rcout << iter << std::endl;
+    }
+  } // close while loop
+  // }
+  
+  
+  // returning output {
   if(iter <= maxIter){
     LB = LB.head(iter+1); 
   } else {
     LB = LB.head(iter);
   }
+  Rcpp::Rcout << iter << std::endl;
+  
   return Rcpp::List::create(Rcpp::Named("Theta") = thetaParams,
                             Rcpp::Named("X") = xParams,
                             Rcpp::Named("Vine") = Rcpp::List::create(
@@ -618,5 +673,6 @@ Rcpp::List CopulaSGA (vec y, int S, vec thetaDist, double xDist, mat thetaParams
                               Rcpp::Named("Family") = VineFamily,
                               Rcpp::Named("Par") = VinePar,
                               Rcpp::Named("Par2") = VinePar2));
+  // }
 }
       
