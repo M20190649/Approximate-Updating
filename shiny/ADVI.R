@@ -9,14 +9,14 @@ sourceCpp('Variance.cpp')
 #sourceCpp('AR1Mean.cpp')
 sourceCpp('MCMC.cpp')
 #sourceCpp('DLM.cpp')
-sourceCpp('SVM.cpp')
-#sourceCpp('AutoDiffSGA.cpp')
+#sourceCpp('SVM.cpp')
+sourceCpp('AutoDiffSGA.cpp')
 
 ldgamma = function(x, alpha, beta){
   alpha * log(beta) - lgamma(alpha) - (alpha+1)*log(x) - beta/x
 }
 
-ADVI = function(T, reps, truev, model, meanfield=TRUE, xderiv=FALSE, var=FALSE){
+ADVI = function(T, reps, truev, model, meanfield=TRUE, xderiv = TRUE, var = TRUE){
   VB = data.frame()
   True = data.frame()
   supportReal = seq(min(truev)-2, max(truev)+2, length.out=500)
@@ -55,8 +55,6 @@ ADVI = function(T, reps, truev, model, meanfield=TRUE, xderiv=FALSE, var=FALSE){
     
   } else if(model=='AR1-Zero Mean') {
     for(i in 1:reps){
-      T = 200
-      truev = c(1, 0.8, 0.5)
       x = rep(0, T+1)
       x[1] = rnorm(1, 0, sqrt(truev[1] / (1-truev[2]^2)))
       for(t in 2:(T+1)){
@@ -73,10 +71,11 @@ ADVI = function(T, reps, truev, model, meanfield=TRUE, xderiv=FALSE, var=FALSE){
       psd = 0.5#sd(MCMCfit[1001:2000, 1])
       
       initMu = c(smu, pmu)
-      initL = diag(c(ssd, psd))
-      lM = cbind(initMu, initL)
+      initU = diag(c(ssd, psd))
+      lM = cbind(initMu, initU)
+      print(lM)
       xM = matrix(x, T+1)
-      VBfit = AD_SGA(xM, lM, lrows=2, M=100, maxIter=0, alpha=0.1)
+      VBfit = AD_SGA(xM, lM, dim=2, M=100, maxIter=5000, alpha=0.1)
       VBsd = sqrt(diag(t(VBfit$U) %*% VBfit$U))
       dSigmaSq = dlnorm(supportPos, VBfit$Mu[1], VBsd[1])
       dPhi = dnorm(supportReal, VBfit$Mu[2], VBsd[2])
@@ -115,7 +114,7 @@ ADVI = function(T, reps, truev, model, meanfield=TRUE, xderiv=FALSE, var=FALSE){
       initL = diag(c(ssd, psd, gsd))
       lM = cbind(initMu, initL)
       xM = matrix(x, T+1)
-      VBfit = AD_SGA(xM, lM, lrows=3, M=100, maxIter=5000)
+      VBfit = AD_SGA(xM, lM, dim=3, M=100, maxIter=5000)
       
       VBsd = sqrt(diag(t(VBfit$U) %*% VBfit$U))
       dSigmaSq = dlnorm(supportPos, VBfit$Mu[1], VBsd[1])
@@ -162,29 +161,32 @@ ADVI = function(T, reps, truev, model, meanfield=TRUE, xderiv=FALSE, var=FALSE){
       states$Method = 'MCMC'
   
       initMuTheta = colMeans(cbind(log(MCMCfit$theta[50001:100000, 1:2]), MCMCfit$theta[50001:100000, 3:4]))
-      initLTheta = apply(cbind(log(MCMCfit$theta[50001:100000, 1:2]), MCMCfit$theta[50001:100000, 3:4]), 2, sd)
+      initUTheta = chol(cov(cbind(log(MCMCfit$theta[50001:100000, 1:2]), MCMCfit$theta[50001:100000, 3:4])))
       initMuX = states$Mean
-      initLX = apply(MCMCfit$x[50001:100000, 1:(T+1)], 2, sd)
+      initUX = apply(MCMCfit$x[50001:100000, 1:(T+1)], 2, sd)
       initMuTheta = c(-1.5, -1.5, 0, -1)
       if(xderiv) initMuX = rep(0, T+1)
-      if(var) initLTheta = rep(0.1, 4)
-      if(xderiv & var) initLX = rep(0.1, T+1)
+      if(var) initUTheta = rep(0.1, 4)
+      if(xderiv & var) initUX = rep(0.1, T+1)
       initMu = c(initMuTheta, initMuX)
-      initL = diag(c(initLTheta, initLX))
-      lM = cbind(initMu, initL)
+      initU = diag(c(rep(0, 4), initUX))
+      initU[1:4, 1:4] = initUTheta
+      
+      lM = cbind(initMu, initU)
       yM = matrix(y, T)
       
-      VBfit = AD_SGA(yM, lM, T+5, M=100, maxIter=5000, meanfield=TRUE)
+      VBfit = AD_SGA(yM, lM, T+5, M=100, maxIter=5000, meanfield=meanfield, threshold=0.01)
       
-      VBsd = sqrt(diag(VBfit$L %*% t(VBfit$L)))
+      VBsd = sqrt(diag(t(VBfit$U) %*% VBfit$U))
+      initsd = sqrt(diag(t(initUTheta) %*% initUTheta))
       dSigmaSqY = dlnorm(supportPos, VBfit$Mu[1], VBsd[1])
       dSigmaSqX = dlnorm(supportPos, VBfit$Mu[2], VBsd[2])
       dPhi = dnorm(supportReal, VBfit$Mu[3], VBsd[3])
       dGamma = dnorm(supportReal, VBfit$Mu[4], VBsd[4])
-      dsyStart = dlnorm(supportPos, initMuTheta[1], initLTheta[1])
-      dsxStart = dlnorm(supportPos, initMuTheta[2], initLTheta[2])
-      dpStart = dnorm(supportReal, initMuTheta[3], initLTheta[3])
-      dgStart = dnorm(supportReal, initMuTheta[4], initLTheta[4])
+      dsyStart = dlnorm(supportPos, initMuTheta[1], initsd[1])
+      dsxStart = dlnorm(supportPos, initMuTheta[2], initsd[2])
+      dpStart = dnorm(supportReal, initMuTheta[3], initsd[3])
+      dgStart = dnorm(supportReal, initMuTheta[4], initsd[4])
       
       vbstates = data.frame(mu=VBfit$Mu[5:(T+5)], sd=VBsd[5:(T+5)]) %>%
         apply(1, function(x) c(x[1], x[1]-1.96*x[2], x[1]+1.96*x[2])) %>% t() %>% as.data.frame()
@@ -237,23 +239,28 @@ ADVI = function(T, reps, truev, model, meanfield=TRUE, xderiv=FALSE, var=FALSE){
       weights = c(thetaWeights(y, MCMCfit$theta[50001:100000, ], MCMCfit$x[50001:100000, ], MCMCfit$s[50001:100000, ]))
       initMuTheta = apply(cbind(log(MCMCfit$theta[50001:100000, 1]), MCMCfit$theta[50001:100000, 2:3]), 2, 
                           function(x) sum(x * weights))
-      initLTheta  = apply(cbind(log(MCMCfit$theta[50001:100000, 1]), MCMCfit$theta[50001:100000, 2:3]), 2, 
-                          function(x) sqrt( sum((x - mean(x))^2 * weights) ))
+      initUTheta  = chol(cov(cbind(log(MCMCfit$theta[50001:100000, 1]), MCMCfit$theta[50001:100000, 2:3]), 2, 
+                          function(x) sqrt( sum((x - mean(x))^2 * weights) )))
       initMuX = states$Mean
-      initLX = apply(MCMCfit$x[50001:100000, 1:(T+1)], 2, sd)
+      initUX = apply(MCMCfit$x[50001:100000, 1:(T+1)], 2, sd)
       #nitMuTheta = c(-1.5, 0, -1)
       initMu = c(initMuTheta, initMuX)
-      initL = diag(c(initLTheta, initLX))
+      initU = diag(c(0, 0, 0, initLX))
+      initU[1:3, 1:3] = initUTheta
+      yM = matrix(y, T)
+      lM = cbind(initMu, initU)
       
-      VBfit = SGA_SVM(y=y, M=50, maxIter=5000, Mu=initMu, L=initL, meanfield=meanfield, alpha=0.1)
+      VBfit = AD_SGA(yM, lM, T+4, M=100, maxIter=5000, meanfield=meanfield, alpha=0.1)
       
-      VBsd = sqrt(diag(VBfit$L %*% t(VBfit$L)))
+      VBsd = sqrt(diag(t(VBfit$U) %*% VBfit$U))
+      initsd = sqrt(diag(t(initUTheta) %*% initUTheta))
       dSigmaSq = dlnorm(supportPos, VBfit$Mu[1], VBsd[1])
       dPhi = dnorm(supportReal, VBfit$Mu[2], VBsd[2])
       dGamma = dnorm(supportReal, VBfit$Mu[3], VBsd[3])
-      dsStart = dlnorm(supportPos, initMuTheta[1], initLTheta[1])
-      dpStart = dnorm(supportReal, initMuTheta[2], initLTheta[2])
-      dgStart = dnorm(supportReal, initMuTheta[3], initLTheta[3])
+      dsStart = dlnorm(supportPos, initMuTheta[1], initsd[1])
+      dpStart = dnorm(supportReal, initMuTheta[2], initsd[2])
+      dgStart = dnorm(supportReal, initMuTheta[3], initsd[3])
+      
       
       vbstates = data.frame(mu=VBfit$Mu[4:(T+4)], sd=VBsd[4:(T+4)]) %>%
         apply(1, function(x) c(x[1], x[1]-1.96*x[2], x[1]+1.96*x[2])) %>% t() %>% as.data.frame()
