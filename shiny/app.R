@@ -10,6 +10,7 @@ ui <- navbarPage(theme = shinytheme('cerulean'),
                           sidebarLayout(
                             sidebarPanel(
                               actionButton('run1', 'Run'),
+                              numericInput('M1', 'M:', min = 1, max = 500, value = 50),
                               numericInput('t1', 'T:', min = 50, max = 500, value = 200),
                               sliderInput('sigmasq1', 'Sigma Squared:', min = 0.01, max = 10, value = 1),
                               sliderInput('datasets1', 'Datasets:', min = 1, max = 4, value = 2)
@@ -23,6 +24,7 @@ ui <- navbarPage(theme = shinytheme('cerulean'),
                           sidebarLayout(
                             sidebarPanel(
                               actionButton('run2', 'Run'),
+                              numericInput('M2', 'M:', min = 1, max = 500, value = 50),
                               numericInput('t2', 'T:', min = 50, max = 500, value = 200),
                               sliderInput('sigmasq2', 'Sigma Squared:', min = 0.01, max = 10, value = 1),
                               sliderInput('phi2', 'Phi:', min = -0.99, max = 0.99, value = 0.8),
@@ -37,6 +39,7 @@ ui <- navbarPage(theme = shinytheme('cerulean'),
                           sidebarLayout(
                             sidebarPanel(
                               actionButton('run3', 'Run'),
+                              numericInput('M3', 'M:', min = 1, max = 500, value = 50),
                               numericInput('t3', 'T:', min = 50, max = 500, value = 200),
                               sliderInput('sigmasq3', 'Sigma Squared:', min = 0.01, max = 10, value = 1),
                               sliderInput('phi3', 'Phi:', min = -0.99, max = 0.99, value = 0.8),
@@ -52,6 +55,7 @@ ui <- navbarPage(theme = shinytheme('cerulean'),
                           sidebarLayout(
                             sidebarPanel(
                               actionButton('run4', 'Run'),
+                              numericInput('M4', 'M:', min = 1, max = 500, value = 50),
                               numericInput('t4', 'T:', min = 50, max = 500, value = 200),
                               sliderInput('sigmasqy4', 'Sigma Squared (Y):', min = 0.01, max = 10, value = 1),
                               sliderInput('sigmasqx4', 'Sigma Squared (X):', min = 0.01, max = 10, value = 1),
@@ -73,6 +77,7 @@ ui <- navbarPage(theme = shinytheme('cerulean'),
                           sidebarLayout(
                             sidebarPanel(
                               actionButton('run5', 'Run'),
+                              numericInput('M5', 'M:', min = 1, max = 500, value = 50),
                               numericInput('t5', 'T:', min = 50, max = 500, value = 200),
                               sliderInput('sigmasq5', 'Sigma Squared:', min = 0.01, max = 10, value = 1),
                               sliderInput('phi5', 'Phi:', min = -0.99, max = 0.99, value = 0.8),
@@ -90,6 +95,7 @@ ui <- navbarPage(theme = shinytheme('cerulean'),
                           sidebarLayout(
                             sidebarPanel(
                               actionButton('run6', 'Run'),
+                              numericInput('M6', 'M:', min = 1, max = 500, value = 50),
                               selectInput('model6', 'Model:', choices=c('DLM', 'SVM')),
                               numericInput('t6', 'T:', min = 50, max = 1000, value = 200),
                               numericInput('s6', 'S:', min = 1, max = 1000, value = 50),
@@ -117,7 +123,7 @@ server <- function(input, output) {
       return()
     } 
     isolate({
-      return(ADVI(input$t1, input$datasets1, input$sigmasq1, 'Normal'))
+      return(ADVI(input$t1, input$datasets1, input$sigmasq1, 'Normal', input$M1))
     })
   })
   
@@ -126,7 +132,7 @@ server <- function(input, output) {
       return()
     }
     isolate({
-      return(ADVI(input$t2, input$datasets2, c(input$sigmasq2, input$phi2), 'AR1-Zero Mean'))
+      return(ADVI(input$t2, input$datasets2, c(input$sigmasq2, input$phi2), 'AR1-Zero Mean', input$M2))
     })
   })
   
@@ -136,7 +142,7 @@ server <- function(input, output) {
       return()
     }
     isolate({
-      return(ADVI(input$t3, input$datasets3, c(input$sigmasq3, input$phi3, input$gamma3), 'AR1 with mean'))
+      return(ADVI(input$t3, input$datasets3, c(input$sigmasq3, input$phi3, input$gamma3), 'AR1 with mean', input$M3))
     })
   })
   
@@ -146,7 +152,7 @@ server <- function(input, output) {
     }
     isolate({
       return(ADVI(input$t4, input$datasets4, 
-                   c(input$sigmasqy4, input$sigmasqx4, input$phi4, input$gamma4), 'DLM',
+                   c(input$sigmasqy4, input$sigmasqx4, input$phi4, input$gamma4), 'DLM', input$M4,
                    meanfield = input$meanfield4, xderiv = input$xderiv4, var = input$var4))
     })
   })
@@ -157,7 +163,7 @@ server <- function(input, output) {
     }
     isolate({
       return(ADVI(input$t5, input$datasets5,
-                  c(input$sigmasq5, input$phi5, input$gamma5), 'SVM',
+                  c(input$sigmasq5, input$phi5, input$gamma5), 'SVM', input$M5,
                   meanfield = input$meanfield5))
     })
   })
@@ -169,7 +175,7 @@ server <- function(input, output) {
     isolate({
       return(MIVB(input$t6, input$s6, input$datasets6, 
                   c(input$sigmasqy6, input$sigmasqx6, input$phi6, input$gamma6),
-                  input$model6))
+                  input$model6, input$M6))
     })
   })
   

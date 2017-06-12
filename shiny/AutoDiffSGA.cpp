@@ -154,25 +154,28 @@ struct ELBO {
 };
 
 // [[Rcpp::export]]
-Rcpp::List AD_SGA(const Rcpp::NumericMatrix yIn, const Rcpp::NumericMatrix lambdaIn, int dim,
+Rcpp::List AD_SGA(const Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int dim,
                    int M, int maxIter, bool meanfield = false, 
                    double threshold=0.01, double alpha=0.1, double beta1=0.9, double beta2=0.999){
-  Rcpp::Rcout << "Started C++" << std::endl;
   // Convert to Eigen Format
   Map<MatrixXd> y(Rcpp::as<Map<MatrixXd> >(yIn));
   Map<MatrixXd> lambdaMat(Rcpp::as<Map<MatrixXd> >(lambdaIn));
+  int rows = lambdaMat.rows();
+  int cols = lambdaMat.cols();
   
   double e = pow(10, -8);
   // Initialise new matrices
   // lambda must be treated as a vector
   // Eigen is smart, this is a new way to look at an existing object, not creating a new object
-  Map<MatrixXd> lambda(lambdaMat.data(), dim*(dim+1), 1);
+  Map<MatrixXd> lambda(lambdaMat.data(), rows*cols, 1);
+ 
   // gradient = store each evaluation of the gradient
   // meanGradient/meanGradientSq = store estimates of the gradient and gradient^2 as averages of each evaluation
   // Mt/Vt = used for adam optimiser
   // LB = store evaluations of the ELBO
-  Matrix<double, Dynamic, 1> gradient(dim*(dim+1)), meanGradient(dim*(dim+1)), meanGradientSq(dim*(dim+1)), 
-                            Mt(dim*(dim+1)), Vt(dim*(dim+1)), LB(maxIter);
+  Matrix<double, Dynamic, 1> gradient(rows*cols), meanGradient(rows*cols), meanGradientSq(rows*cols), 
+                            Mt(rows*cols), Vt(rows*cols), LB(maxIter);
+  
   Mt.fill(0);
   Vt.fill(0);
   LB.fill(0);
@@ -181,8 +184,8 @@ Rcpp::List AD_SGA(const Rcpp::NumericMatrix yIn, const Rcpp::NumericMatrix lambd
   double diff = threshold + 1;
   double meanLB = 0;
   double omeanLB;
-  Rcpp::Rcout << "Ready to start the loop!" << std::endl;
-  while(diff > threshold | iter < 50) {
+  if(false){
+  while(diff > threshold | iter < 100) {
     iter += 1;
     if(iter > maxIter){
       break;
@@ -193,24 +196,19 @@ Rcpp::List AD_SGA(const Rcpp::NumericMatrix yIn, const Rcpp::NumericMatrix lambd
     meanGradientSq.fill(0);
     // stores estimates of the ELBO
     double LBrep;
-    Rcpp::Rcout << "Set everything to zero!" << std::endl;
     for(int m = 0; m < M; ++m){
       // Eigen doesn't seem to have random normal sampling, so sample through Rcpp and convert the result to Eigen's format.
       Rcpp::NumericMatrix eps(dim, 1);
       eps(Rcpp::_, 0) = Rcpp::rnorm(dim);
       Map<MatrixXd> epsilon(Rcpp::as<Map<MatrixXd> >(eps));
       // Push epsilon values into the ELBO
-      Rcpp::Rcout << "Ready to create the ELBO object!" << std::endl;
       ELBO f(y, epsilon, meanfield, dim);
-      Rcpp::Rcout << "Created the ELBO object!" << std::endl;
       // Reset partial derivatives to zero
       stan::math::set_zero_all_adjoints();
       // Store the estimate of f(lambda) in LBrep and df(lambda) / dlambda in gradient
-      Rcpp::Rcout << "Got to the derivative" << std::endl;
       stan::math::gradient(f, lambda, LBrep, gradient);
-      Rcpp::Rcout << "Finished the derivative" << std::endl;
       // meanGradient_i^(m) = mean(gradient_i^(m)), similar for meanGradientSq
-      for(int i = 0; i < dim*(dim+1); ++i){
+      for(int i = 0; i < rows*cols; ++i){
         meanGradient(i) += gradient(i) / M;
         meanGradientSq(i) += pow(gradient(i), 2) / M;
       }
@@ -218,7 +216,7 @@ Rcpp::List AD_SGA(const Rcpp::NumericMatrix yIn, const Rcpp::NumericMatrix lambd
       LB(iter-1) += LBrep / M;
     }
     // Update Parameters
-    for(int i = 0; i < dim*(dim+1); ++i){
+    for(int i = 0; i < rows*cols; ++i){
       // Biased estimates of E(gradient) and E(gradient^2)
       Mt(i) = beta1 * Mt(i)  +  (1 - beta1) * meanGradient(i);
       Vt(i) = beta2 * Vt(i)  +  (1 - beta2) * meanGradientSq(i);
@@ -236,7 +234,7 @@ Rcpp::List AD_SGA(const Rcpp::NumericMatrix yIn, const Rcpp::NumericMatrix lambd
       }
     }
     // Due to noise in the ELBO evaluations, we look to see if there has been a change in the average value over the last 5 iterations
-    if(iter % 5 == 0 & iter > 5){
+    if(iter > 5){
       omeanLB = meanLB;
       meanLB = 0.2 * (LB(iter-1) + LB(iter-2) + LB(iter-3) + LB(iter-4) + LB(iter-5));
       diff = std::fabs(meanLB - omeanLB);
@@ -245,6 +243,7 @@ Rcpp::List AD_SGA(const Rcpp::NumericMatrix yIn, const Rcpp::NumericMatrix lambd
     if(iter % 50 == 0){
       Rcpp::Rcout << "Iteration: " << iter << std::endl << "ELBO: " << LB(iter-1) << std::endl;
     }
+  }
   }
   if(iter <= maxIter){
     // iter goes up by one before checking the maxIter condition, so need to use LB(iter-2)

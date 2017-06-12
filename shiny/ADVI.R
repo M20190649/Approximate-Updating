@@ -16,7 +16,17 @@ ldgamma = function(x, alpha, beta){
   alpha * log(beta) - lgamma(alpha) - (alpha+1)*log(x) - beta/x
 }
 
-ADVI = function(T, reps, truev, model, meanfield=TRUE, xderiv = TRUE, var = TRUE){
+weightedChol = function(x, meanvec, weights){
+  varMat = matrix(0, ncol(x), ncol(x))
+  for(i in 1:ncol(x)){
+    for(j in i:ncol(x)){
+      varMat[i, j] = sqrt ( sum((x[,i] - meanvec[i]) * (x[,j] - meanvec[j]) * weights))
+    }
+  }
+  varMat
+}
+
+ADVI = function(T, reps, truev, model, M, meanfield=TRUE, xderiv = TRUE, var = TRUE){
   VB = data.frame()
   True = data.frame()
   supportReal = seq(min(truev)-2, max(truev)+2, length.out=500)
@@ -33,8 +43,8 @@ ADVI = function(T, reps, truev, model, meanfield=TRUE, xderiv = TRUE, var = TRUE
       iga = 0.1
       igb = 0.5
       # Fit the VB approx for both distributions
-      VBln = SGA_Var(y=y, M=50, lognormal=TRUE, initPar1=lnmu, initPar2=lndelta, alpha=0.15)
-      VBig = SGA_Var(y=y, M=50, lognormal=FALSE, initPar1=iga, initPar2=igb, alpha=0.75)
+      VBln = SGA_Var(y=y, M=M, lognormal=TRUE, initPar1=lnmu, initPar2=lndelta, alpha=0.15)
+      VBig = SGA_Var(y=y, M=M, lognormal=FALSE, initPar1=iga, initPar2=igb, alpha=0.75)
       # Evaluate density over a grid for fitted densities, starting densities and true density
       dln = dlnorm(supportPos, VBln$Params[1], exp(VBln$Params[2]))
       dig = exp(ldgamma(supportPos, exp(VBig$Params[1]), exp(VBig$Params[2])))
@@ -73,9 +83,8 @@ ADVI = function(T, reps, truev, model, meanfield=TRUE, xderiv = TRUE, var = TRUE
       initMu = c(smu, pmu)
       initU = diag(c(ssd, psd))
       lM = cbind(initMu, initU)
-      print(lM)
       xM = matrix(x, T+1)
-      VBfit = AD_SGA(xM, lM, dim=2, M=100, maxIter=5000, alpha=0.1)
+      VBfit = AD_SGA(xM, lM, dim=2, M=1, maxIter=5000, alpha=0.1)
       VBsd = sqrt(diag(t(VBfit$U) %*% VBfit$U))
       dSigmaSq = dlnorm(supportPos, VBfit$Mu[1], VBsd[1])
       dPhi = dnorm(supportReal, VBfit$Mu[2], VBsd[2])
@@ -114,7 +123,7 @@ ADVI = function(T, reps, truev, model, meanfield=TRUE, xderiv = TRUE, var = TRUE
       initL = diag(c(ssd, psd, gsd))
       lM = cbind(initMu, initL)
       xM = matrix(x, T+1)
-      VBfit = AD_SGA(xM, lM, dim=3, M=100, maxIter=5000)
+      VBfit = AD_SGA(xM, lM, dim=3, M=M, maxIter=5000)
       
       VBsd = sqrt(diag(t(VBfit$U) %*% VBfit$U))
       dSigmaSq = dlnorm(supportPos, VBfit$Mu[1], VBsd[1])
@@ -175,7 +184,7 @@ ADVI = function(T, reps, truev, model, meanfield=TRUE, xderiv = TRUE, var = TRUE
       lM = cbind(initMu, initU)
       yM = matrix(y, T)
       
-      VBfit = AD_SGA(yM, lM, T+5, M=100, maxIter=5000, meanfield=meanfield, threshold=0.01)
+      VBfit = AD_SGA(yM, lM, T+5, M=M, maxIter=5000, meanfield=meanfield, threshold=0.01)
       
       VBsd = sqrt(diag(t(VBfit$U) %*% VBfit$U))
       initsd = sqrt(diag(t(initUTheta) %*% initUTheta))
@@ -236,11 +245,14 @@ ADVI = function(T, reps, truev, model, meanfield=TRUE, xderiv = TRUE, var = TRUE
       colnames(states) = c('Mean', 'L95', 'U95')
       states$Method = 'MCMC'
       
-      weights = c(thetaWeights(y, MCMCfit$theta[50001:100000, ], MCMCfit$x[50001:100000, ], MCMCfit$s[50001:100000, ]))
-      initMuTheta = apply(cbind(log(MCMCfit$theta[50001:100000, 1]), MCMCfit$theta[50001:100000, 2:3]), 2, 
-                          function(x) sum(x * weights))
-      initUTheta  = chol(cov(cbind(log(MCMCfit$theta[50001:100000, 1]), MCMCfit$theta[50001:100000, 2:3]), 2, 
-                          function(x) sqrt( sum((x - mean(x))^2 * weights) )))
+      #weights = c(thetaWeights(y, MCMCfit$theta[50001:100000, ], MCMCfit$x[50001:100000, ], MCMCfit$s[50001:100000, ]))
+      initMuTheta = colMeans(cbind(log(MCMCfit$theta[50001:100000, 1]), MCMCfit$theta[50001:100000, 2:3]))
+      initUTheta = chol(cov(cbind(log(MCMCfit$theta[50001:100000, 1]), MCMCfit$theta[50001:100000, 2:3])))
+      apply(2, function(x) sqrt( sum((x - mean(x))^2 * weights))) %>% diag
+      initUTheta[2, 1] = initUTheta[1, 2] = sum(log(MCMCfit$theta[50001:100000, 1]))
+      
+      
+      
       initMuX = states$Mean
       initUX = apply(MCMCfit$x[50001:100000, 1:(T+1)], 2, sd)
       #nitMuTheta = c(-1.5, 0, -1)
@@ -250,7 +262,7 @@ ADVI = function(T, reps, truev, model, meanfield=TRUE, xderiv = TRUE, var = TRUE
       yM = matrix(y, T)
       lM = cbind(initMu, initU)
       
-      VBfit = AD_SGA(yM, lM, T+4, M=100, maxIter=5000, meanfield=meanfield, alpha=0.1)
+      VBfit = AD_SGA(yM, lM, T+4, M=M, maxIter=5000, meanfield=meanfield, alpha=0.1)
       
       VBsd = sqrt(diag(t(VBfit$U) %*% VBfit$U))
       initsd = sqrt(diag(t(initUTheta) %*% initUTheta))
