@@ -24,7 +24,7 @@ rowvec FFBSsvm(vec y, rowvec theta, rowvec s){
   for(int t = 1; t < T; ++t){
     at = theta[1] + theta[2]*att[t-1];
     pt = pow(theta[2], 2)*ptt[t-1] + theta[0];
-    vt = y[t] - at - at - mixmeans[s[t]] + 1.2704;
+    vt = y[t] - at - mixmeans[s[t]] + 1.2704;
     att[t] = at + pt * vt / (pt + mixvar[s[t]]);
     ptt[t] = pt - pow(pt, 2) / (pt + mixvar[s[t]]);
   }   
