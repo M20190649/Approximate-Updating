@@ -284,7 +284,7 @@ mat shuffle(mat sobol){
 }
 
 // [[Rcpp::export]]
-Rcpp::List VBIL (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S, double alpha = 0.1, double threshold=0.01, int maxIter=5000){
+Rcpp::List VBIL_PF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S, double alpha = 0.1, double threshold=0.01, int maxIter=5000){
   double beta1 = 0.9;
   double beta2 = 0.999;
   // convert to Eigen format
