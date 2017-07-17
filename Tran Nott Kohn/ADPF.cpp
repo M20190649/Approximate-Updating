@@ -304,7 +304,7 @@ Rcpp::List VBIL_PF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S
   
   
   // Initial SOBOL QMC numbers
-  mat sobol = sobol_points(4, S+100).t();
+  mat sobol = sobol_points(S+100, 4);
   // Loop control
   int iter = 0;
   double diff = threshold + 1;
@@ -370,6 +370,7 @@ Rcpp::List VBIL_PF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S
             theta(i, s) += lambda((i+1)*4+j)*epsilon(j);
           }
         }
+        theta(0, s) = exp(theta(0, s));
         // generate standard normal noise for the particle filter, convert to Eigen format
         Rcpp::NumericMatrix noiseRcpp(100, T+1);
         for(int t = 0; t < T+1; ++t){
