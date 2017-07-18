@@ -433,7 +433,7 @@ Rcpp::List VBIL_PF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S
           meanGradientSq(i) += pow(S * meanGradient(i), 2) / S;
         }
         // Update ELBO
-        LB(iter-1) += (logPeval(s) - logQeval) * weight / S;
+        LB(iter-1) += (logPeval(s) - logQeval) / S;
       }
     }
     // adam updating rule for lambda values

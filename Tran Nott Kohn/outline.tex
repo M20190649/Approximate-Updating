@@ -165,7 +165,7 @@ In this case, using $f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}) = \{\boldsym
 In many cases, the distributions $p(x_T | y_{1:T}, \boldsymbol{\theta})$ and $p(y_{1:T} | \boldsymbol{\theta})$ are intractable, but \citet{TranM2017} note that the particle filter estimators $\hat{p}(x_T | y_{1:T}, \boldsymbol{\theta})$ and $\hat{p}(y_{1:T} | \boldsymbol{\theta})$ are sufficient substitutes in what they refer to as Variational Bayes with Intractable Likelihood (VBIL). The particle filter estimation of the distribution $\hat{p}(x_T | y_{1:T}, \boldsymbol{\theta})$ is expressed as a discrete set of point masses $x_T^{(k)}$ and weights $\pi_T^{(k)}$, where $k = 1, \dots, N$ represent the particles of the particle filter. In this case, the integral in (\ref{DimRedLogJoint}) reduces to the sum
 \begin{equation}
 \label{ParticleFilterIntegral}
-\int_{X_T} p(x_{T+1} | \theta, x_T)p(x_T | y_{1:T}, \boldsymbol{\theta})d_{X_T} = \sum_{k=1}^N \pi_T^{(k)} p(x_{T+1} | \boldsymbol{\theta}, x_T^{(k)}),
+\int_{x_T} p(x_{T+1} | \theta, x_T)p(x_T | y_{1:T}, \boldsymbol{\theta})d_{x_T} = \sum_{k=1}^N \pi_T^{(k)} p(x_{T+1} | \boldsymbol{\theta}, x_T^{(k)}),
 \end{equation}
 and hence
 \begin{equation}
