@@ -41,7 +41,7 @@ struct logP {
     T xT = theta(3);
     
     // Evaluate log(p(theta)
-    T prior = -pow(mu, 2) / 200  - pow(phi - 0.5, 2) / (2 * 0.01)  -  2 * log(sigSq)  -  1.0 / sigSq;
+    T prior = -pow(mu, 2) / 200  - pow(phi - 0.5, 2) / 0.02  -  2 * log(sigSq)  -  1.0 / sigSq;
     
     // Set up for kalman filtering
     Matrix<T, Dynamic, 1> at(obs), pt(obs), vt(obs), St(obs), Kt(obs), att(obs+1), ptt(obs+1);
@@ -295,10 +295,9 @@ Rcpp::List VBIL_KF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S
             impliedEpsilon(i) -= lambda((i+1)*4+j) * epsilon(j);
           }
         }
+        logQeval = evalLogQ(impliedEpsilon, lambda);
+        gradientQ = QDeriv(impliedEpsilon, lambda);
         gradientF = FDeriv(impliedEpsilon, lambda);
-        logQ q(epsilon.col(s));
-        stan::math::set_zero_all_adjoints();
-        stan::math::gradient(q, lambda, logQeval, gradientQ);
      
         double weight = 0;
         for(int i = 0; i < 4; ++i){

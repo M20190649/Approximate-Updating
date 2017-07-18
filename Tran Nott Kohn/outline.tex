@@ -84,7 +84,7 @@ Variational Bayes involves an implicit trade-off: reducing the forecast horizon 
 
 Variational Inference posits a divergence function between the true posterior distribution $p(\boldsymbol{\theta}, x_{0:T} | y_{1:T})$ and some approximating distribution $q_{\boldsymbol{\lambda}}(\boldsymbol{\theta}, x_{0:T} | y_{1:T})$, choosing the parameters $\boldsymbol{\lambda}$ for a given functional form $q$ that minimises the divergence function.
 
-This paper will follow the traditional approach, where the divergence function is the Kullback-Leibler (KL) divergence (Kullback and Leibler, 1951) from $q_{\boldsymbol{\lambda}}(\boldsymbol{\theta}, x_{0:T} | y_{1:T})$ to the true posterior $p(\boldsymbol{\theta}, x_{0:T} | y_{1:T})$ The KL divergence is defined by
+This paper will follow the traditional approach, where the divergence function is the Kullback-Leibler (KL) divergence \citep{Kullback1951} from $q_{\boldsymbol{\lambda}}(\boldsymbol{\theta}, x_{0:T} | y_{1:T})$ to the true posterior $p(\boldsymbol{\theta}, x_{0:T} | y_{1:T})$ The KL divergence is defined by
 \begin{align}
 \label{KL-def}
 KL[q_{\boldsymbol{\lambda}}(\boldsymbol{\theta}, x_{0:T} | y_{1:T})\hspace{.1cm}||\hspace{.1cm}p(\boldsymbol{\theta}, x_{0:T} | y_{1:T})] &= \nonumber \\
@@ -108,7 +108,7 @@ Equation (\ref{ELBO}) can be maximised using a gradient ascent approach, where t
 \label{GradAscent}
 \boldsymbol{\lambda}^{(m+1)} = \boldsymbol{\lambda}^{(m)} + \rho^{(m)} \frac{\delta}{\delta\boldsymbol{\lambda}} \mathcal{L}(\boldsymbol{\lambda^{(m)}}),
 \end{equation}
-where the derivative is evaluated at $\boldsymbol{\lambda}^{(m)}$. This update requires some initial values $\boldsymbol{\lambda}^{(0)}$ and a sequence $\rho^{(m)}, m = 1, 2, \dots$ known as the learning rate. If $\rho^{(m)}$ is chosen to satisfy the following conditions the algorithm is guaranteed to converge to a local maximum (Robbins and Munro, 1951).
+where the derivative is evaluated at $\boldsymbol{\lambda}^{(m)}$. This update requires some initial values $\boldsymbol{\lambda}^{(0)}$ and a sequence $\rho^{(m)}, m = 1, 2, \dots$ known as the learning rate. If $\rho^{(m)}$ is chosen to satisfy the following conditions the algorithm is guaranteed to converge to a local maximum \citep{Robbins1951}.
 \begin{align}
 &\sum_{m=1}^{\infty} \rho^{(m)} =  \infty \\
 &\sum_{m=1}^{\infty} (\rho^{(m)})^2 <  \infty.
@@ -116,7 +116,7 @@ where the derivative is evaluated at $\boldsymbol{\lambda}^{(m)}$. This update r
 
 This paper uses Adam \citep{Kingma2015b} to generate the sequence $\rho^{(m)}$.
 
-Ranganath, Gerrish and Blei (2014) showed that a Monte Carlo estimate of the derivative of the ELBO can be given by
+\citet{Ranganath2014} showed that a Monte Carlo estimate of the derivative of the ELBO can be given by
 \begin{equation}
 \label{ScoreDeriv}
 \frac{\delta}{\delta\boldsymbol{\lambda}}\mathcal{L}(\boldsymbol{\lambda^{(m)}}) \approx \frac{1}{N}\sum_{i=1}^{N} \frac{\delta}{\delta\boldsymbol{\lambda}} [\ln(q_{\boldsymbol{\lambda}^{(m)}}(\boldsymbol{\theta_i}, x_{0:T, i} | y_{1:T})] \ln \left(\frac{p(y_{1:T}, \boldsymbol{\theta}_i, x_{1:T, i})}{q_{\boldsymbol{\lambda}^{(m)}}(\boldsymbol{\theta_i}, x_{0:T, i} | y_{1:T})} \right) 
@@ -124,12 +124,12 @@ Ranganath, Gerrish and Blei (2014) showed that a Monte Carlo estimate of the der
 where $i = 1, \dots, N$ indicates independent simulations from $q_{\boldsymbol{\lambda}^{(m)}}(\boldsymbol{\theta}, x_{0:T} | y_{1:T})$. 
 The terms in the sum in (\ref{ScoreDeriv}) can have large variances, and in practice a large value of $N$ is required to ensure a precise estimate of the gradient of the ELBO is obtained, slowing computation. 
 
-The variance can be reduced by the reparameterisation trick of Kingma and Welling (2014), introducing a noise variable $\boldsymbol{\epsilon}$ with a distribution $q(\boldsymbol{\epsilon})$ with no free parameters, and a differentiable transform $f$ such that
+The variance can be reduced by the reparameterisation trick of \citet{Kingma2014}, introducing a random vector $\boldsymbol{\epsilon}$ with a distribution $q(\boldsymbol{\epsilon})$ that contains no free parameters, and a differentiable transform $f$ such that
 \begin{equation}
 \label{Reparam}
 f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}) = \{\boldsymbol{\theta}, x_{1:T}\}.
 \end{equation}
-Kingma and Welling (2014) show that an $f$ exists to transform $\boldsymbol{\epsilon}$ to any continuous random variable, with examples including a location-scale transform of a standard normal noise variable and an inverse-CDF transform of a uniform noise variable. In this case, (\ref{ELBO}) becomes
+Kingma and Welling (2014) show that an $f$ exists to transform $\boldsymbol{\epsilon}$ to any continuous random variable, with examples including a location-scale transform of a standard normal $\epsilon$ and an inverse-CDF transform of a uniform $\epsilon$. In this case, (\ref{ELBO}) becomes
 \begin{equation}
 \label{ReparamELBO}
 \mathcal{L}(\boldsymbol{\lambda}) = \int q(\boldsymbol{\epsilon}) \ln \left( \frac{p(y_{1:T},f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}) |\det J(\boldsymbol{\epsilon}, \boldsymbol{\lambda})|}{q(\boldsymbol{\epsilon})} \right) d\boldsymbol{\epsilon},
@@ -144,7 +144,10 @@ where $J(\boldsymbol{\epsilon}, \boldsymbol{\lambda})$ is the Jacobian matrix of
 where simulations of $\boldsymbol{\theta}$ and $x_{1:T+S}$ are replaced by simulations of $\boldsymbol{\epsilon}$ from $q(\boldsymbol{\epsilon})$. The variance of this estimator is often orders of magnitude smaller than the estimator in (\ref{ScoreDeriv}) (citations), so $M$ can be set much lower than $N$.
 
 \subsection{Randomised Quasi Monte Carlo}
-Randomised Quasi Monte Carlo (Matousek 1998; Sobol 196X, Gunawan, Tran and Kohn 2017).
+\citep{Gunawan2017}
+\citep{Matousek1998}
+\citep{Bratley1988}
+\citep{Sobol1967}
 
 \subsection{Choice of $q$ distribution}
 
@@ -152,26 +155,33 @@ Randomised Quasi Monte Carlo (Matousek 1998; Sobol 196X, Gunawan, Tran and Kohn 
 
 ADVI simulation results
 
-As the latent variables are Markovian, once the distribution of $x_T$ is available, the distributions of each previous $x_t, t < T$ is irrelevant to forecasts of $y_{T+S+h}$ and it may be more convenient to construct an approximation for $p(\boldsymbol{\theta}, x_T | y_{1:T})$ than $p(\boldsymbol{\theta}, x_{0:T} | y_{1:T})$ as the dimensionality of the posterior is reduced from $T+k+1$ to $k+1$, where $k$ is the number of elements in $\boldsymbol{\theta}$. This in turn allows for more expressive approximating distributions to be used as the size of $\boldsymbol{\lambda}$ does not grow with $T$.
+As the latent variables are Markovian, once the distribution of $x_{T+1}$ is available, the distributions of each previous $x_t, t \leq T$ is irrelevant to forecasts of $y_{T+S+h}$ and it may be more convenient to construct an approximation for $p(\boldsymbol{\theta}, x_{T+1} | y_{1:T})$ than for $p(\boldsymbol{\theta}, x_{0:T+1} | y_{1:T})$, as they contain the same information about $y_{T+S+h}$ but the dimensionality of the posterior is reduced from $T+k+2$ to $k+1$, where $k$ is the number of elements in $\boldsymbol{\theta}$. This in turn allows for more expressive approximating distributions to be used, as the size of $\boldsymbol{\lambda}$ does not grow with $T$.
 
-In this case,
+In this case, using $f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}) = \{\boldsymbol{\theta}, x_{T+1}\}$,
 \begin{equation}
 \label{DimRedLogJoint}
-\ln(p(y_{1:T}, f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}))) = \ln(p(x_T | y_{1:T}, \boldsymbol{\theta})) + \ln(p(y_{1:T} |\boldsymbol{\theta})) + \ln(p(\boldsymbol{\theta}))
+\ln(p(y_{1:T}, f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}))) = \ln\left(\int_{X_T} p(x_{T+1} | \theta, x_T)p(x_T | y_{1:T}, \boldsymbol{\theta})d_{X_T}\right) + \ln(p(y_{1:T} |\boldsymbol{\theta})) + \ln(p(\boldsymbol{\theta}))
 \end{equation}
-In many cases, the distributions $p(x_T | y_{1:T}, \boldsymbol{\theta})$ and $p(y_{1:T} | \boldsymbol{\theta})$ are intractable, but \citet{TNK2017} note that the particle filter estimators $\hat{p}(x_T | y_{1:T}, \boldsymbol{\theta})$ and $\hat{p}(y_{1:T} | \boldsymbol{\theta})$ are sufficient for use in what they refer to as Variational Bayes with Intractable Likelihood (VBIL). Hence
+In many cases, the distributions $p(x_T | y_{1:T}, \boldsymbol{\theta})$ and $p(y_{1:T} | \boldsymbol{\theta})$ are intractable, but \citet{TranM2017} note that the particle filter estimators $\hat{p}(x_T | y_{1:T}, \boldsymbol{\theta})$ and $\hat{p}(y_{1:T} | \boldsymbol{\theta})$ are sufficient substitutes in what they refer to as Variational Bayes with Intractable Likelihood (VBIL). The particle filter estimation of the distribution $\hat{p}(x_T | y_{1:T}, \boldsymbol{\theta})$ is expressed as a discrete set of point masses $x_T^{(k)}$ and weights $\pi_T^{(k)}$, where $k = 1, \dots, N$ represent the particles of the particle filter. In this case, the integral in (\ref{DimRedLogJoint}) reduces to the sum
+\begin{equation}
+\label{ParticleFilterIntegral}
+\int_{X_T} p(x_{T+1} | \theta, x_T)p(x_T | y_{1:T}, \boldsymbol{\theta})d_{X_T} = \sum_{k=1}^N \pi_T^{(k)} p(x_{T+1} | \boldsymbol{\theta}, x_T^{(k)}),
+\end{equation}
+and hence
 \begin{equation}
 \label{PFLogJoint}
-\ln(p(y_{1:T}, f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}))) \approx \ln(\hat{p}(x_T | y_{1:T}, \boldsymbol{\theta})) + \ln(\hat{p}(y_{1:T} |\boldsymbol{\theta})) + \ln(p(\boldsymbol{\theta}))
+\ln(p(y_{1:T}, f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}))) \approx \ln \left(\sum_{k=1}^N \pi_T^{(k)} p(x_{T+1} | \boldsymbol{\theta}, x_T^{(k)})\right) + \ln(\hat{p}(y_{1:T} |\boldsymbol{\theta})) + \ln(p(\boldsymbol{\theta}))
 \end{equation}
 can be substituted into (\ref{ReparamDeriv}). This derivative of (\ref{PFLogJoint}) with respect to $\boldsymbol{\lambda}$ can be obtained with automatic differentiation tools such as those provided by Stan \citep{Carpenter2015}.
 
 \subsection{Importance Sampling}
 
-Importance Sampling (Sakaya and Klami 2017)
+\citep{Sakaya2017}
 
 
 \section{Updating}
+
+$$p(y_{1:T+S}, \theta, x_T, x_{T+S}) = p(\theta) p(y_{1:T+S} | \theta) p (x_T | \theta, y_{1:T+S}) p(x_{T+S} | x_T, \theta, y_{1:T+S})$$
 
 \begin{itemize}
 \item Proper updates with filter/smooth
