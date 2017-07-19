@@ -3,7 +3,6 @@
 // [[Rcpp::plugins(cpp11)]]
 // [[Rcpp::depends(RcppArmadillo)]]
 
-
 #include <RcppArmadillo.h>
 #include <stan/math.hpp>
 #include <vector>
@@ -25,33 +24,30 @@ using Eigen::MatrixXd;
 using Eigen::Map;
 using namespace arma;
 
-
-// evaluate and automatially differentiate log(p(y, xT, theta)) wrt theta/xT
-
+// evaluate and automatially differentiate log(p(y_1:T, x_T+1, theta)) wrt theta and x_T+1
 struct logP {
   const MatrixXd& y; // data
   const MatrixXd& noise; // standard normal matrix for the particle filter transitions
   const int& obs; // T is taken for the variable type, so obs = number of elements in y
-  logP(const MatrixXd& yIn, const MatrixXd& noiseIn, const int& obsIn) : // constructor
-    y(yIn), noise(noiseIn), obs(obsIn) {}
+  const int& N; // Number of particles
+  logP(const MatrixXd& yIn, const MatrixXd& noiseIn, const int& obsIn, const int& nIn) : // constructor
+    y(yIn), noise(noiseIn), obs(obsIn), N(nIn) {}
   template <typename T> // T will become stan's var that can be automatically differentiated - any variable differentiated in the chain rule for d logp / d theta must be type T
   T operator ()(const Matrix<T, Dynamic, 1>& theta) // derivative is with respect to theta (with xT+1 included), so theta matrix is the operator () input.
     const{
-    using std::log; using std::pow; using std::exp; using std::sqrt; // declare mathematical operators used so stan knows to differentiate these.
+    using std::log; using std::pow; using std::exp; using std::sqrt; // explicitly declare mathematical operators used so stan knows to differentiate these.
     
     // Get elements of theta
     T sigSq = theta(0);
     T mu = theta(1);
     T tau = theta(2);
     T xTplus1 = theta(3);
-    T phi = 2 * tau - 1;
-    
+    T phi = 2*tau - 1;
     // Evaluate log(p(theta))
-    T prior = -pow(mu, 2) / 20  +  19.0 * log(tau)  +  0.5 * log(1-tau)  - (3.5) * log(sigSq)  -  0.25 / sigSq;
+    T prior = -pow(mu, 2) / 20  +  19 * log(tau)  + 0.5 * log(1-tau) - 3.5 * log(sigSq)  -  0.025 / sigSq;
     
     // Set up for particle filtering
-    const int N = 100; // number of particle filter particles needs to be given at compile time
-    Matrix<T, N, 1> xOld, xNew, xResample, pi, piSum, omega;
+    Matrix<T, Dynamic, 1> xOld(N), xNew(N), xResample(N), pi(N), piSum(N), omega(N);
     // xOld = x_t
     // xNew = x_t+1
     // xResample = resample of x_t
@@ -59,14 +55,19 @@ struct logP {
     // piSum = cumulative sum of pi
     // omega = unnormalised weights
     pi.fill(1.0/N); // initial weights
+    T yAllDens, ytDens, omegaSum, xTplus1Dens;
+    // yAllDens = log(p(y_1:T | theta))
+    // ytDens = log(p(y_t | theta))
+    // omegaSum = sum of omega
+    // XTplus1Dens = log(p(x_t | theta, y_1:T))
     
     // Sample x0 from stationary distribution
     for(int k = 0; k < N; ++k){
       xOld(k) = mu + sqrt(sigSq / (1-pow(phi, 2))) * noise(k, 0); 
     }
-    //Store log(p(y_1:T | theta))
-    T yAllDens = 0;
-   
+    
+    yAllDens = 0;
+    
     // Particle Filter loop
     for(int t = 0; t < obs; ++t){
       // Create CDF to use for resampling
@@ -85,9 +86,9 @@ struct logP {
         }
       }
       // Calculate weights
-      T omegaSum = 0;
+      omegaSum = 0;
       for(int k = 0; k < N; ++k){
-        xNew(k) = mu  +  phi * (xOld(k) - mu)  +  sqrt(sigSq) * noise(k, t+1); // step ahead transition
+        xNew(k) = mu  +  phi * (xResample(k) - mu)  +  sqrt(sigSq) * noise(k, t+1); // step ahead transition
         T var = exp(xNew(k)); // variance of y
         omega(k) = 1.0 / sqrt(2*3.14159*var) * exp(-pow(y(t), 2) / (2*var)); // y ~ N(0, var)
         omegaSum += omega(k); // sum of weights for normalisation
@@ -96,15 +97,15 @@ struct logP {
       for(int k = 0; k < N; ++k){
         pi(k) = omega(k) / omegaSum;
       }
-      // calculate log(p(y_t | theta)), add to log(p(y_1:T | theta)) = sum_t log(p(y_t | theta))
-      T yTDens = log(omegaSum / N);
-      yAllDens += yTDens;
+      // log(p(y_1:T | theta)) = sum_t log(p(y_t | theta))
+      ytDens = log(omegaSum / N);
+      yAllDens += ytDens;
       // reset xOld as we step from t to t+1
       for(int k = 0; k < N; ++k){
         xOld(k) = xNew(k);
       }
     } // end of particle filter loop
-    T xTplus1Dens = 0; 
+    xTplus1Dens = 0; 
     // p(x_T+1 | theta, y_1:T) approx sum_k pi_k p(x_T+1 | x_T,k, theta)
     for(int k = 0; k < N; ++k){
       xTplus1Dens += pi(k) / sqrt(2 * 3.14159 * sigSq) * exp(-0.5 * pow(xTplus1 - (mu + phi*(xNew(k)-mu)), 2));
@@ -137,21 +138,24 @@ struct logQ {
 
 // evaluate log(q(theta, xT+1)) = log(q(eps)) - log(det(jacobian))
 double evalLogQ (Matrix<double, Dynamic, 1> epsilon, MatrixXd lambda){
-  double qLogDens = - lambda(0) - lambda(4)*epsilon(0);
+  double logEpsDens = 0;
+  double logDetJ = lambda(0) + lambda(4)*epsilon(0);
   for(int i = 0; i < 4; ++i){
-    qLogDens -=  log(fabs(lambda((i+1)*4+i))) + 0.5 * pow(epsilon(i), 2);
+    logEpsDens -= 0.5 * pow(epsilon(i), 2);
+    logDetJ +=  log(fabs(lambda((i+1)*4+i)));
   }
-  return qLogDens;
+  return logEpsDens - logDetJ;
 }
 
 // d logq / d lambda = d log(det(J)) / d lambda
 Matrix<double, Dynamic, 1> QDeriv(Matrix<double, Dynamic, 1> epsilon, MatrixXd lambda){
-  Matrix<double, Dynamic, 1> output(20); output.fill(0);
-  output(0) = -1;
-  output(4) = -(epsilon(0) + 1.0/lambda(4));
-  output(9) = -1.0 / lambda(9);
-  output(14) = -1.0 / lambda(14);
-  output(19) = -1.0 / lambda(19);
+  Matrix<double, Dynamic, 1> output(20); 
+  output.fill(0);
+  output(0) = - 1; //mu_1
+  output(4) = - (epsilon(0) + 1.0/lambda(4)); //U_11
+  output(9) = - 1.0 / lambda(9); //U_22
+  output(14) = - 1.0 / lambda(14); //U_33
+  output(19) = - 1.0 / lambda(19); //U_44
   return output;
 }
 
@@ -300,9 +304,9 @@ mat shuffle(mat sobol){
 
 // Main VB algorithm
 // [[Rcpp::export]]
-Rcpp::List VBIL_PF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S, int maxIter=5000,
-                    double alpha = 0.1, double beta1 = 0.9, double beta2 = 0.999, double threshold=0.01, double thresholdIS = 0){
-
+Rcpp::List VBIL_PF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S, int N = 100, int maxIter = 5000,
+                    double alpha = 0.1, double beta1 = 0.9, double beta2 = 0.999, double threshold = 0.01, double thresholdIS = 0){
+  
   // convert to Eigen format
   Map<MatrixXd> y(Rcpp::as<Map<MatrixXd> >(yIn));
   Map<MatrixXd> lambdaMat(Rcpp::as<Map<MatrixXd> >(lambdaIn));
@@ -350,10 +354,10 @@ Rcpp::List VBIL_PF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S
         // transform uniform numbers to standard normal
         for(int i = 0; i < 4; ++i){
           // Quantile function is unstable for extreme values of unif
-          if(unif(s+100, i) > 0.999){
-            epsilon(i, s) = 3.090232;
-          } else if (unif(s+100, i) < 0.001) {
-            epsilon(i, s) = -3.09232;
+          if(unif(s+100, i) > 0.9995){
+            epsilon(i, s) = 3.290527;
+          } else if (unif(s+100, i) < 0.0005) {
+            epsilon(i, s) = -3.290527;
           } else {
             epsilon(i, s) = quantile(epsDist, unif(s+100, i));
           }
@@ -379,7 +383,7 @@ Rcpp::List VBIL_PF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S
         }
         Map<MatrixXd> noise(Rcpp::as<Map<MatrixXd> >(noiseRcpp));
         // take derivative of log joint
-        logP p(y, noise, T);
+        logP p(y, noise, T, N);
         stan::math::set_zero_all_adjoints();
         stan::math::gradient(p, theta.col(s), logPeval(s), gradP);
         // take derivative of q
@@ -397,7 +401,7 @@ Rcpp::List VBIL_PF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S
           }
           //update gradients
           meanGradient(i) += (gradientP(i, s) * gradientF(i) - gradientQ(i)) / S;
-          meanGradientSq(i) += pow(S * meanGradient(i), 2) / S;
+          //meanGradientSq(i) += pow(S * meanGradient(i), 2) / S;
         }
         LB(iter-1) += (logPeval(s) - logQeval)/S;
       }
@@ -430,7 +434,7 @@ Rcpp::List VBIL_PF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S
         // Calculate derivative estimates
         for(int i = 0; i < 20; ++i){
           meanGradient(i) += (gradientP(i, s) * gradientF(i) - gradientQ(i)) * weight / S;
-          meanGradientSq(i) += pow(S * meanGradient(i), 2) / S;
+         // meanGradientSq(i) += pow(S * meanGradient(i), 2) / S;
         }
         // Update ELBO
         LB(iter-1) += (logPeval(s) - logQeval) / S;
@@ -438,11 +442,20 @@ Rcpp::List VBIL_PF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S
     }
     // adam updating rule for lambda values
     for(int i = 0; i < 20; ++i){
-      Mt(i) = Mt(i) * beta1  +  (1 - beta1) * meanGradient(i);
-      Vt(i) = Vt(i) * beta2  +  (1 - beta2) * meanGradientSq(i);
-      double MtHat = Mt(i) / (1 - pow(beta1, iter));
-      double VtHat = Vt(i) / (1 - pow(beta2, iter));
-      lambda(i) += alpha * MtHat / (sqrt(VtHat) + pow(1, -8));
+      //Mt(i) = Mt(i) * beta1  +  (1 - beta1) * meanGradient(i);
+      //Vt(i) = Vt(i) * beta2  +  (1 - beta2) * meanGradientSq(i);
+      //double MtHat = Mt(i) / (1 - pow(beta1, iter));
+      //double VtHat = Vt(i) / (1 - pow(beta2, iter));
+      //lambda(i) += alpha * MtHat / (sqrt(VtHat) + pow(1, -8));
+      //lambda(i) += alpha / (1 + iter) * meanGradient(i);
+      Mt(i) += pow(meanGradient(i), 2);
+      if(Mt(i) != 0){
+        Vt(i) = pow(Mt(i), -0.5);
+      } 
+      lambda(i) += alpha * Vt(i) * meanGradient(i);
+    }
+    if(lambda(2) > 0.99) {
+      lambda(2) = 0.99;
     }
     // check convergence by looking at the difference of the average of past five LB values and the average of the five before that
     if(iter % 5 == 0){

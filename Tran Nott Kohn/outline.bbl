@@ -1,6 +1,12 @@
-\begin{thebibliography}{12}
+\begin{thebibliography}{13}
 \newcommand{\enquote}[1]{``#1''}
 \expandafter\ifx\csname natexlab\endcsname\relax\def\natexlab#1{#1}\fi
+
+\bibitem[{Arulampalam et~al.(2002)Arulampalam, Maskell, Gordon, and
+  Clapp}]{Arulampalam2002}
+Arulampalam, M.~S., Maskell, S., Gordon, N., and Clapp, T. (2002), \enquote{A
+  Tutorial on Particle Filters for Online Nonlinear/Non-Gaussian Bayesian
+  Tracking,} \textit{IEEE Transactions on Signal Processing}, 50, 174--188.
 
 \bibitem[{Bratley and Bennet(1988)}]{Bratley1988}
 Bratley, P. and Bennet, L.~F. (1988), \enquote{Algorithm 659: Implementing

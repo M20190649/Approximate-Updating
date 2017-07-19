@@ -38,7 +38,7 @@ struct logP {
     T sigSq = theta(0);
     T mu = theta(1);
     T phi = theta(2);
-    T xT = theta(3);
+    T xTplus1 = theta(3);
     
     // Evaluate log(p(theta)
     T prior = -pow(mu, 2) / 200  - pow(phi - 0.5, 2) / 0.02  -  2 * log(sigSq)  -  1.0 / sigSq;
@@ -50,7 +50,7 @@ struct logP {
     ptt(0) = 3 * sigSq;  // var t = 0 | 0
     T ytDens; // log(p(yt | theta))
     T yAllDens = 0; // log(p(y_1:T | theta))
-    T xTDens = 0; // log(p(x_T | theta, y_1:T))
+    T xTplus1Dens = 0; // log(p(x_T | theta, y_1:T))
     // kalman loop
     for(int t = 0; t < obs; ++t){
       at(t) = mu + phi * (att(t) - mu); // mean t | t-1
@@ -63,10 +63,12 @@ struct logP {
       ytDens = - 0.5 * log(2*3.14159) -  0.5 * log(St(t))  -  pow(y(t-1) - pt(t), 2) / (2 * St(t)); 
       yAllDens += ytDens;
     }
-    // log(p(xT | theta, y_1:T))
-    xTDens = - 0.5 * log(2*3.14159)  -  0.5 * log(ptt(obs))  -  pow(xT - att(obs), 2) / (2 * ptt(obs));
+    // log(p(xT+1 | theta, y_1:T))
+    T xTp1Mean = mu - phi * (att(obs) - mu);
+    T xTp1Var = pow(phi, 2) * ptt(obs) + sigSq;
+    xTplus1Dens = - 0.5 * log(2*3.14159)  -  0.5 * log(xTp1Var)  - pow(xTplus1 -xTp1Mean, 2) / (2 * xTp1Var);
   
-    return yAllDens + xTDens + prior;
+    return yAllDens + xTplus1Dens + prior;
   }
 };
 

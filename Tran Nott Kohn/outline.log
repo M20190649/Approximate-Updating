@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.14159265-2.6-1.40.16 (TeX Live 2015/Debian) (preloaded format=pdflatex 2017.7.5)  18 JUL 2017 15:22
+This is pdfTeX, Version 3.14159265-2.6-1.40.16 (TeX Live 2015/Debian) (preloaded format=pdflatex 2017.7.5)  19 JUL 2017 10:45
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -426,7 +426,7 @@ LaTeX Font Info:    Font shape `OMS/cmr/m/n' in size <12> not available
  [1
 
 {/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map}]
-Overfull \hbox (0.95401pt too wide) in paragraph at lines 87--88
+Overfull \hbox (0.95401pt too wide) in paragraph at lines 89--90
 []\OT1/cmr/m/n/12 This pa-per will fol-low the tra-di-tional ap-proach, where t
 he di-ver-gence func-tion is the Kullback-
  []
@@ -434,28 +434,28 @@ he di-ver-gence func-tion is the Kullback-
 [2]
 
 Package hyperref Warning: Token not allowed in a PDF string (PDFDocEncoding):
-(hyperref)                removing `math shift' on input line 152.
+(hyperref)                removing `math shift' on input line 154.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (PDFDocEncoding):
-(hyperref)                removing `math shift' on input line 152.
+(hyperref)                removing `math shift' on input line 154.
 
 [3] [4] (./outline.bbl [5])
-Package atveryend Info: Empty hook `BeforeClearDocument' on input line 201.
+Package atveryend Info: Empty hook `BeforeClearDocument' on input line 203.
  [6]
-Package atveryend Info: Empty hook `AfterLastShipout' on input line 201.
+Package atveryend Info: Empty hook `AfterLastShipout' on input line 203.
  (./outline.aux)
-Package atveryend Info: Executing hook `AtVeryEndDocument' on input line 201.
-Package atveryend Info: Executing hook `AtEndAfterFileList' on input line 201.
+Package atveryend Info: Executing hook `AtVeryEndDocument' on input line 203.
+Package atveryend Info: Executing hook `AtEndAfterFileList' on input line 203.
 Package rerunfilecheck Info: File `outline.out' has not changed.
 (rerunfilecheck)             Checksum: E37085BD745E6A20D83D7CC35D6BEE56;642.
-Package atveryend Info: Empty hook `AtVeryVeryEnd' on input line 201.
+Package atveryend Info: Empty hook `AtVeryVeryEnd' on input line 203.
  ) 
 Here is how much of TeX's memory you used:
- 8247 strings out of 494953
- 119817 string characters out of 6180978
- 219905 words of memory out of 5000000
- 11382 multiletter control sequences out of 15000+600000
+ 8251 strings out of 494953
+ 119906 string characters out of 6180978
+ 219982 words of memory out of 5000000
+ 11385 multiletter control sequences out of 15000+600000
  15019 words of font info for 57 fonts, out of 8000000 for 9000
  14 hyphenation exceptions out of 8191
  36i,15n,38p,898b,441s stack positions out of 5000i,500n,10000p,200000b,80000s
@@ -472,10 +472,10 @@ amsfonts/cm/cmr6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts
 /cm/cmr8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy
 10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb>
 </usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmti12.pfb>
-Output written on outline.pdf (6 pages, 166213 bytes).
+Output written on outline.pdf (6 pages, 167100 bytes).
 PDF statistics:
- 209 PDF objects out of 1000 (max. 8388607)
- 185 compressed objects within 2 object streams
- 44 named destinations out of 1000 (max. 500000)
+ 212 PDF objects out of 1000 (max. 8388607)
+ 188 compressed objects within 2 object streams
+ 45 named destinations out of 1000 (max. 500000)
  89 words of extra memory for PDF output out of 10000 (max. 10000000)
 
