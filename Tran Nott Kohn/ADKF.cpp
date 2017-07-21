@@ -47,7 +47,7 @@ struct logP {
     Matrix<T, Dynamic, 1> at(obs), pt(obs), vt(obs), St(obs), Kt(obs), att(obs+1), ptt(obs+1);
     // att and ptt are offset by one as they also contain the values at t = 0, while at and pt are for t > 0 only.
     att(0) = mu; // mean t = 0 | 0
-    ptt(0) = 3 * sigSq;  // var t = 0 | 0
+    ptt(0) = 3 * sigSq;  // var t = 0 | 0git
     T ytDens; // log(p(yt | theta))
     T yAllDens = 0; // log(p(y_1:T | theta))
     T xTplus1Dens = 0; // log(p(x_T | theta, y_1:T))
