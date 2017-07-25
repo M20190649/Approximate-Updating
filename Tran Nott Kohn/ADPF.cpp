@@ -40,9 +40,9 @@ struct logP {
     // Get elements of theta
     T sigSq = theta(0);
     T mu = theta(1);
-    T tau = theta(2);
+    T phi = theta(2);
     T xTplus1 = theta(3);
-    T phi = 2*tau - 1;
+    T tau = 0.5 * (phi + 1);
     // Evaluate log(p(theta))
     T prior = -pow(mu, 2) / 20  +  19 * log(tau)  + 0.5 * log(1-tau) - 3.5 * log(sigSq)  -  0.025 / sigSq;
     
@@ -108,7 +108,7 @@ struct logP {
     xTplus1Dens = 0; 
     // p(x_T+1 | theta, y_1:T) approx sum_k pi_k p(x_T+1 | x_T,k, theta)
     for(int k = 0; k < N; ++k){
-      xTplus1Dens += pi(k) / sqrt(2 * 3.14159 * sigSq) * exp(-0.5 * pow(xTplus1 - (mu + phi*(xNew(k)-mu)), 2));
+      xTplus1Dens += pi(k) / sqrt(2*3.14159*sigSq) * exp(-pow(xTplus1 - (mu + phi*(xNew(k)-mu)), 2) / (2*sigSq));
     }
     // interested in log density
     xTplus1Dens = log(xTplus1Dens);
@@ -366,15 +366,18 @@ Rcpp::List VBIL_PF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S
         for(int i = 0; i < 4; ++i){
           theta(i, s) = lambda(i);
           for(int j = 0; j <= i; ++j){
-            theta(i, s) += lambda((i+1)*4+j) * epsilon(j);
+            theta(i, s) += lambda((i+1)*4+j) * epsilon(j, s);
           }
         }
         theta(0, s) = exp(theta(0, s)); // log(sigSq) -> sigSq
         // a bad way to force stationarity
         if(theta(2, s) > 0.99) {
           theta(2, s) = 0.99;
-        } else if(theta(2, s) < -0.99){
-          theta(2, s) = -0.99;
+        } else if(theta(2, s) < 0.01){
+          theta(2, s) = 0.01;
+        }
+        if(theta(0, s) > 0.3){
+          theta(0, s) = 0.3;
         }
         // generate standard normal noise for the particle filter, convert to Eigen format
         Rcpp::NumericMatrix noiseRcpp(100, T+1);
@@ -411,15 +414,13 @@ Rcpp::List VBIL_PF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S
       for(int s = 0; s < S; ++s){
         // Transform theta back to the epsilon that would have generated them with current lambda values
         Matrix<double, Dynamic, 1> impliedEpsilon(4);
-        for(int i = 0; i < 4; ++i){
-          if(i == 0){
-            impliedEpsilon(i) = log(theta(i, s)) - lambda(i);
-          } else {
-            impliedEpsilon(i) = theta(i, s) - lambda(i);
+        impliedEpsilon(0) = (log(theta(0, s)) - lambda(0)) / lambda(4);
+        for(int i = 1; i < 4; ++i){
+          impliedEpsilon(i) = theta(i, s) - lambda(i);
+          for(int j = 0; j < i; ++j){
+            impliedEpsilon(i) -= lambda((i+1)*4 + j) * impliedEpsilon(j);
           }
-          for(int j = 0; j <=i; ++j){
-            impliedEpsilon(i) -= lambda((i+1)*4+j) * epsilon(j);
-          }
+          impliedEpsilon(i) = impliedEpsilon(i) / lambda((i+1)*4 + i);
         }
         // Take derivatives of Q and F with these new values
         logQeval = evalLogQ(impliedEpsilon, lambda);
@@ -452,10 +453,17 @@ Rcpp::List VBIL_PF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S
       if(Mt(i) != 0){
         Vt(i) = pow(Mt(i), -0.5);
       } 
-      lambda(i) += alpha * Vt(i) * meanGradient(i);
+      if(iter > 1){
+        lambda(i) += alpha * Vt(i) * meanGradient(i);
+      }
     }
     if(lambda(2) > 0.99) {
       lambda(2) = 0.99;
+    } else if(lambda(2) < 0.01) {
+      lambda(2) = 0.01;
+    }
+    if(lambda(0) > 0) {
+      lambda(0) = 0;
     }
     // check convergence by looking at the difference of the average of past five LB values and the average of the five before that
     if(iter % 5 == 0){
@@ -465,7 +473,7 @@ Rcpp::List VBIL_PF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S
     } 
     // report progress from time to time
     if(iter % 25 == 0){
-      Rcpp::Rcout << "Iteration: " << iter << ", ELBO: " << meanLB << std::endl;
+      //Rcpp::Rcout << "Iteration: " << iter << ", ELBO: " << meanLB << std::endl;
     }
   } // End while loop
   if(iter <= maxIter){ // did converge in time

@@ -98,8 +98,8 @@ double priorDensity (rowvec theta, vec hyperParams){
 // [[Rcpp::export]]
 Rcpp::List PMMH(vec y, int reps, int burn, int N, vec hyperParams, rowvec stepSize){
   int T = y.n_elem;
-  mat theta(reps, 3);
-  mat x(reps, T+1);
+  mat theta(reps+burn, 3);
+  mat x(reps+burn, T+1);
   rowvec initial = {0.2, 0, 0.5};
   theta.row(0) = initial;
   double prevPrior = priorDensity(initial, hyperParams);
@@ -125,6 +125,9 @@ Rcpp::List PMMH(vec y, int reps, int burn, int N, vec hyperParams, rowvec stepSi
     } else {
       theta.row(iter) = theta.row(iter-1);
       x.row(iter) = x.row(iter-1);
+    }
+    if(iter % 250 == 0){
+     // Rcpp::Rcout << "Iteration " << iter << std::endl;
     }
   }
   Rcpp::Rcout << accept/reps << std::endl;

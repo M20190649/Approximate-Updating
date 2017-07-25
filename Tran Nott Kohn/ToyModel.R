@@ -22,12 +22,14 @@ for(t in 1:100){
   y[t] = x[t]^2 / 20 + rnorm(1, 0, sqrt(sigSqW))
 }
 
-MCMC = PMMHToy(y, 100, 0, 50, c(1, 1, 1, 1), c(0.05, 0.05))
+MCMC = PMMHToy(y, 20000, 0, 50, c(1, 1, 1, 1), c(0.01, 0.01))
 
 mean = c(2.3, 2.3)
 var = c(0.1, 0, 0.1)
 lambda = c(mean, var)
-VBfit = VBIL_Toy(yM, lambda, S=3, alpha=0.05, maxIter=1, threshold=0.01, thresholdIS=0)
+yM = matrix(y, T)
+lM = matrix(lambda, 5)
+VBfit = VBIL_Toy(yM, lM, S=3, alpha=0.05, maxIter=0, threshold=0.01, thresholdIS=0)
 
 U = VBfit$U
 U[is.na(U)] = 0
