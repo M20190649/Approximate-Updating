@@ -4,43 +4,61 @@ library(RcppArmadillo)
 library(RcppEigen)
 library(rstan)
 sourceCpp('ADPF.cpp')
-sourceCpp('PMMH.cpp')
+sourceCpp('SVM_MCMC.cpp')
 
 sigSq = 0.02
-phi = 0.8
+phi = 0.95
 mu = -0.5
 T = 500
+S = 50
 
-x0 = rnorm(1, mu, sqrt(sigSq/(1-phi^2)))
-x = rep(0, T)
-y = rep(0, T)
-for(t in 1:T){
+x = rep(0, T+S)
+y = rep(0, T+S)
+for(t in 1:(T+S)){
   if(t == 1){
-    x[t] = mu + phi*(x0-mu) + rnorm(1, 0, sqrt(sigSq))
+    x[t] = rnorm(1, mu, sqrt(sigSq/(1-phi^2)))
   } else {
     x[t] = mu + phi*(x[t-1]-mu) + rnorm(1, 0, sqrt(sigSq))
   }
-  y[t] = rnorm(1, 0, exp(x[t]/2))
+  y[t] = exp(x[t]/2) * rnorm(1)
 }
-yM = matrix(y, T)
 
 
-MCMC = PMMH(y, 20000, 0, 200, c(2.5, 0.025, 0, 10, 20, 1.5), c(0.005, 0.02, 0.02))
+yStar = log(y^2)
+MCMC = SVM_MCMC(yStar, 20000, 0.01)
 
+
+yM = matrix(y, T+S)
 mean = c(-4, 0, 0.5, 0)
 var = diag(c(0.1, 0.15, 0.15, 0.15))
 
-VBfit = list()
-finalELBO = vector(length=0)
-for(i in 1:5){
-  lambda = cbind(mean, var)
-  fit = VBIL_PF(yM, lambda, S=10, alpha=0.1, maxIter=5000, threshold=0.05, thresholdIS=0.9)
-  finalELBO = c(finalELBO, fit$ELBO[fit$Iter])
-  VBfit[[i]] = fit
-}
+lambda = cbind(mean, var)
+fitFull = VBIL_PF(yM, lambda, S=10, alpha=0.1, maxIter=5000, threshold=0.05, thresholdIS=0.9)
+
+
+lambda = cbind(mean, var)
+fitPartial = VBIL_PF(matrix(y[1:T], T), lambda, S=10, alpha=0.1, maxIter=5000, threshold=0.05, thresholdIS=0.9)
+
+U = fitPartial$U
+Sigma = t(U) %*% U
+SigInv = solve(Sigma[1:3, 1:3])
+muV = fitPartial$Mu
+vComp = Sigma[4, 1:3] %*% SigInv
+conVar = Sigma[4, 4] - vComp %*% Sigma[1:3, 4]
+
+fitUpdate = VBIL_PF_Update(matrix(y[(T+1):(T+S)], S), lambda, matrix(diag(U)[1:3], 3), muV, SigInv, vComp, conVar, S=10, alpha=0.1, maxIter=5000, threshold=0.05, thresholdIS=0.9)
+
+
+
+
+
+
 bestFit = which(finalELBO == max(finalELBO, na.rm=TRUE))
 VBfit[[bestFit]]$Mu
 VBfit[[bestFit]]$U
+
+
+
 
 VBfit = VBfit[[bestFit]]
 
@@ -183,6 +201,12 @@ for(i in 1:reps){
   results = rbind(results, vbfull)
   
 }
+
+
+# Conditional Distribution Calculation
+theta = rnorm(3)
+muCond = muV[4] + Sigma[4, 1:3] %*% solve(Sigma[1:3, 1:3]) %*% (theta - muV[1:3])
+varCond = Sigma[4, 4] - Sigma[4, 1:3] %*% solve(Sigma[1:3, 1:3]) %*% Sigma[1:3, 4]
 
 
 

@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.14159265-2.6-1.40.16 (TeX Live 2015/Debian) (preloaded format=pdflatex 2017.7.5)  19 JUL 2017 10:45
+This is pdfTeX, Version 3.14159265-2.6-1.40.16 (TeX Live 2015/Debian) (preloaded format=pdflatex 2017.7.5)  25 JUL 2017 17:22
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -440,16 +440,36 @@ Package hyperref Warning: Token not allowed in a PDF string (PDFDocEncoding):
 Package hyperref Warning: Token not allowed in a PDF string (PDFDocEncoding):
 (hyperref)                removing `math shift' on input line 154.
 
-[3] [4] (./outline.bbl [5])
-Package atveryend Info: Empty hook `BeforeClearDocument' on input line 203.
+[3] [4]
+Overfull \hbox (3.66107pt too wide) detected at line 190
+\OML/cmm/m/it/12 p\OT1/cmr/m/n/12 (\OML/cmm/m/it/12 y[]; ^^R; x[]\OT1/cmr/m/n/1
+2 ) = \OML/cmm/m/it/12 p\OT1/cmr/m/n/12 (\OML/cmm/m/it/12 ^^R\OT1/cmr/m/n/12 )\
+OML/cmm/m/it/12 p\OT1/cmr/m/n/12 (\OML/cmm/m/it/12 y[]\OMS/cmsy/m/n/12 j\OML/cm
+m/m/it/12 ^^R\OT1/cmr/m/n/12 ) [][] \OML/cmm/m/it/12 p\OT1/cmr/m/n/12 (\OML/cmm
+/m/it/12 X[]\OMS/cmsy/m/n/12 j\OML/cmm/m/it/12 ^^R; x[]\OT1/cmr/m/n/12 )\OML/cm
+m/m/it/12 p\OT1/cmr/m/n/12 (\OML/cmm/m/it/12 x[]\OMS/cmsy/m/n/12 j\OML/cmm/m/it
+/12 ^^R; y[]\OT1/cmr/m/n/12 )\OML/cmm/m/it/12 dX[];
+ []
+
+
+Overfull \hbox (45.9635pt too wide) in paragraph at lines 192--193
+[]\OT1/cmr/m/n/12 Key step is us-ing in-for-ma-tion in the ap-prox-i-ma-tion of
+ $\OML/cmm/m/it/12 q\OT1/cmr/m/n/12 (\OML/cmm/m/it/12 ^^R; x[]\OMS/cmsy/m/n/12 
+j\OML/cmm/m/it/12 y[]\OT1/cmr/m/n/12 )$ to help form $\OML/cmm/m/it/12 q\OT1/cm
+r/m/n/12 (\OML/cmm/m/it/12 ^^R; x[]\OMS/cmsy/m/n/12 j\OML/cmm/m/it/12 y[]\OT1/c
+mr/m/n/12 )$. 
+ []
+
+(./outline.bbl [5])
+Package atveryend Info: Empty hook `BeforeClearDocument' on input line 209.
  [6]
-Package atveryend Info: Empty hook `AfterLastShipout' on input line 203.
+Package atveryend Info: Empty hook `AfterLastShipout' on input line 209.
  (./outline.aux)
-Package atveryend Info: Executing hook `AtVeryEndDocument' on input line 203.
-Package atveryend Info: Executing hook `AtEndAfterFileList' on input line 203.
+Package atveryend Info: Executing hook `AtVeryEndDocument' on input line 209.
+Package atveryend Info: Executing hook `AtEndAfterFileList' on input line 209.
 Package rerunfilecheck Info: File `outline.out' has not changed.
 (rerunfilecheck)             Checksum: E37085BD745E6A20D83D7CC35D6BEE56;642.
-Package atveryend Info: Empty hook `AtVeryVeryEnd' on input line 203.
+Package atveryend Info: Empty hook `AtVeryVeryEnd' on input line 209.
  ) 
 Here is how much of TeX's memory you used:
  8251 strings out of 494953
@@ -458,7 +478,7 @@ Here is how much of TeX's memory you used:
  11385 multiletter control sequences out of 15000+600000
  15019 words of font info for 57 fonts, out of 8000000 for 9000
  14 hyphenation exceptions out of 8191
- 36i,15n,38p,898b,441s stack positions out of 5000i,500n,10000p,200000b,80000s
+ 36i,15n,38p,898b,427s stack positions out of 5000i,500n,10000p,200000b,80000s
 </usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb></us
 r/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx8.pfb></usr/share
 /texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/share/texli
@@ -472,7 +492,7 @@ amsfonts/cm/cmr6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts
 /cm/cmr8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy
 10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb>
 </usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmti12.pfb>
-Output written on outline.pdf (6 pages, 167100 bytes).
+Output written on outline.pdf (6 pages, 169647 bytes).
 PDF statistics:
  212 PDF objects out of 1000 (max. 8388607)
  188 compressed objects within 2 object streams

@@ -183,15 +183,21 @@ can be substituted into (\ref{ReparamDeriv}). This derivative of (\ref{PFLogJoin
 
 \section{Updating}
 
-$$p(y_{1:T+S}, \theta, x_T, x_{T+S}) = p(\theta) p(y_{1:T+S} | \theta) p (x_T | \theta, y_{1:T+S}) p(x_{T+S} | x_T, \theta, y_{1:T+S})$$
-
 \begin{itemize}
-\item Proper updates with filter/smooth
-\item Secondary approximation - no smoothing
-\item Straight up particle filter on old approximation
-\item PF on old MCMC
-\item Simulation Results
+\item We have an approximation of $q(\theta, x_{T+1} | y_{1:T})$ which is a great start. But if we observe data up to time $T+S$ I'm interested in incorporating this to update the approximation to $q(\theta, x_{T+S+1} | y_{1:T+S})$.
+\item Note: The approxmation going up to state $x_T, x_{T+1}, x_{T+S}, x_{T+S+H}$ doesn't really matter. An approximation at one point in time allows us to obtain an approximation for a different time due to the linear/gaussian transition equation. The original approximation could easily be modified to $q(\theta, x_{T+S+1} | y_{1:T})$, but what I think is important is conditioning this on $y_{T+1:T+S}$.
+\item The form of the joint distribution, $p(y_{1:T+S}, \theta, x_{T+S+1})$ should follow the same decomposition as before,
+$$p(y_{1:T+S}, \theta, x_{T+S+1}) = p(\theta) p(y_{1:T+S} | \theta) \int_{X_{T+S}} p(X_{T+S+1} | \theta, x_{T+S})p(x_{T+S} | \theta, y_{1:T+S})dX_{T+S},$$
+using a particle filter to estimate the intractable distributions.
+\item Key step is using information in the approximation of $q(\theta, x_T | y_{1:T})$ to help form $q(\theta, x_{T+S} | y_{1:T+S})$.
+\item We have access to the approximation of the conditional distribution, $q(x_T | \theta, y_{1:T})$ by integration of VB fit.
+\item Start the Particle Filter with $x_T$, using VB approximation $q(x_T | \theta, y_{1:T})$ as a proposal distribution for $x_T$, instead of the prior as is commonly used.
+\item The importance sampling weights should be easily obtainable using this new proposal.
+\item Then the filter needs to be run forward for $S$ steps.
+\item Using a VB approximation as an importance sampling proposal distribution is a new contribution. Hopefully it'll work well.
 \end{itemize}
+
+
 
 \section{Empirical}
 
