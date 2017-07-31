@@ -7,7 +7,7 @@ sourceCpp('ADPF.cpp')
 sourceCpp('SVM_MCMC.cpp')
 
 sigSq = 0.02
-phi = 0.95
+phi = 0.9
 mu = -0.5
 T = 500
 S = 50
@@ -18,22 +18,23 @@ for(t in 1:(T+S)){
   if(t == 1){
     x[t] = rnorm(1, mu, sqrt(sigSq/(1-phi^2)))
   } else {
-    x[t] = mu + phi*(x[t-1]-mu) + rnorm(1, 0, sqrt(sigSq))
+    x[t] = mu + phi*(x[t-1]-mu) + sqrt(sigSq) * rnorm(1)
   }
   y[t] = exp(x[t]/2) * rnorm(1)
 }
 
 
+
 yStar = log(y^2)
-MCMC = SVM_MCMC(yStar, 20000, 0.01)
+MCMC = SVM_MCMC(yStar[1:T], 50000, 0.05)
 
 
-yM = matrix(y, T+S)
-mean = c(-4, 0, 0.5, 0)
-var = diag(c(0.1, 0.15, 0.15, 0.15))
+yM = matrix(y[1:T], T)
+mean = c(-4.4, 0, 0.86, mu)
+var = diag(c(0.7, sqrt(10), 0.101, sqrt(sigSq/(1-phi^2))))
 
 lambda = cbind(mean, var)
-fitFull = VBIL_PF(yM, lambda, S=10, alpha=0.1, maxIter=5000, threshold=0.05, thresholdIS=0.9)
+fitFull = VBIL_PF(yM, lambda, S=10, alpha=0.25, maxIter=5000, threshold=0.05, thresholdIS=0.9)
 
 
 lambda = cbind(mean, var)
@@ -81,14 +82,14 @@ mu = -0.5
 T = 500
 
 set.seed(11)
-reps = 20
-resultsvb = data.frame()
+reps = 100
+results = data.frame()
 for(i in 1:reps){
   
   x0 = rnorm(1, mu, sqrt(sigSq/(1-phi^2)))
-  x = rep(0, T)
-  y = rep(0, T)
-  for(t in 1:T){
+  x = rep(0, T+1)
+  y = rep(0, T+1)
+  for(t in 1:(T+1)){
     if(t == 1){
       x[t] = mu + phi*(x0-mu) + rnorm(1, 0, sqrt(sigSq))
     } else {
@@ -96,14 +97,35 @@ for(i in 1:reps){
     }
     y[t] = rnorm(1, 0, exp(x[t]/2))
   }
-  yM = matrix(y, T)
-  #MCMC = PMMH(y, 10000, 10000, 200, c(2.5, 0.025, 0, 10, 20, 1.5), c(0.005, 0.02, 0.02))
-  #support = seq(x[T]-1.5, x[T]+1.5, length.out=1000)
-  #xDensity = rep(0, 1000)
-  #for(j in 1:10000){
-  #  mean = MCMC$theta[j,2] + MCMC$theta[j,3] * (MCMC$x[j, T+1] - MCMC$theta[j, 2])
-  #  xDensity = xDensity + dnorm(support, mean, sqrt(MCMC$theta[j, 1]))/10000
-  #}
+  yM = matrix(y[1:T], T)
+  MCMC = SVM_MCMC(log(y^2)[1:T], 20000, 0.05)
+  xsupport = seq(x[T]-1.5, x[T]+1.5, length.out=1000)
+  ysupport = seq(min(y)-1.5, max(y)+1.5, length.out=1000)
+  xDensity = rep(0, 1000)
+  yDensity = rep(0, 1000)
+  for(j in 2001:10000){
+    mean = MCMC$theta[j,2] + MCMC$theta[j,3] * (MCMC$x[j, T+1] - MCMC$theta[j, 2])
+    xDensity = xDensity + dnorm(xsupport, mean, sqrt(MCMC$theta[j, 1]))/8000
+  }
+  sumXT1 = cumsum(xDensity)
+ 
+  for(j in 1:1000){
+    u = runif(1)
+    flag = TRUE
+    k = 1
+    while(flag){
+      if(u < sumXT1[k]) {
+        xT1draw = xsupport[k]
+        flag = FALSE
+      }
+      k = k + 1
+    }
+    yDensity = yDensity + dnorm(ysupport, 0, exp(xT1draw/2))/1000
+  }
+  results = rbind(results, data.frame(Method = 'MCMC', 
+                                     xLogScore = log(xDensity[min(which(x[T+1] < xsupport))]),
+                                     yLogScore = log(yDensity[min(which(y[T+1] < ysupport))])))
+  
   
   #EXTp1_1 = 0
   #EXTp1_2 = 0  
@@ -120,30 +142,33 @@ for(i in 1:reps){
   #                  value = c(colMeans(MCMC$theta), EXTp1_1, var(MCMC$theta[,1]), var(MCMC$theta[,2]), var(MCMC$theta[,3]), EXTp1_2 - EXTp1_1^2),
   #                  iteration = i)
   
-  mean = c(-4, 0, 0, 0)
-  var = diag(c(0.1, 0.15, 0.15, 0.15))
+  yM = matrix(y[1:T], T)
+  mean = c(-4.4, 0, 0.86, mu)
+  var = diag(c(0.7, 0.5, 0.101, sqrt(sigSq/(1-phi^2))))
   
   VBfit = list()
   finalELBO = vector(length=0)
-  for(j in 1:5){
+  for(j in 1:3){
     lambda = cbind(mean, var)
-    fit = VBIL_PF(yM, lambda, S=10, alpha=0.1, maxIter=5000, threshold=0.05, thresholdIS=0)
+    fit = VBIL_PF(yM, lambda, S=10, alpha=0.1, maxIter=5000, threshold=0.01, thresholdIS=0.9)
     finalELBO = c(finalELBO, fit$ELBO[fit$Iter])
     VBfit[[j]] = fit
   }
+  finalELBO[finalELBO > 0] = -1000
   bestFit = which(finalELBO == max(finalELBO, na.rm=TRUE))
-  muV = VBfit[[bestFit]]$Mu
-  U = VBfit[[bestFit]]$U
-  Sigma = t(U) %*% U
-  print(paste0('VBIL fininshed on iteration ', i))
+  VBfit = VBfit[[bestFit]]
   
-  vb = data.frame(method='VB',
-                  variable = c('sigma^2', 'mu', 'phi', 'X[T+1]'),
-                  statistic = c(rep('Mean', 4), rep('Variance', 4)),
-                  value = c(exp(muV[1] + 0.5 * Sigma[1,1]), muV[2:4], 
-                            (exp(Sigma[1, 1]) -1) * exp(2*muV[1] + Sigma[1,1]), diag(Sigma)[2:4]),
-                  iteration = i)
-  resultsvb = rbind(resultsvb, vb)
+  yDensity = rep(0, 1000)
+  xT1draws = rnorm(1000, VBfit$Mu[4], sqrt(sum(VBfit$U[,4]^2)))
+  for(j in 1:1000){
+    yDensity = yDensity + dnorm(ysupport, 0, exp(xT1draws[j]/2))/1000
+  }
+  results = rbind(results, data.frame(Method = 'VB', 
+                                      xLogScore = dnorm(x[T+1], VBfit$Mu[4], sqrt(sum(VBfit$U[,4]^2)), log=TRUE),
+                                      yLogScore = log(yDensity[min(which(y[T+1] < ysupport))])))
+  if(i %% 10 == 0){
+    print(i)
+  }
 }
 
 results = read.csv('simulResults.csv')

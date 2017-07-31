@@ -1,0 +1,10 @@
+\begin{thebibliography}{1}
+\newcommand{\enquote}[1]{``#1''}
+\expandafter\ifx\csname natexlab\endcsname\relax\def\natexlab#1{#1}\fi
+
+\bibitem[{Andrieu et~al.(2010)Andrieu, Doucet, and Holenstein}]{Andrieu2010}
+Andrieu, C., Doucet, A., and Holenstein, R. (2010), \enquote{Particle Markov
+  chain Monte Carlo methods,} \textit{Journal of the Royal Statistical Society,
+  Series B}, 72, 269--342.
+
+\end{thebibliography}
