@@ -52,7 +52,7 @@
 \setlength\parindent{0pt}
 \begin{document}
 
-\section{Updating the VB Approximation}
+\section{Updating with the Bootstrap Particle Filter}
 
 An issue with using the Particle Filter from $T+1$ to $T+S$ is that it only gives you an estimate of $p(y_{T+1:T+S} | \theta)$, and not $p(y_{1:T+S} | \theta)$. This could be an issue as the VB algorithm requires the distribution
 \begin{equation}
@@ -119,11 +119,51 @@ w_t^i \propto p(y_t | x_t^i, \theta)
 \end{equation}
 for all $t$.
 
+\section{Using the Data-Driven Particle Filter}
+
+The measurement equation for the SVM is
+\begin{equation}
+\label{measure}
+y_t = h(x_t, \eta_t) =\exp\{0.5 x_t\} \eta_t,
+\end{equation}
+leading to particles $x_t$ being generated according to
+\begin{equation}
+\label{measureInv}
+x_t = 2 \log(y_t / \eta_t).
+\end{equation}
+Weights are then calculated according to
+\begin{align}
+\label{DPFweight}
+w_t^{(j)} &= \pi_t^{(j)} \left| \frac{\delta h(x_t^{(j)}, \eta_t^{(j)})}{\delta x_t^{(j)}} \right|^{-1}_{\eta_t = \eta_t^{(j)}, x_t = x_t^{(j)}} p\left(x_t^{(j)} | x_{t-1}^{(j)}\right) \nonumber \\
+&= \pi_t^{(j)} \left| 0.5 \exp\{0.5 x_t^{(j)}\} \eta_t^{(j)} \right|^{-1} p \left(x_t^{(j)} | x_{t-1}^{(j)} \right)
+\end{align}
+
 \section{Discussion}
 
 Trying to update a particle filter based VB approximation introduces numerous problems, each of which seems to be solvable if we are willing to use the existing approximation of $q(\theta, x_{T+1} | y_{1:T})$ in place of the true posterior $p(\theta, x_{T+1} | y_{1:T})$. This implicitly changes the model prior used in an extremely informative way and not particularily desirable way - the prior must have the exact form that results in this particular multivariate normal posterior.
 If we accept the original VB approximation as good enough then maybe this won't be such a big deal; $x_{T+S+1}$ is not included in the above substitution though there is likely to be some kind of indirect impact. 
 
+
+\section{General Loss Distributions}
+
+To implement Bissiri et al. 2016 we need to write a loss function of the past data in terms of the parameters of interest, $x_{T+1}$ and  $\theta$.
+
+Consider
+\begin{equation}
+\label{loss}
+l(y | \theta, x_{T+1}) = -\sum_{t=1}^T \log(y_t | x_t),
+\end{equation}
+where
+\begin{equation}
+\label{lossyt}
+\log(y_t | x_t) = c + 0.5x_t + \frac{y_t^2}{2 \exp(x_t)}.
+\end{equation}
+The recursion
+\begin{equation}
+\label{xRecursion}
+x_t = \mu + \frac{x_{t+1} - \mu - \epsilon_{t+1}}{\phi}
+\end{equation}
+allows each $x_t$ to be recovered given a sequence of $iid$ standard normal random variables $\epsilon_t, t = 1, \dots, T+1$.
 
 
 \end{document}

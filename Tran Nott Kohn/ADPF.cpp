@@ -27,10 +27,10 @@ using namespace arma;
 // evaluate and automatially differentiate log(p(y_1:T, x_T+1, theta)) wrt theta and x_T+1
 struct logP {
   const MatrixXd& y; // data
-  const MatrixXd& noise; // standard normal matrix for the particle filter transitions
+  const mat& noise; // standard normal matrix for the particle filter transitions
   const int& obs; // T is taken for the variable type, so obs = number of elements in y
   const int& N; // Number of particles
-  logP(const MatrixXd& yIn, const MatrixXd& noiseIn, const int& obsIn, const int& nIn) : // constructor
+  logP(const MatrixXd& yIn, const mat& noiseIn, const int& obsIn, const int& nIn) : // constructor
     y(yIn), noise(noiseIn), obs(obsIn), N(nIn) {}
   template <typename T> // T will become stan's var that can be automatically differentiated - any variable differentiated in the chain rule for d logp / d theta must be type T
   T operator ()(const Matrix<T, Dynamic, 1>& theta) // derivative is with respect to theta (with xT+1 included), so theta matrix is the operator () input.
@@ -379,12 +379,8 @@ Rcpp::List VBIL_PF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S
         if(theta(0, s) > 0.3){
           theta(0, s) = 0.3;
         }
-        // generate standard normal noise for the particle filter, convert to Eigen format
-        Rcpp::NumericMatrix noiseRcpp(100, T+1);
-        for(int t = 0; t < T+1; ++t){
-          noiseRcpp(Rcpp::_, t) = Rcpp::rnorm(100);
-        }
-        Map<MatrixXd> noise(Rcpp::as<Map<MatrixXd> >(noiseRcpp));
+        // generate standard normal noise for the particle filter
+        mat noise(N, T+1, fill::randn);
         // take derivative of log joint
         logP p(y, noise, T, N);
         stan::math::set_zero_all_adjoints();

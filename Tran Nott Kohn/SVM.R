@@ -5,6 +5,7 @@ library(RcppEigen)
 library(rstan)
 sourceCpp('ADPF.cpp')
 sourceCpp('SVM_MCMC.cpp')
+sourceCpp('ADDPF.cpp')
 
 sigSq = 0.02
 phi = 0.9
@@ -31,10 +32,17 @@ MCMC = SVM_MCMC(yStar[1:T], 50000, 0.05)
 
 yM = matrix(y[1:T], T)
 mean = c(-4.4, 0, 0.86, mu)
-var = diag(c(0.7, sqrt(10), 0.101, sqrt(sigSq/(1-phi^2))))
+var = diag(c(0.7, 0.5, 0.101, sqrt(sigSq/(1-phi^2))))
 
 lambda = cbind(mean, var)
-fitFull = VBIL_PF(yM, lambda, S=10, alpha=0.25, maxIter=5000, threshold=0.05, thresholdIS=0.9)
+fitBPF = VBIL_PF(yM, lambda, S=50, alpha=0.25, maxIter=5000, threshold=0.05, thresholdIS=0.9)
+
+lambda = cbind(mean, var)
+fitDPF = VBIL_DPF(matrix(yStar[1:T], T), lambda, S=10, N=100, alpha=0.25, maxIter=1, threshold=0.05, thresholdIS=0.9)
+
+
+
+
 
 
 lambda = cbind(mean, var)
@@ -81,10 +89,10 @@ phi = 0.8
 mu = -0.5
 T = 500
 
-set.seed(11)
-reps = 100
+set.seed(5)
+reps = 500
 results = data.frame()
-for(i in 1:reps){
+for(i in 1:400){
   
   x0 = rnorm(1, mu, sqrt(sigSq/(1-phi^2)))
   x = rep(0, T+1)
@@ -166,10 +174,15 @@ for(i in 1:reps){
   results = rbind(results, data.frame(Method = 'VB', 
                                       xLogScore = dnorm(x[T+1], VBfit$Mu[4], sqrt(sum(VBfit$U[,4]^2)), log=TRUE),
                                       yLogScore = log(yDensity[min(which(y[T+1] < ysupport))])))
-  if(i %% 10 == 0){
+  if(i %% 5 == 0){
     print(i)
   }
 }
+
+results = gather(results, variable, logscore, -Method)
+results = rbind(results, results2)
+write.csv(results, 'sim500.csv', row.names=FALSE)
+
 
 results = read.csv('simulResults.csv')
 resMCMC = filter(results, method=='MCMC')
