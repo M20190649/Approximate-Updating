@@ -49,121 +49,174 @@
 \setlength{\evensidemargin}{0.1in}
 \setlength{\textwidth}{6.5in}
 \setlength{\textheight}{8.25in}
+\numberwithin{equation}{section}
 \setlength\parindent{0pt}
 \begin{document}
 
-\section{Updating with the Bootstrap Particle Filter}
+\section{Introduction}
 
-An issue with using the Particle Filter from $T+1$ to $T+S$ is that it only gives you an estimate of $p(y_{T+1:T+S} | \theta)$, and not $p(y_{1:T+S} | \theta)$. This could be an issue as the VB algorithm requires the distribution
+Consider a high frequency time series with observed values $y_{1}, \dots, y_{T+S}$, collectively denoted by $y_{1:T+S}$, with a forecaster interested in the forecast distribution of the future value $y_{T+S+h}$, where $S \geq 1$. In many applications forecasting uncertainty can be reduced by conditioning on additional data, so knowledge of the distribution of $p(y_{T+S+h} | y_{1:T+S})$ is preferable to that of $p(y_{T+S+h} | y_{1:T})$. 
+
+Many time series models of interest contain a set of global parameters $\boldsymbol{\theta}$ and observation specific latent variables $x_{0:T}$, such that $x_t$ is assumed to follow a Markovian structure and $y_t$ is conditionally independent of $y_{1:t-1}$, given $\boldsymbol{\theta}$ and $x_t$. One of the most common computational techniques for models with latent variables is Markov Chain Monte Carlo (MCMC), which involves iterative sampling from a Markov Chain designed to converge to the true posterior distribution, however these approaches can have slow convergence rates. In this paper it is assumed that an MCMC algorithm will require a time period of length $S$ to converge, so at time $T+S$ the posterior distribution of $\boldsymbol{\theta}$  and $x_{0:T+S}$ can be conditioned only on $y_{1:T}$ and hence only $p(y_{1:T+S+h} | y_{1:T})$ is available.
+
+The additional data $y_{T+1:T+S}$ can be included in the forecast by using filtering techniques such as the Kalman filter or particle filtering, however this will only update knowledge on $x_{0:T+S}$ but not $\boldsymbol{\theta}$. As an alternative to this method, this paper will instead approximate the posterior distribution $p(\boldsymbol{\theta}, x_{T} | y_{1:T})$ with $q_{\boldsymbol{\lambda}}(\boldsymbol{\theta}, x_{T} | y_{1:T})$ and the updated posterior distribution $p(\boldsymbol{\theta}, x_{T+S} | y_{1:T+S})$ with $q_{\boldsymbol{\lambda}}(\boldsymbol{\theta}, x_{T+S} | y_{1:T+S})$. The parameters of this approximation, denoted by $\boldsymbol{\lambda}$, are optimised by gradient descent to minimise the Kullback-Leibler divergence from $q$ to $p$, a technique known as Variational Inference, which has seen wide use in the literature (references).
+
+Variational Bayes involves an implicit trade-off: reducing the forecast horizon of $y_{T+S+h}$ from $S+h$ to $h$ reduces the uncertainty of the forecast, but the approximation will increase the statistical error. This paper additionally explores that trade-off for a Stochastic Volatility Model, a common latent state time series model.
+
+\begin{itemize}
+\item Some motivation about forecasting and updates, can probably be copied from the MIVB file
+\item Not focusing on MCMC sample
+\item VB estimate at time T, VB update to time T+S
+\item End goal: An approximation $q(\theta, x_{T+1})$ to make $q(y_{T+1} | y_{1:T})$, and then update to $q(y_{T+S+1} | y_{1:T+S})$ efficiently.
+\end{itemize}
+
+\section{MCMC and Particle Filtering}
+\begin{itemize}
+\item MCMC background
+\item Stochastic Volatility Model
+\item Kim Shepherd Chib MCMC / Particle Filtering / PMCMC for more complicated models
+\item BPF, APF
+\end{itemize}
+
+\citep{Arulampalam2002}
+
+\section{Variational Inference}
+
+
+Variational Inference posits a divergence function between the true posterior distribution $p(\boldsymbol{\theta}, x_{0:T} | y_{1:T})$ and some approximating distribution $q_{\boldsymbol{\lambda}}(\boldsymbol{\theta}, x_{0:T} | y_{1:T})$, choosing the parameters $\boldsymbol{\lambda}$ for a given functional form $q$ that minimises the divergence function.
+
+This paper will follow the traditional approach, where the divergence function is the Kullback-Leibler (KL) divergence \citep{Kullback1951} from $q_{\boldsymbol{\lambda}}(\boldsymbol{\theta}, x_{0:T} | y_{1:T})$ to the true posterior $p(\boldsymbol{\theta}, x_{0:T} | y_{1:T})$ The KL divergence is defined by
+\begin{align}
+\label{KL-def}
+KL[q_{\boldsymbol{\lambda}}(\boldsymbol{\theta}, x_{0:T} | y_{1:T})\hspace{.1cm}||\hspace{.1cm}p(\boldsymbol{\theta}, x_{0:T} | y_{1:T})] &= \nonumber \\
+\int q_{\boldsymbol{\lambda}}(\boldsymbol{\theta}, x_{0:T} | y_{1:T}) &\ln \left( \frac{q_{\boldsymbol{\lambda}}(\boldsymbol{\theta}, x_{0:T} | y_{1:T})}{p(\boldsymbol{\theta}, x_{0:T} |y_{1:T})}\right) d\boldsymbol{\theta} dx_{0:T}
+\end{align}
+and can alternatively be expressed as
 \begin{equation}
-\label{VBPF}
-\ln(p(y_{1:T+S}, \theta, x_{T+S+1})) = \ln(p(\theta)) + \ln(p(y_{1:T+S} | \theta)) + \ln(p(x_{T+S+1} | y_{1:T+S}, \theta)).
+\label{KL-ELBO}
+KL[q(\boldsymbol{\theta}, x_{0:T} | \boldsymbol{\lambda})\hspace{.1cm}||\hspace{.1cm}p(\boldsymbol{\theta}, x_{0:T} | y_{1:T})] = \ln(p(y_{1:T})) - \mathcal{L}(\boldsymbol{\lambda})
 \end{equation}
-as part of the ELBO,
+where $\mathcal{L}(\boldsymbol{\lambda})$ is referred to as the Evidence Lower Bound (ELBO), as it provides a lower bound on the unknown constant $\ln(p(y_{1:T}))$.  $\mathcal{L}(\boldsymbol{\lambda})$ is defined by
 \begin{equation}
 \label{ELBO}
-\mathcal{L}(\boldsymbol{\lambda}) = \int q_{\boldsymbol{\lambda}}(\boldsymbol{\theta}, x_{T+S+1} | y_{1:T+S}) \ln \left( \frac{p(y_{1:T+S},\boldsymbol{\theta}, x_{T+S+1})}{q_{\boldsymbol{\lambda}}(\boldsymbol{\theta}, x_{T+S+1} | y_{1:T+S})} \right) d\boldsymbol{\theta}dx_{1:T}.
+\mathcal{L}(\boldsymbol{\lambda}) = \int q_{\boldsymbol{\lambda}}(\boldsymbol{\theta}, x_{0:T} | y_{1:T}) \ln \left( \frac{p(y_{1:T},\boldsymbol{\theta}, x_{0:T})}{q_{\boldsymbol{\lambda}}(\boldsymbol{\theta}, x_{0:T} | y_{1:T})} \right) d\boldsymbol{\theta}dx_{1:T},
 \end{equation}
-This issue should be avoidable but requires a slightly different derivation of the ELBO. Note that
-\begin{align}
-\ln(p(y_{T+1:T+S} | y_{1:T})) &= \int_{\theta, x_{T+S+1}} q(\theta, x_{T+1} | y_{1:T+S}) \ln(p(y_{T+1:T+S} | y_{1:T})) d_{\theta} d_{x_{T+S+1}} \nonumber \\
-&= \int_{\theta, x_{T+S+1}} q(\theta, x_{T+S+1}| y_{1:T+S}) \ln \left(\frac{p(y_{T+1:T+S}, \theta, x_{T+1} | y_{1:T})}{p(x_{T+1}, \theta | y_{1:T+S})} \right) d_{\theta} d_{x_{T+S+1}}\nonumber \\
-&= \int_{\theta, x_{T+S+1}} q(\theta, x_{T+S+1}| y_{1:T+S}) \nonumber \\
-&\times \ln \left( \frac{p(y_{T+1:T+S}, \theta, x_{T+1} | y_{1:T})q(\theta, x_{T+S+1}| y_{1:T+S})}
-{p(x_{T+1}, \theta | y_{1:T+S})q(\theta, x_{T+S+1}| y_{1:T+S}) } \right) d_{\theta} d_{x_{T+1}}\nonumber \\
-&= \int_{\theta, x_{T+S+1}} q(\theta, x_{T+S+1}| y_{1:T+S}) \ln \left(\frac{p(y_{T+1:T+S}, \theta, x_{T+1} | y_{1:T})}{q(\theta, x_{T+S+1}| y_{1:T+S})} \right) d_{\theta} d_{x_{T+1}} \label{ELBOv2}\\
-&+  \int_{\theta, x_{T+S+1}} q(\theta, x_{T+S+1}| y_{1:T+S}) \ln \left(\frac{q(\theta, x_{T+S+1}| y_{1:T+S})}{p(\theta, x_{T+1} | y_{1:T+S})} \right) d_{\theta} d_{x_{T+1}} \label{KL} \\
-&= \mathcal{L}_2(\boldsymbol{\lambda}) + KL[q(\theta, x_{T+S+1} | y_{1:T+S}) || p(\theta, x_{T+S+1} | y_{1:T+S})]. \nonumber
-\end{align}
-As (\ref{KL}) is the Kullback-Leibler divergence from $q$ to $p$, it is minimised by maximising either (\ref{ELBO}) or (\ref{ELBOv2}), ie. maximising an ELBO that contains $\ln(p(y_{T+1:T+S}, \theta, x_{T+S+1} | y_{1:T}))$ instead of  $\ln(p(y_{1:T+S}, \theta, x_{T+S+1}))$ is still valid.
-$\mathcal{L}_2(\boldsymbol{\lambda})$, given by (\ref{ELBOv2}), contains
+and as $\ln(p(y_{1:T}))$ is constant with respect to $\boldsymbol{\lambda}$, maximising (\ref{ELBO}) with respect to $\boldsymbol{\lambda}$ is equivalent to minimising (\ref{KL-def}). Maximising (\ref{ELBO}) is more convenient that minimising (\ref{KL-def}) as it is a function of the known joint distribution $p(y_{1:T}, \boldsymbol{\theta}, x_{0:T})$ instead of the unknown posterior $p(\boldsymbol{\theta}, x_{0:T} | y_{1:T})$.
+
+\subsection{ELBO Optimisation}
+Equation (\ref{ELBO}) can be maximised using a gradient ascent approach, where the following update step is iteratively applied until (\ref{ELBO}) converges within some pre-specified tolerance:
 \begin{equation}
-\label{VBPF2}
-\ln(p(y_{T+1:T+S}, \theta, x_{T+S+1} | y_{1:T})) = \ln(p(\theta | y_{1:T} )) + \ln(p(y_{T+1:T+S} | \theta, y_{1:T})) + \ln(p(x_{T+S+1} | y_{1:T+S}, \theta)).
+\label{GradAscent}
+\boldsymbol{\lambda}^{(m+1)} = \boldsymbol{\lambda}^{(m)} + \rho^{(m)} \frac{\delta}{\delta\boldsymbol{\lambda}} \mathcal{L}(\boldsymbol{\lambda^{(m)}}),
 \end{equation}
-This introduces a few problems,
+where the derivative is evaluated at $\boldsymbol{\lambda}^{(m)}$. This update requires some initial values $\boldsymbol{\lambda}^{(0)}$ and a sequence $\rho^{(m)}, m = 1, 2, \dots$ known as the learning rate. If $\rho^{(m)}$ is chosen to satisfy the following conditions the algorithm is guaranteed to converge to a local maximum \citep{Robbins1951}.
+\begin{align}
+&\sum_{m=1}^{\infty} \rho^{(m)} =  \infty \\
+&\sum_{m=1}^{\infty} (\rho^{(m)})^2 <  \infty.
+\end{align}
+
+This paper uses Adam \citep{Kingma2015b} to generate the sequence $\rho^{(m)}$.
+
+\citet{Ranganath2014} showed that a Monte Carlo estimate of the derivative of the ELBO can be given by
+\begin{equation}
+\label{ScoreDeriv}
+\frac{\delta}{\delta\boldsymbol{\lambda}}\mathcal{L}(\boldsymbol{\lambda^{(m)}}) \approx \frac{1}{N}\sum_{i=1}^{N} \frac{\delta}{\delta\boldsymbol{\lambda}} [\ln(q_{\boldsymbol{\lambda}^{(m)}}(\boldsymbol{\theta_i}, x_{0:T, i} | y_{1:T})] \ln \left(\frac{p(y_{1:T}, \boldsymbol{\theta}_i, x_{1:T, i})}{q_{\boldsymbol{\lambda}^{(m)}}(\boldsymbol{\theta_i}, x_{0:T, i} | y_{1:T})} \right) 
+\end{equation}
+where $i = 1, \dots, N$ indicates independent simulations from $q_{\boldsymbol{\lambda}^{(m)}}(\boldsymbol{\theta}, x_{0:T} | y_{1:T})$. 
+The terms in the sum in (\ref{ScoreDeriv}) can have large variances, and in practice a large value of $N$ is required to ensure a precise estimate of the gradient of the ELBO is obtained, slowing computation. 
+
+The variance can be reduced by the reparameterisation trick of \citet{Kingma2014}, introducing a random vector $\boldsymbol{\epsilon}$ with a distribution $q(\boldsymbol{\epsilon})$ that contains no free parameters, and a differentiable transform $f$ such that
+\begin{equation}
+\label{Reparam}
+f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}) = \{\boldsymbol{\theta}, x_{1:T}\}.
+\end{equation}
+Kingma and Welling (2014) show that an $f$ exists to transform $\boldsymbol{\epsilon}$ to any continuous random variable, with examples including a location-scale transform of a standard normal $\epsilon$ and an inverse-CDF transform of a uniform $\epsilon$. In this case, (\ref{ELBO}) becomes
+\begin{equation}
+\label{ReparamELBO}
+\mathcal{L}(\boldsymbol{\lambda}) = \int q(\boldsymbol{\epsilon}) \ln \left( \frac{p(y_{1:T},f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}) |\det J(\boldsymbol{\epsilon}, \boldsymbol{\lambda})|}{q(\boldsymbol{\epsilon})} \right) d\boldsymbol{\epsilon},
+\end{equation}
+where $J(\boldsymbol{\epsilon}, \boldsymbol{\lambda})$ is the Jacobian matrix of the transformation $f$. The derivative of (\ref{ReparamELBO}) can be estimated by 
+\begin{equation}
+\label{ReparamDeriv}
+\frac{\delta}{\delta \boldsymbol{\lambda}}\mathcal{L}(\boldsymbol{\lambda}^{(m)}) \approx \frac{1}{M}\sum_{i=1}^{M}
+\frac{\delta f(\boldsymbol{\epsilon}_i, \boldsymbol{\lambda}^{(m)})} {\delta \boldsymbol{\lambda}}
+\frac{\delta \ln (p(y_{1:T}, f(\boldsymbol{\epsilon}_i, \boldsymbol{\lambda}^{(m)})))}{\delta f(\boldsymbol{\epsilon}_i, \boldsymbol{\lambda}^{(m)})} + \frac{\delta  \ln(|\det J(\boldsymbol{\lambda}^{(m)}, \boldsymbol{\epsilon}_i)|)}{\delta \boldsymbol{\lambda}},
+\end{equation} 
+where simulations of $\boldsymbol{\theta}$ and $x_{1:T+S}$ are replaced by simulations of $\boldsymbol{\epsilon}$ from $q(\boldsymbol{\epsilon})$. The variance of this estimator is often orders of magnitude smaller than the estimator in (\ref{ScoreDeriv}) (citations), so $M$ can be set much lower than $N$.
+
+\subsection{Randomised Quasi Monte Carlo}
+\citep{Gunawan2017}
+\citep{Matousek1998}
+\citep{Bratley1988}
+\citep{Sobol1967}
+
+\subsection{Choice of $q$ distribution}
+
+\section{Dimensionality Reduction}
+
+ADVI simulation results
+
+As the latent variables are Markovian, once the distribution of $x_{T+1}$ is available, the distributions of each previous $x_t, t \leq T$ is irrelevant to forecasts of $y_{T+S+h}$ and it may be more convenient to construct an approximation for $p(\boldsymbol{\theta}, x_{T+1} | y_{1:T})$ than for $p(\boldsymbol{\theta}, x_{0:T+1} | y_{1:T})$, as they contain the same information about $y_{T+S+h}$ but the dimensionality of the posterior is reduced from $T+k+2$ to $k+1$, where $k$ is the number of elements in $\boldsymbol{\theta}$. This in turn allows for more expressive approximating distributions to be used, as the size of $\boldsymbol{\lambda}$ does not grow with $T$.
+
+In this case, using $f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}) = \{\boldsymbol{\theta}, x_{T+1}\}$,
+\begin{equation}
+\label{DimRedLogJoint}
+\ln(p(y_{1:T}, f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}))) = \ln\left(\int_{X_T} p(x_{T+1} | \theta, x_T)p(x_T | y_{1:T}, \boldsymbol{\theta})d_{X_T}\right) + \ln(p(y_{1:T} |\boldsymbol{\theta})) + \ln(p(\boldsymbol{\theta}))
+\end{equation}
+In many cases, the distributions $p(x_T | y_{1:T}, \boldsymbol{\theta})$ and $p(y_{1:T} | \boldsymbol{\theta})$ are intractable, but \citet{TranM2017} note that the particle filter estimators $\hat{p}(x_T | y_{1:T}, \boldsymbol{\theta})$ and $\hat{p}(y_{1:T} | \boldsymbol{\theta})$ are sufficient substitutes in what they refer to as Variational Bayes with Intractable Likelihood (VBIL). The particle filter estimation of the distribution $\hat{p}(x_T | y_{1:T}, \boldsymbol{\theta})$ is expressed as a discrete set of point masses $x_T^{(k)}$ and weights $\pi_T^{(k)}$, where $k = 1, \dots, N$ represent the particles of the particle filter. In this case, the integral in (\ref{DimRedLogJoint}) reduces to the sum
+\begin{equation}
+\label{ParticleFilterIntegral}
+\int_{x_T} p(x_{T+1} | \theta, x_T)p(x_T | y_{1:T}, \boldsymbol{\theta})d_{x_T} = \sum_{k=1}^N \pi_T^{(k)} p(x_{T+1} | \boldsymbol{\theta}, x_T^{(k)}),
+\end{equation}
+and hence
+\begin{equation}
+\label{PFLogJoint}
+\ln(p(y_{1:T}, f(\boldsymbol{\epsilon}, \boldsymbol{\lambda}))) \approx \ln \left(\sum_{k=1}^N \pi_T^{(k)} p(x_{T+1} | \boldsymbol{\theta}, x_T^{(k)})\right) + \ln(\hat{p}(y_{1:T} |\boldsymbol{\theta})) + \ln(p(\boldsymbol{\theta}))
+\end{equation}
+can be substituted into (\ref{ReparamDeriv}). This derivative of (\ref{PFLogJoint}) with respect to $\boldsymbol{\lambda}$ can be obtained with automatic differentiation tools such as those provided by Stan \citep{Carpenter2015}.
+
+\subsection{Importance Sampling}
+
+\citep{Sakaya2017}
+
+
+\section{Updating}
+
+\begin{itemize}
+\item We have an approximation of $q(\theta, x_{T+1} | y_{1:T})$ which can be used to forcast some future value $y_{T+S+h}$. However, observation of additional data $y_{T+1:T+S}$ should be able to improve this forecast.
+\item We aim to use the original distribution $q(x_{T+1}, \theta | y_{1:T})$ to build this new approximation, and only using $y_{T+1:T+S}$.
+\item Instead of maximising the standard ELBO,
+\begin{equation*}
+\int_{\theta, x_{T+S+1}} q(\theta, x_{T+S+1}| y_{1:T+S}) \ln \left(\frac{p(y_{1:T+S}, \theta, x_{T+S+1})}{q(\theta, x_{T+S+1}| y_{1:T+S})} \right) d_{\theta} d_{x_{T+S+1}},
+\end{equation*}
+we can instead maximise a slightly modified ELBO:
+\begin{equation*}
+\int_{\theta, x_{T+S+1}} q(\theta, x_{T+S+1}| y_{1:T+S}) \ln \left(\frac{p(y_{T+1:T+S}, \theta, x_{T+S+1} | y_{1:T})}{q(\theta, x_{T+S+1}| y_{1:T+S})} \right) d_{\theta} d_{x_{T+S+1}}.
+\end{equation*}
+\item The joint distribution, $p(y_{T+1:T+S}, \theta, x_{T+1} | y_{1:T})$ similarly to before, use
+\begin{align*}
+\ln(p(y_{T+1:T+S}, \theta, x_{T+S+1} | y_{1:T})) &\approx \ln(p(\theta | y_{1:T} )) + \ln(\hat{p}(y_{T+1:T+S} | \theta, y_{1:T}))\\
+&+ \ln\left(\int_{X_{T+S}} p(x_{T+S+1} | x_{T+S}, \theta) \hat{p}(X_{T+S} | y_{1:T+S}, \theta) d x_{T+S}\right),
+\end{align*}
+where $\hat{p}$ denotes a particle filter estimate.
+\item This introduces a few problems,
 \begin{enumerate}
-\item We do not have a parametric form of the marginal posterior distribution $p(\theta | y_{1:T})$. We do, however, have a parametric approximation available from the earlier VB: $q(\theta | y_{1:T})$. This can be feasibly used, but we would have to be comfortable with changing the model specification.
+\item We do not have a parametric form of the marginal posterior distribution $p(\theta | y_{1:T})$.
 \item The particle filter estimates must be conditioned on $y_{1:T}$.
 \end{enumerate}
+\item 1. can be solved by using $q(\theta | y_{1:T})$ in place of $p(\theta | y_{1:T})$. This implicitly changes the original model prior.
+\item 2. requires starting the particle filter with particles drawn from $p(x_{T+1} | y_{1:T}, \theta)$ for the bootstrap particle filter or $p(x_{T+1} | y_{1:T+1}, \theta)$ for the auxillary particle filter. 
+\item This distribution is unavailable without re-using data $y_{1:T}$, but $q(x_{T+1} | y_{1:T}, \theta)$ can be substituted in.
+\item Then the filter needs to be run forward for just $S$ steps per iteration.
+\end{itemize}
 
 
-\section{VB Particle Filtering}
 
-We want samples from distribution $p(x_{T+1:T+S} | \theta, y_{1:T+S})$, which we decompose as
-\begin{equation}
-\label{posterior}
-p(x_{T+1:T+S} | \theta, y_{1:T+S}) = p(x_{T+1} | y_{1:T}, \theta) p(y_{T+1} | x_{T+1}, \theta) \prod_{t=T+2}^{T+S} \left( p(y_t | x_t, \theta) p (x_t | x_{t-1}, \theta) \right)
-\end{equation}
-However, this is unavailable so instead we draw particles $x_{T+1:T+S}^{(1:N)}$ from a proposal distribution $f(x_{T+1:T+S})$, and then use importance sampling weights to correct the approximation. The weights for particle vector $i$ are given by
-\begin{equation} 
-\label{weights}
-w^{(i)} \propto \frac{p(x_{T+1:T+S}^{(i)} | \theta, y_{1:T+S}, \theta)}{f(x_{T+1:T+S}^{(i)})}.
-\end{equation}
-
-A particle filter operates by positing a proposal distribution that factorises according to $f(x_{T+1:T+S}) =\prod_{t=T+1}^{T+S} f(x_{t})$, and drawing samples and calculating the weights for each time period sequentially. In this case, the weights for particles $x_{T+1}^{(i)}$ from the proposal distribution $f(x_{T+1})$ are given by
-\begin{equation}
-\label{weights2}
-w_{T+1}^{(i)} \propto \frac{p(x_{T+1}^{(i)} | y_{1:T}, \theta) p(y_{T+1} | x_{T+1}^{(i)}, \theta)}{f(x_{T+1}^{(i)})}
-\end{equation}
-and weights at a future time $t$ are given by the recursion
-\begin{equation}
-\label{weights3}
-w_t^{(i)} \propto w_{t-1}^{(i)} \frac{p(y_t | x_t^{(i)}, \theta) p (x_t^{(i)}| x_{t-1}^{(i)}, \theta)}{f(x_{t}^{(i)})}.
-\end{equation}
-
-Equation (\ref{weights2}) is problematic, we cannot easily evaluate the distribution $p(x_{T+1} | y_{1:T}, \theta)$ without running the filter over the entire dataset. As before, we can approximate this with the distribution $q(x_{T+1} | \theta, y_{1:T})$. If this is satisfactory, choose $f(x_{T+1})$ to be $q(x_{T+1} | \theta, y_{1:T})$ and each other $f(x_{t})$ to be $p(x_t | x_{t-1}, \theta)$. If the particles are resampled at each step, the weights reduce to 
-\begin{equation}
-\label{weights6}
-w_t^i \propto p(y_t | x_t^i, \theta)
-\end{equation}
-for all $t$.
-
-\section{Using the Data-Driven Particle Filter}
-
-The measurement equation for the SVM is
-\begin{equation}
-\label{measure}
-y_t = h(x_t, \eta_t) =\exp\{0.5 x_t\} \eta_t,
-\end{equation}
-leading to particles $x_t$ being generated according to
-\begin{equation}
-\label{measureInv}
-x_t = 2 \log(y_t / \eta_t).
-\end{equation}
-Weights are then calculated according to
-\begin{align}
-\label{DPFweight}
-w_t^{(j)} &= \pi_t^{(j)} \left| \frac{\delta h(x_t^{(j)}, \eta_t^{(j)})}{\delta x_t^{(j)}} \right|^{-1}_{\eta_t = \eta_t^{(j)}, x_t = x_t^{(j)}} p\left(x_t^{(j)} | x_{t-1}^{(j)}\right) \nonumber \\
-&= \pi_t^{(j)} \left| 0.5 \exp\{0.5 x_t^{(j)}\} \eta_t^{(j)} \right|^{-1} p \left(x_t^{(j)} | x_{t-1}^{(j)} \right)
-\end{align}
+\section{Empirical}
 
 \section{Discussion}
 
-Trying to update a particle filter based VB approximation introduces numerous problems, each of which seems to be solvable if we are willing to use the existing approximation of $q(\theta, x_{T+1} | y_{1:T})$ in place of the true posterior $p(\theta, x_{T+1} | y_{1:T})$. This implicitly changes the model prior used in an extremely informative way and not particularily desirable way - the prior must have the exact form that results in this particular multivariate normal posterior.
-If we accept the original VB approximation as good enough then maybe this won't be such a big deal; $x_{T+S+1}$ is not included in the above substitution though there is likely to be some kind of indirect impact. 
-
-
-\section{General Loss Distributions}
-
-To implement Bissiri et al. 2016 we need to write a loss function of the past data in terms of the parameters of interest, $x_{T+1}$ and  $\theta$.
-
-Consider
-\begin{equation}
-\label{loss}
-l(y | \theta, x_{T+1}) = -\sum_{t=1}^T \log(y_t | x_t),
-\end{equation}
-where
-\begin{equation}
-\label{lossyt}
-\log(y_t | x_t) = c + 0.5x_t + \frac{y_t^2}{2 \exp(x_t)}.
-\end{equation}
-The recursion
-\begin{equation}
-\label{xRecursion}
-x_t = \mu + \frac{x_{t+1} - \mu - \epsilon_{t+1}}{\phi}
-\end{equation}
-allows each $x_t$ to be recovered given a sequence of $iid$ standard normal random variables $\epsilon_t, t = 1, \dots, T+1$.
-
-
+\bibliographystyle{asa}
+\bibliography{references}
+ 
 \end{document}

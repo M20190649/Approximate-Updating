@@ -16,7 +16,7 @@ rowvec FFBSsvm(vec y, rowvec theta, rowvec s){
   //forward filter steps
   vec att(T, fill::ones); //0 - (T-1) -> x1 - xT
   vec ptt(T, fill::ones);
-  rowvec draws(T); //0 - T -> x0 - xT
+  rowvec draws(T+1); //0 - T -> x1 - xT+1
   double at = theta[1];
   double pt = theta[0] / (1 - pow(theta[2], 2));
   double vt = y[0]  -  at  -  mixmeans[s[0]]  +  1.2704;
@@ -29,14 +29,17 @@ rowvec FFBSsvm(vec y, rowvec theta, rowvec s){
     att[t] = at  +  pt * vt / (pt + mixvar[s[t]]);
     ptt[t] = pt  -  pow(pt, 2) / (pt + mixvar[s[t]]);
   }   
+  // x_T+1
+  at = theta[1]  +  theta[2] * (att[T-1] - theta[1]);
+  pt = pow(theta[2], 2) * ptt[T-1]  +  theta[0];
   //backwards sampler steps
   double vstar;
   double fstar;
   double mstar;
-  vec atT(T);
-  vec ptT(T);
-  draws[T-1] = att[T-1]  +  sqrt(ptt[T-1]) * randn<vec>(1)[0];
-  for(int t = T - 1; t > 0; --t){
+  vec atT(T+1);
+  vec ptT(T+1);
+  draws[T] = at  +  sqrt(pt) * randn<vec>(1)[0];
+  for(int t = T; t > 0; --t){
     vstar = draws[t]  -  theta[1]  -  theta[2] * (att[t-1] - theta[1]);
     fstar = pow(theta[2], 2) * ptt[t-1]  +  theta[0];
     mstar = ptt[t-1] * theta[2];
@@ -101,7 +104,7 @@ Rcpp::List SVM_MCMC(vec y, int reps, double stepSize){
     //Mu ~ Normal(mean, var)
     meanMuNumer = a(i-1, 0) * (1 - pow(theta(i-1, 2), 2));
     meanMuDenom = theta(i, 0)  +  10 * (T + T*pow(theta(i-1, 2), 2)  - 2*T*theta(i-1, 2) + 1 - pow(theta(i-1, 2), 2));
-    for(int t = 1; t < T; ++t){
+    for(int t = 1; t < T+1; ++t){
       meanMuNumer += a(i-1, t)  +  pow(theta(i-1, 2), 2) * a(i-1, t-1)  -  theta(i-1, 2) * (a(i-1, t) + a(i-1, t-1)); 
     }
     meanMuNumer *= 10;
@@ -159,12 +162,8 @@ Rcpp::List SVM_MCMC(vec y, int reps, double stepSize){
       }
     }
     
-    // alpha 0
-    double a0Mean = theta(i, 2) * a(i-1, 1) - theta(i, 2) * theta(i, 1) +
-      pow(theta(i, 2), 2) * theta(i, 1) + 1 - pow(theta(i, 2), 2);
-    a(i, 0) = a0Mean + sqrt(theta(i, 0)) * randn<vec>(1)[0];
     //alpha ~ FFBS
-    a(i, span(1, T)) = FFBSsvm(y, theta.row(i), s.row(i));
+    a.row(i) = FFBSsvm(y, theta.row(i), s.row(i));
 
   }
   Rcpp::Rcout << accept/reps << std::endl;

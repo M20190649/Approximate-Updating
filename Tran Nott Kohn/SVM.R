@@ -5,17 +5,18 @@ library(RcppEigen)
 library(rstan)
 sourceCpp('ADPF.cpp')
 sourceCpp('SVM_MCMC.cpp')
-sourceCpp('ADDPF.cpp')
+#sourceCpp('ADDPF.cpp')
+sourceCpp('ADPFUpdater.cpp')
+#sourceCpp('APF.cpp')
 
 sigSq = 0.02
 phi = 0.9
 mu = -0.5
 T = 500
-S = 50
 
-x = rep(0, T+S)
-y = rep(0, T+S)
-for(t in 1:(T+S)){
+x = rep(0, T)
+y = rep(0, T)
+for(t in 1:T){
   if(t == 1){
     x[t] = rnorm(1, mu, sqrt(sigSq/(1-phi^2)))
   } else {
@@ -24,53 +25,17 @@ for(t in 1:(T+S)){
   y[t] = exp(x[t]/2) * rnorm(1)
 }
 
-
-
 yStar = log(y^2)
-MCMC = SVM_MCMC(yStar[1:T], 50000, 0.05)
-
-
-yM = matrix(y[1:T], T)
+MCMC = SVM_MCMC(yStar, 50000, 0.05)
+yM = matrix(y, T)
 mean = c(-4.4, 0, 0.86, mu)
 var = diag(c(0.7, 0.5, 0.101, sqrt(sigSq/(1-phi^2))))
-
 lambda = cbind(mean, var)
-fitBPF = VBIL_PF(yM, lambda, S=50, alpha=0.25, maxIter=5000, threshold=0.05, thresholdIS=0.9)
-
+fitBPF = VBIL_PF(yM, lambda, S=10, alpha=0.25, maxIter=5000, threshold=0.05, thresholdIS=0.9)
 lambda = cbind(mean, var)
-fitDPF = VBIL_DPF(matrix(yStar[1:T], T), lambda, S=10, N=100, alpha=0.25, maxIter=1, threshold=0.05, thresholdIS=0.9)
+fitAPF = VBIL_APF(yM, lambda, S=10, alpha=0.25, maxIter=5000, threshold=0.05, thresholdIS=0.9)
 
-
-
-
-
-
-lambda = cbind(mean, var)
-fitPartial = VBIL_PF(matrix(y[1:T], T), lambda, S=10, alpha=0.1, maxIter=5000, threshold=0.05, thresholdIS=0.9)
-
-U = fitPartial$U
-Sigma = t(U) %*% U
-SigInv = solve(Sigma[1:3, 1:3])
-muV = fitPartial$Mu
-vComp = Sigma[4, 1:3] %*% SigInv
-conVar = Sigma[4, 4] - vComp %*% Sigma[1:3, 4]
-
-fitUpdate = VBIL_PF_Update(matrix(y[(T+1):(T+S)], S), lambda, matrix(diag(U)[1:3], 3), muV, SigInv, vComp, conVar, S=10, alpha=0.1, maxIter=5000, threshold=0.05, thresholdIS=0.9)
-
-
-
-
-
-
-bestFit = which(finalELBO == max(finalELBO, na.rm=TRUE))
-VBfit[[bestFit]]$Mu
-VBfit[[bestFit]]$U
-
-
-
-
-VBfit = VBfit[[bestFit]]
-
+VBfit = fitBPF
 U = VBfit$U
 U[is.na(U)] = 0
 Sigma = t(U) %*% U
@@ -83,16 +48,10 @@ qplot(supMu, dnorm(supR, VBfit$Mu[2], sqrt(Sigma[2, 2])), geom='line')
 qplot(supPhi, dnorm(supR, VBfit$Mu[3], sqrt(Sigma[3, 3])), geom='line')
 qplot(supX, dnorm(supR, VBfit$Mu[4], sqrt(Sigma[4, 4])), geom='line')
 
-
-sigSq = 0.02
-phi = 0.8
-mu = -0.5
-T = 500
-
 set.seed(5)
 reps = 500
 results = data.frame()
-for(i in 1:400){
+for(i in 1:reps){
   
   x0 = rnorm(1, mu, sqrt(sigSq/(1-phi^2)))
   x = rep(0, T+1)
@@ -133,23 +92,7 @@ for(i in 1:400){
   results = rbind(results, data.frame(Method = 'MCMC', 
                                      xLogScore = log(xDensity[min(which(x[T+1] < xsupport))]),
                                      yLogScore = log(yDensity[min(which(y[T+1] < ysupport))])))
-  
-  
-  #EXTp1_1 = 0
-  #EXTp1_2 = 0  
-  #for(j in 1:1000){
-  #  EXTp1_1 = EXTp1_1  + xDensity[j] * support[j] * (support[2] - support[1])
-  #  EXTp1_2 = EXTp1_2  + xDensity[j] * support[j]^2 * (support[2] - support[1])
-  #}
- 
-  #print(paste0('MCMC fininshed on iteration ', i))
-  
-  #mcmc = data.frame(method='MCMC', 
-  #                  variable=c('sigma^2', 'mu', 'phi', 'X[T+1]'), 
-  #                  statistic = c(rep('Mean', 4), rep('Variance', 4)),
-  #                  value = c(colMeans(MCMC$theta), EXTp1_1, var(MCMC$theta[,1]), var(MCMC$theta[,2]), var(MCMC$theta[,3]), EXTp1_2 - EXTp1_1^2),
-  #                  iteration = i)
-  
+
   yM = matrix(y[1:T], T)
   mean = c(-4.4, 0, 0.86, mu)
   var = diag(c(0.7, 0.5, 0.101, sqrt(sigSq/(1-phi^2))))
@@ -171,74 +114,41 @@ for(i in 1:400){
   for(j in 1:1000){
     yDensity = yDensity + dnorm(ysupport, 0, exp(xT1draws[j]/2))/1000
   }
-  results = rbind(results, data.frame(Method = 'VB', 
+  results = rbind(results, data.frame(Method = 'VB-BPF', 
                                       xLogScore = dnorm(x[T+1], VBfit$Mu[4], sqrt(sum(VBfit$U[,4]^2)), log=TRUE),
                                       yLogScore = log(yDensity[min(which(y[T+1] < ysupport))])))
+  
+  VBfit = list()
+  finalELBO = vector(length=0)
+  for(j in 1:3){
+    lambda = cbind(mean, var)
+    fit = VBIL_APF(yM, lambda, S=10, N=25, alpha=0.1, maxIter=5000, threshold=0.01, thresholdIS=0.9)
+    finalELBO = c(finalELBO, fit$ELBO[fit$Iter])
+    VBfit[[j]] = fit
+  }
+  finalELBO[finalELBO > 0] = -1000
+  bestFit = which(finalELBO == max(finalELBO, na.rm=TRUE))
+  VBfit = VBfit[[bestFit]]
+  
+  yDensity = rep(0, 1000)
+  ysupport = seq(min(y)-1.5, max(y)+1.5, length.out=1000)
+  xT1draws = rnorm(1000, VBfit$Mu[4], sqrt(sum(VBfit$U[,4]^2)))
+  for(j in 1:1000){
+    yDensity = yDensity + dnorm(ysupport, 0, exp(xT1draws[j]/2))/1000
+  }
+  results = rbind(results, data.frame(Method = 'VB-APF', 
+                                      variable = c('xLogScore', 'yLogScore'), 
+                                      logscore = c(dnorm(x[T+1], VBfit$Mu[4], sqrt(sum(VBfit$U[,4]^2)), log=TRUE), log(yDensity[min(which(y[T+1] < ysupport))]))))
   if(i %% 5 == 0){
     print(i)
   }
 }
 
 results = gather(results, variable, logscore, -Method)
-results = rbind(results, results2)
 write.csv(results, 'sim500.csv', row.names=FALSE)
 
-
-results = read.csv('simulResults.csv')
-resMCMC = filter(results, method=='MCMC')
-results = rbind(resMCMC, resultsvb)
-
-results %>% filter(statistic == "Mean") %>%
-  ggplot() + geom_point(aes(method, value)) + 
-  facet_wrap(~variable, scales='free', labeller = label_parsed) +
-  labs(x=NULL, y=NULL, title='Posterior Mean') +
-  theme(plot.title = element_text(hjust = 0.5))
-
-results %>% filter(statistic == "Variance") %>% 
-  mutate(value = sqrt(value)) %>% 
-  ggplot() + geom_point(aes(method, value)) + 
-  facet_wrap(~variable, scales='free', labeller = label_parsed) + 
-  labs(x=NULL, y=NULL, title='Posterior Standard Deviation') +
-  theme(plot.title = element_text(hjust = 0.5))
-
-
-set.seed(12)
-for(i in 1:reps){
-  x0 = rnorm(1, mu, sqrt(sigSq/(1-phi^2)))
-  x = rep(0, T)
-  y = rep(0, T)
-  for(t in 1:T){
-    if(t == 1){
-      x[t] = mu + phi*(x0-mu) + rnorm(1, 0, sqrt(sigSq))
-    } else {
-      x[t] = mu + phi*(x[t-1]-mu) + rnorm(1, 0, sqrt(sigSq))
-    }
-    y[t] = rnorm(1, 0, exp(x[t]/2))
-  }
-  yM = matrix(y, T)
-  mean = c(-4, 0, 0.5, rep(0, T+2))
-  var = c(0.1, 0.15, 0.15, rep(0.15, T+2))
-  VBfit = list()
-  finalELBO = vector(length=0)
-  for(j in 1:10){
-    lambda = matrix(c(mean, var), 2*T+10)
-    fit = ADVI(yM, lambda, S=25, alpha=0.1, maxIter=5000, threshold=0.05, thresholdIS=0)
-    finalELBO = c(finalELBO, fit$ELBO[fit$Iter])
-    VBfit[[j]] = fit
-  }
-  bestFit = which(finalELBO == max(finalELBO, na.rm=TRUE))
-  muV = VBfit[[bestFit]]$Mu
-  sd = VBfit[[bestFit]]$Sd
-  print(paste0('VB fininshed on iteration ', i))
-  
-  vbfull = data.frame(method='VB-Full',
-                  variable = c('sigma^2', 'mu', 'phi', 'X[T+1]'),
-                  statistic = c(rep('Mean', 4), rep('Variance', 4)),
-                  value = c(exp(muV[1] + 0.5 * sd[1]^2), muV[2], 2*muV[3]-1, muV[T+5],(exp(sd[1]^2) -1) * exp(2*muV[1] + sd[1]^2), sd[2]^2, 4*sd[3]^2, sd[T+5]^2), 
-                  iteration = i)
-  results = rbind(results, vbfull)
-  
-}
+results = read.csv('sim500.csv')
+ggplot(filter(results, variable == 'yLogScore')) + geom_boxplot(aes(Method, logscore)) + labs(y=(expression(paste(Y[T+1], ' predictive log-score'))))
 
 
 # Conditional Distribution Calculation
@@ -246,5 +156,147 @@ theta = rnorm(3)
 muCond = muV[4] + Sigma[4, 1:3] %*% solve(Sigma[1:3, 1:3]) %*% (theta - muV[1:3])
 varCond = Sigma[4, 4] - Sigma[4, 1:3] %*% solve(Sigma[1:3, 1:3]) %*% Sigma[1:3, 4]
 
+# Average time to converge
+set.seed(128)
+N = c(25, 50, 100)
+time = data.frame()
+for(j in 1:3){
+  for(k in 1:500){
+    x0 = rnorm(1, mu, sqrt(sigSq/(1-phi^2)))
+    x = rep(0, T+1)
+    y = rep(0, T+1)
+    for(t in 1:(T+1)){
+      if(t == 1){
+        x[t] = mu + phi*(x0-mu) + rnorm(1, 0, sqrt(sigSq))
+      } else {
+        x[t] = mu + phi*(x[t-1]-mu) + rnorm(1, 0, sqrt(sigSq))
+      }
+      y[t] = rnorm(1, 0, exp(x[t]/2))
+    }
+    yM = matrix(y[1:T], T)
+    mean = c(-4.4, 0, 0.86, mu)
+    var = diag(c(0.7, 0.5, 0.101, sqrt(sigSq/(1-phi^2))))
+    lambda = cbind(mean, var)
+    clockTime = proc.time()
+    fit = VBIL_PF(yM, lambda, S=1, N=N[j], alpha=0.1, maxIter=5000, threshold=0.01, thresholdIS=0.9)
+    runTime = proc.time() - clockTime
+      
+    yDensity = rep(0, 1000)
+    ysupport = seq(min(y)-1.5, max(y)+1.5, length.out=1000)
+    xT1draws = rnorm(1000, fit$Mu[4], sqrt(sum(fit$U[,4]^2)))
+    for(l in 1:1000){
+      yDensity = yDensity + dnorm(ysupport, 0, exp(xT1draws[l]/2))/1000
+    }
+    time = rbind(time, data.frame(Method = 'BPF', runTime = runTime[3], S = S[i], N = N[j], iter = fit$Iter, logscore = log(yDensity[min(which(y[T+1] < ysupport))])))
+    
+    lambda = cbind(mean, var)
+    clockTime = proc.time()
+    fit = VBIL_APF(yM, lambda, S=1, N=N[j], alpha=0.1, maxIter=5000, threshold=0.01, thresholdIS=0.9)
+    runTime = proc.time() - clockTime
+    
+    yDensity = rep(0, 1000)
+    ysupport = seq(min(y)-1.5, max(y)+1.5, length.out=1000)
+    xT1draws = rnorm(1000, fit$Mu[4], sqrt(sum(fit$U[,4]^2)))
+    for(l in 1:1000){
+      yDensity = yDensity + dnorm(ysupport, 0, exp(xT1draws[l]/2))/1000
+    }
+    time = rbind(time, data.frame(Method = 'APF', runTime = runTime[3], S = S[i], N = N[j], iter = fit$Iter, logscore = log(yDensity[min(which(y[T+1] < ysupport))])))
+          if(k %% 5 == 0){
+      print(paste(i, j, k, sep = " "))
+    }
+    if(k %% 50 == 0){
+      write.csv(time, 'time.csv', row.names=FALSE)
+    }
+  }
+}
 
+time = read.csv('time.csv')
 
+ggplot(time) + geom_point(aes(runTime, logscore, colour=Method))
+ggplot(time) + geom_point(aes(runTime, logscore, colour=Method), alpha=0.7) + facet_grid(N ~ S, scales = 'free')
+ggplot(time) + geom_boxplot(aes(Method, logscore)) + facet_grid(S ~ N, scales = 'free')
+ggplot(filter(time, S == 10)) + geom_point(aes(runTime, logscore, colour=factor(N))) + facet_wrap(~Method, scales = 'free')
+ggplot(filter(time, S == 10)) + geom_boxplot(aes(factor(N), logscore)) + facet_wrap(~Method)
+
+time %>% gather(statistic, value, -Method, -N, -S, -iter) -> timelong
+
+ggplot(filter(timelong, S==1)) + geom_boxplot(aes(factor(N), value)) +
+  facet_grid(statistic~Method, scales='free_y', labeller = label_parsed) + 
+  labs(x = 'Number of Particles', y = NULL)
+
+# Updating Algorithm
+S = 50
+reps = 500
+set.seed(112)
+#update = data.frame()
+update = read.csv('update.csv')
+for(i in 1:20){
+  x = rep(0, T+S+1)
+  y = rep(0, T+S+1)
+  for(t in 1:(T+S+1)){
+  if(t == 1){
+    x[t] = rnorm(1, mu, sqrt(sigSq/(1-phi^2)))
+  } else {
+    x[t] = mu + phi*(x[t-1]-mu) + sqrt(sigSq) * rnorm(1)
+  }
+  y[t] = exp(x[t]/2) * rnorm(1)
+}
+
+  yStar = log(y[1:(T+S)]^2)
+  MCMC = SVM_MCMC(yStar, 15000, 0.05)
+  
+  ysupport = seq(min(y)-1.5, max(y)+1.5, length.out=1000)
+  yDensity = rep(0, 1000)
+  for(j in 5001:15000){
+    yDensity = yDensity + dnorm(ysupport, 0, exp(MCMC$x[j, T+S+1]/2))/10000
+  }
+  update = rbind(update, data.frame(Method = 'MCMC', logscore = log(yDensity[min(which(y[T+S+1] < ysupport))])))
+  
+  ymT = matrix(y[1:T], T)
+  ymS = matrix(y[1:S+T], S)
+  mean = c(-4.4, 0, 0.86, mu)
+  var = diag(c(0.7, 0.5, 0.101, sqrt(sigSq/(1-phi^2))))
+
+  VBfit = list()
+  finalELBO = vector(length=3)
+  for(j in 1:3){
+    lambda = cbind(mean, var)
+    fit = VBIL_PF(ymT, lambda, S=1, alpha=0.25, maxIter=5000, threshold=0.01, thresholdIS=0.9)
+    finalELBO[j] = fit$ELBO[fit$Iter]
+    VBfit[[j]] = fit
+  }
+  finalELBO[finalELBO > 0] = -10000
+  bestFit = min(which(finalELBO == max(finalELBO, na.rm=TRUE)))
+  fitPartial = VBfit[[bestFit]]
+  U = fitPartial$U
+  Sigma = t(U) %*% U
+  SigInv = solve(Sigma[1:3, 1:3])
+  muV = fitPartial$Mu
+  vComp = Sigma[4, 1:3] %*% SigInv
+  conVar = Sigma[4, 4] - vComp %*% Sigma[1:3, 4]
+
+  for(j in 1:3){
+    lambda = cbind(mean, var)
+    fit = VBIL_PF_Update(ymS, lambda, diag(U)[1:3], muV, SigInv, vComp, conVar, S=1, alpha=0.25, maxIter=5000, threshold=0.01, thresholdIS=0.9)
+    finalELBO[j] = fit$ELBO[fit$Iter]
+    VBfit[[j]] = fit
+  }
+  finalELBO[finalELBO > 0] = -10000
+  bestFit = min(which(finalELBO == max(finalELBO, na.rm=TRUE)))
+  VBfit = VBfit[[bestFit]]
+  
+  yDensity = rep(0, 1000)
+  xT1draws = rnorm(1000, VBfit$Mu[4], sqrt(sum(VBfit$U[,4]^2)))
+  for(j in 1:1000){
+    yDensity = yDensity + dnorm(ysupport, 0, exp(xT1draws[j]/2))/1000
+  }
+  update = rbind(update, data.frame(Method = 'VB-BPF', logscore = log(yDensity[min(which(y[T+S+1] < ysupport))])))
+  
+  print(i)
+  if(i %% 10 == 0){
+  #  write.csv(update, 'update.csv', row.names=FALSE)
+  }
+}
+
+update = read.csv('update.csv')
+ggplot(update) + geom_boxplot(aes(Method, logscore)) + labs(y=(expression(paste(Y[T+S+1], ' predictive log-score'))))

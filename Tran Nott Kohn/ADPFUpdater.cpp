@@ -27,17 +27,17 @@ using namespace arma;
 // evaluate and automatially differentiate log(p(y_1:T, x_T+1, theta)) wrt theta and x_T+1
 struct logP {
   const MatrixXd& y; // data
-  const MatrixXd& noise; // standard normal matrix for the particle filter transitions
+  const mat& noise; // standard normal matrix for the particle filter transitions
   const int& obs; // T is taken for the variable type, so obs = number of elements in y
   const int& N; // Number of particles
-  const MatrixXd& priorMean;
+  const vec& priorMean;
   const MatrixXd& sigInv;
-  const MatrixXd& uDiag;
+  const vec& uDiag;
   const double& conMean; //q(X_T+1 | theta) mean and variance
   const double& conVar;
-  logP(const MatrixXd& yIn, const MatrixXd& noiseIn, const int& obsIn, const int& nIn, 
-       const MatrixXd& meanIn, const MatrixXd& sigInvIn, const MatrixXd& uDiagIn, const double& conMeanIn, const double& conVarIn) : // constructor
-    y(yIn), noise(noiseIn), obs(obsIn), N(nIn), priorMean(meanIn), sigInv(sigInvIn), uDiag(uDiagIn), conMean(conMeanIn), conVar(conVarIn) {}
+  logP(const MatrixXd& yIn, const mat& noiseIn, const int& obsIn, const int& nIn, 
+       const vec& priorMeanIn, const MatrixXd& sigInvIn, const vec& uDiagIn, const double& conMeanIn, const double& conVarIn) : // constructor
+    y(yIn), noise(noiseIn), obs(obsIn), N(nIn), priorMean(priorMeanIn), sigInv(sigInvIn), uDiag(uDiagIn), conMean(conMeanIn), conVar(conVarIn) {}
   template <typename T> // T will become stan's var that can be automatically differentiated - any variable differentiated in the chain rule for d logp / d theta must be type T
   T operator ()(const Matrix<T, Dynamic, 1>& theta) // derivative is with respect to theta (with xT+1 included), so theta matrix is the operator () input.
     const{
@@ -53,7 +53,6 @@ struct logP {
     meanDeviation(0) = log(sigSq) - priorMean(0);
     meanDeviation(1) = mu - priorMean(1);
     meanDeviation(2) = phi - priorMean(2);
-    
     T prior = -log(abs(uDiag(0))) - log(abs(uDiag(1))) - log(abs(uDiag(2))) - 0.5 * (meanDeviation.transpose() * sigInv * meanDeviation)(0);
     
     // Set up for particle filtering
@@ -312,20 +311,17 @@ mat shuffle(mat sobol){
 
 // Main VB algorithm
 // [[Rcpp::export]]
-Rcpp::List VBIL_PF_Update (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, Rcpp::NumericMatrix uDiagIn,
-                           Rcpp::NumericMatrix priorvMuIn, Rcpp::NumericMatrix SigInvIn,
-                           Rcpp::NumericMatrix vCompIn, double conVar, int S, int N = 100, int maxIter = 5000,
-                    double alpha = 0.1, double beta1 = 0.9, double beta2 = 0.999, double threshold = 0.01, double thresholdIS = 0){
+Rcpp::List VBIL_PF_Update (const Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, const vec uDiag,
+                           const vec priorMu, const Rcpp::NumericMatrix SigInvIn,
+                           const Rcpp::NumericMatrix vCompIn, const double conVar, const int S, const int N = 100, const int maxIter = 5000,
+                           const double alpha = 0.1,  const double threshold = 0.01, const double thresholdIS = 0){
   
   // convert to Eigen format
   Map<MatrixXd> y(Rcpp::as<Map<MatrixXd> >(yIn));
   Map<MatrixXd> lambdaMat(Rcpp::as<Map<MatrixXd> >(lambdaIn));
-  Map<MatrixXd> priorMu(Rcpp::as<Map<MatrixXd> >(priorvMuIn));
   Map<MatrixXd> sigInv(Rcpp::as<Map<MatrixXd> >(SigInvIn));
   Map<MatrixXd> vComp(Rcpp::as<Map<MatrixXd> >(vCompIn));
-  Map<MatrixXd> uDiag(Rcpp::as<Map<MatrixXd> >(uDiagIn));
-  
-  // Reshape matrix as a vector
+ // Reshape matrix as a vector
   Map<MatrixXd> lambda(lambdaMat.data(), 20, 1);
  
  
@@ -402,18 +398,12 @@ Rcpp::List VBIL_PF_Update (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn
           vComp(0) * (log(theta(0, s)) - priorMu(0))  +
           vComp(1) * (theta(1, s) - priorMu(1))  +  
           vComp(2) * (theta(2, s) - priorMu(2));
-        
+       
         // generate standard normal noise for the particle filter, convert to Eigen format
-        Rcpp::NumericMatrix noiseRcpp(100, T);
-        for(int t = 0; t < T; ++t){
-          noiseRcpp(Rcpp::_, t) = Rcpp::rnorm(100);
-        }
-        Map<MatrixXd> noise(Rcpp::as<Map<MatrixXd> >(noiseRcpp));
+        mat noise (N, T+1, fill::randn);
         // take derivative of log joint
         logP p(y, noise, T, N, priorMu, sigInv, uDiag, conMean, conVar);
-               
-               
-               stan::math::set_zero_all_adjoints();
+        stan::math::set_zero_all_adjoints();
         stan::math::gradient(p, theta.col(s), logPeval(s), gradP);
         // take derivative of q
         logQeval = evalLogQ(epsilon.col(s), lambda);
@@ -499,7 +489,7 @@ Rcpp::List VBIL_PF_Update (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn
     } 
     // report progress from time to time
     if(iter % 25 == 0){
-      Rcpp::Rcout << "Iteration: " << iter << ", ELBO: " << meanLB << std::endl;
+      //Rcpp::Rcout << "Iteration: " << iter << ", ELBO: " << meanLB << std::endl;
     }
   } // End while loop
   if(iter <= maxIter){ // did converge in time
