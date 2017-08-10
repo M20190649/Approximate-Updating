@@ -99,6 +99,9 @@ Rcpp::List SVM_MCMC(vec y, int reps, double stepSize){
     for(int t = 1; t < T+1; ++t){
       sigmaSqScale += pow(a(i-1,t) - theta(i-1, 1) - theta(i-1, 2)*(a(i-1, t-1) - theta(i-1, 1)), 2) / 2;
     }
+    if(sigmaSqScale < 0.001){
+      sigmaSqScale = 0.001;
+    }
     theta(i, 0) = 1.0 / randg<vec>(1, distr_param(sigmaSqShape, 1.0/sigmaSqScale))[0];
     
     //Mu ~ Normal(mean, var)

@@ -49,8 +49,8 @@ qplot(supMu, dnorm(supR, VBfit$Mu[2], sqrt(Sigma[2, 2])), geom='line')
 qplot(supPhi, dnorm(supR, VBfit$Mu[3], sqrt(Sigma[3, 3])), geom='line')
 qplot(supX, dnorm(supR, VBfit$Mu[4], sqrt(Sigma[4, 4])), geom='line')
 
-set.seed(16)
-reps = 200
+set.seed(257679)
+reps = 100
 results = data.frame()
 for(i in 1:reps){
   x0 = rnorm(1, mu, sqrt(sigSq/(1-phi^2)))
@@ -66,15 +66,17 @@ for(i in 1:reps){
   }
   MCMC = SVM_MCMC(log(y^2)[1:T], 15000, 0.05)
   ysupport = seq(min(y)-1.5, max(y)+1.5, length.out=1000)
-  phivec = rep(1, 10)
   for(h in 1:10){
     yDensity = rep(0, 1000)
     xTh = rep(0, 10000)
     for(j in 5001:15000){
-      xTh[j] = MCMC$theta[j, 3] + MCMC$theta[j, 2]^(h-1) * (MCMC$x[j, T+1] - MCMC$theta[j, 3])
+      if(MCMC$theta[j, 1] < 0.001){
+        MCMC$theta[j, 1] = 0.001
+      }
+      xTh[j] = MCMC$theta[j, 2] + MCMC$theta[j, 3]^(h-1) * (MCMC$x[j, T+1] - MCMC$theta[j, 2])
       if(h > 1){
         for(k in 2:h){
-          xTh[j] = xTh[j] + MCMC$theta[j, 2]^(k-2) * rnorm(1, 0, sqrt(MCMC$theta[j, 1]))
+          xTh[j] = xTh[j] + MCMC$theta[j, 3]^(k-2) * rnorm(1, 0, sqrt(MCMC$theta[j, 1]))
         }
       }
       yDensity = yDensity + dnorm(ysupport, 0, exp(xTh[j]/2))/10000
@@ -98,30 +100,32 @@ for(i in 1:reps){
   var = diag(c(0.7, 0.5, 0.101, sqrt(sigSq/(1-phi^2))))
   VBfit = list()
   finalELBO = vector(length=0)
-  for(j in 1:3){
+  for(j in 1:2){
     lambda = cbind(mean, var)
     fit = VBIL_PF(yM, lambda, S=10, alpha=0.1, maxIter=5000, threshold=0.01, thresholdIS=0.9)
     finalELBO = c(finalELBO, fit$ELBO[fit$Iter])
     VBfit[[j]] = fit
   }
   finalELBO[finalELBO > 0] = -1000
-  bestFit = which(finalELBO == max(finalELBO, na.rm=TRUE))
+  bestFit = min(which(finalELBO == max(finalELBO, na.rm=TRUE)))
   VBfit = VBfit[[bestFit]]
   Sigma = t(VBfit$U) %*% VBfit$U
   yDensity = rep(0, 1000)
   qDraws = rmvnorm(1000, VBfit$Mu, Sigma)
-  qDraws[1, ] = exp(qDraws[1,])
+  qDraws[,1] = exp(qDraws[,1])
   for(h in 1:10){
     yDensity = rep(0, 1000)
     xTh = rep(0, 1000)
     for(j in 1:1000){
-      xTh[j] = qDraws[j, 3] + qDraws[j, 2]^(h-1) * (qDraws[j, 4] - qDraws[j, 3])
-      if(h > 1){
+      if(h == 1){
+        xTh[j] = qDraws[j, 4]
+      } else {
+        xTh[j] = qDraws[j, 2] + qDraws[j, 3]^(h-1) * (qDraws[j, 4] - qDraws[j, 2])
         for(k in 2:h){
-          xTh[j] = xTh[j] + qDraws[j, 2]^(k-2) * rnorm(1, 0, sqrt(qDraws[j, 1]))
+          xTh[j] = xTh[j] + qDraws[j, 3]^(k-2) * rnorm(1, 0, sqrt(qDraws[j, 1]))
         }
       }
-      yDensity = yDensity + dnorm(ysupport, 0, exp(xTh[j]/2))/10000
+      yDensity = yDensity + dnorm(ysupport, 0, exp(xTh[j]/2))/1000
     }
     logscore = log(yDensity[min(which(y[T+h] < ysupport))])
     yCDF = cumsum(yDensity) / sum(yDensity)
@@ -140,9 +144,33 @@ for(i in 1:reps){
     write.csv(results, 'sim500Extra.csv', row.names=FALSE)
   }
 }
+
+resL = gather(results, statistic, value, -iter, -h, -Method, -yTh)
+
+ggplot(resL) + geom_boxplot(aes(Method, value)) + facet_grid(statistic ~ h, scales='free')
+ggplot(resL) + geom_point(aes(yTh, value)) + facet_grid(statistic ~ h, scales='free') + labs(x = expression(y[T+h]), y = NULL)
+
+VB = filter(results, Method=='VB')
+MCMC = filter(results, Method == 'MCMC')
+resJoined = cbind(select(VB, -Method, -yTh, -h, -iter), select(MCMC, -Method))
+colnames(resJoined) = c('LS_VB', 'CRPS_VB', 'MSE_VB', 'LS_MCMC', 'CRPS_MCMC', 'MSE_MCMC', 'yTh', 'h', 'iter')
+resJoined %>% mutate(Logscore = LS_VB - LS_MCMC,
+                     CRPS = CRPS_VB - CRPS_MCMC, 
+                     MSE = MSE_VB - MSE_MCMC) %>%
+  select(7:12) %>%
+  gather(statistic, difference, -h, -iter, -yTh) -> resDifferences
+
+
+
+ggplot(resDifferences) + geom_boxplot(aes(x=1, y=difference)) + facet_grid(statistic ~ h, scales='free') + labs(x=NULL)
+ggplot(resDifferences) + geom_point(aes(yTh, difference)) + facet_grid(statistic ~ h, scales='free')+ labs(x = expression(y[T+h]), y = NULL)
+
+
+
 results = read.csv('sim500Fixed.csv')
 resultsL = gather(results, statistic, value, -Method)
-ggplot(resultsL) + geom_boxplot(aes(Method, value)) + facet_wrap(~statistic, scales='free')
+ggplot(resultsL) + geom_boxplot(aes(Method, value)) + facet_wrap(~statistic, scales='free') 
+
 
 
 
