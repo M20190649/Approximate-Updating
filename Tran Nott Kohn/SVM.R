@@ -49,7 +49,7 @@ qplot(supMu, dnorm(supR, VBfit$Mu[2], sqrt(Sigma[2, 2])), geom='line')
 qplot(supPhi, dnorm(supR, VBfit$Mu[3], sqrt(Sigma[3, 3])), geom='line')
 qplot(supX, dnorm(supR, VBfit$Mu[4], sqrt(Sigma[4, 4])), geom='line')
 
-set.seed(257679)
+set.seed(679)
 reps = 100
 results = data.frame()
 for(i in 1:reps){
@@ -73,22 +73,33 @@ for(i in 1:reps){
       if(MCMC$theta[j, 1] < 0.001){
         MCMC$theta[j, 1] = 0.001
       }
-      xTh[j] = MCMC$theta[j, 2] + MCMC$theta[j, 3]^(h-1) * (MCMC$x[j, T+1] - MCMC$theta[j, 2])
-      if(h > 1){
+      if(h == 1){
+        xTh[j - 5000] = MCMC$x[j, T+1] 
+      } else {
+        xTh[j-5000] = MCMC$theta[j, 2] + MCMC$theta[j, 3]^(h-1) * (MCMC$x[j, T+1] - MCMC$theta[j, 2])
         for(k in 2:h){
-          xTh[j] = xTh[j] + MCMC$theta[j, 3]^(k-2) * rnorm(1, 0, sqrt(MCMC$theta[j, 1]))
+          xTh[j-5000] = xTh[j-5000] + MCMC$theta[j, 3]^(k-2) * rnorm(1, 0, sqrt(MCMC$theta[j, 1]))
         }
       }
-      yDensity = yDensity + dnorm(ysupport, 0, exp(xTh[j]/2))/10000
+      yDensity = yDensity + dnorm(ysupport, 0, exp(xTh[j-5000]/2))/10000
     }
     logscore = log(yDensity[min(which(y[T+h] < ysupport))])
     yCDF = cumsum(yDensity) / sum(yDensity)
     CRPS = -sum((yCDF - (ysupport > y[T+h]))^2) * (ysupport[2] - ysupport[1]) 
+    MSE = (log(y[T+h]^2) - mean(xTh) + 1.27)^2
+    above95 = y[T+h] > ysupport[which.min(abs(yCDF - 0.95))]
+    above99 = y[T+h] > ysupport[which.min(abs(yCDF - 0.99))]
+    below5 = y[T+h] < ysupport[which.min(abs(yCDF - 0.05))]
+    below1 = y[T+h] < ysupport[which.min(abs(yCDF - 0.01))]
     results = rbind(results,
                     data.frame(Method = 'MCMC',
                                LogScore = logscore,
                                CRPS = CRPS,
-                               MSE = (log(y[T+1]^2) - mean(xTh) + 1.27)^2,
+                               MSE = MSE,
+                               above95 = above95,
+                               above99 = above99,
+                               below5 = below5,
+                               below1 = below1,
                                yTh = y[T+h],
                                h = h,
                                iter = i))
@@ -129,21 +140,43 @@ for(i in 1:reps){
     }
     logscore = log(yDensity[min(which(y[T+h] < ysupport))])
     yCDF = cumsum(yDensity) / sum(yDensity)
-    CRPS = -sum((yCDF - (ysupport > y[T+h]))^2) * (ysupport[2] - ysupport[1]) 
+    CRPS = -sum((yCDF - (ysupport > y[T+h]))^2) * (ysupport[2] - ysupport[1])
+    MSE = (log(y[T+h]^2) - mean(xTh) + 1.27)^2
+    above95 = y[T+h] > ysupport[which.min(abs(yCDF - 0.95))]
+    above99 = y[T+h] > ysupport[which.min(abs(yCDF - 0.99))]
+    below5 = y[T+h] < ysupport[which.min(abs(yCDF - 0.05))]
+    below1 = y[T+h] < ysupport[which.min(abs(yCDF - 0.01))]
     results = rbind(results,
                     data.frame(Method = 'VB',
                                LogScore = logscore,
                                CRPS = CRPS,
-                               MSE = (log(y[T+1]^2) - mean(xTh) + 1.27)^2,
+                               MSE = MSE,
+                               above95 = above95,
+                               above99 = above99,
+                               below5 = below5,
+                               below1 = below1,
                                yTh = y[T+h],
                                h = h,
                                iter = i))
+    
   }
   print(i)
   if(i %% 25 == 0){
-    write.csv(results, 'sim500Extra.csv', row.names=FALSE)
+    write.csv(results, 'sim500Var.csv', row.names=FALSE)
   }
 }
+
+results %>% select(Method, above95, above99, below5, below1, h) %>%
+  gather(quantile, inside, -Method, -h) %>%
+  filter(inside == TRUE) %>%
+  group_by(quantile, Method, h) %>%
+  summarise(percent = n()/nrow(results)*20) %>%
+  ungroup() %>%
+  ggplot() + geom_bar(aes(x=quantile, y=percent), stat='identity') + facet_grid(Method~h) +
+  scale_y_continuous(breaks=seq(0, 1, 0.01)) +
+  scale_x_discrete(limits = c("below1", "below5", "above95", "above99")) +
+  theme(axis.text.x = element_text(angle=270))
+
 
 resL = gather(results, statistic, value, -iter, -h, -Method, -yTh)
 
@@ -338,3 +371,5 @@ for(i in 1:25){
 
 update = read.csv('update.csv')
 ggplot(update) + geom_boxplot(aes(Method, logscore)) + labs(y=(expression(paste(Y[T+S+1], ' predictive log-score'))))
+
+

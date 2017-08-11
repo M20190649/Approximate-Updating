@@ -469,7 +469,7 @@ Rcpp::List VBIL_PF (Rcpp::NumericMatrix yIn, Rcpp::NumericMatrix lambdaIn, int S
     } 
     // report progress from time to time
     if(iter % 25 == 0){
-      //Rcpp::Rcout << "Iteration: " << iter << ", ELBO: " << meanLB << std::endl;
+      Rcpp::Rcout << "Iteration: " << iter << ", ELBO: " << meanLB << std::endl;
     }
   } // End while loop
   if(iter <= maxIter){ // did converge in time
