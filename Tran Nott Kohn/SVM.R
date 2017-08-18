@@ -177,6 +177,14 @@ results %>% select(Method, above95, above99, below5, below1, h) %>%
   scale_x_discrete(limits = c("below1", "below5", "above95", "above99")) +
   theme(axis.text.x = element_text(angle=270))
 
+results %>% filter(MSE < quantile(results$MSE, 0.99)) %>%
+  select(Method, MSE, yTh, h, iter) %>%
+  ggplot() + geom_boxplot(aes(Method, MSE)) + facet_wrap(~h)
+
+
+results %>% filter(MSE < quantile(results$MSE, 0.99)) %>%
+  select(Method, MSE, yTh, h, iter) %>%
+  ggplot() + geom_point(aes(yTh, MSE, colour=Method)) + facet_grid(~h)
 
 resL = gather(results, statistic, value, -iter, -h, -Method, -yTh)
 
@@ -197,7 +205,11 @@ resJoined %>% mutate(Logscore = LS_VB - LS_MCMC,
 
 ggplot(resDifferences) + geom_boxplot(aes(x=1, y=difference)) + facet_grid(statistic ~ h, scales='free') + labs(x=NULL)
 ggplot(resDifferences) + geom_point(aes(yTh, difference)) + facet_grid(statistic ~ h, scales='free')+ labs(x = expression(y[T+h]), y = NULL)
+resDifferences %>% filter(statistic == 'MSE') %>%
+  ggplot() + geom_density(aes(difference)) + facet_wrap(~h, scales='free')
 
+resDifferences %>% filter(statistic == 'MSE') %>%
+  ggplot() + geom_point(aes(yTh, difference)) + facet_wrap(~h, scales='free')
 
 
 results = read.csv('sim500Fixed.csv')
