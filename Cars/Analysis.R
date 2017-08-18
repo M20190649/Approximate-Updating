@@ -130,46 +130,51 @@ rskew = function(n=1, mu, sigmaSq, nu, delta){
   out = rep(0, n)
   for(i in 1:n){
     w = rgamma(1, nu/2, nu/2)
-    positive = FALSE
-    while(!positive){
-      z = rnorm(1, 0, sqrt(1/w))
-      if(z > 0){
-        positive = TRUE
-      }
-    }
+    z = abs(rnorm(1, 0, sqrt(1/w)))
     out[i] = rnorm(1, mu + delta*z, sqrt(sigmaSq / w))
   }
   out
 }
 #sourceCpp('carsPMCMC.cpp')
 sourceCpp('cars.cpp')
+set.seed(13241)
 T = 300
-sigSqX = 2
-sigSqE = 0.1
+sigSqX = 0.01
+sigSqE = 0.01
 nu = 15
-delta = 0.25
+phi = 0.9
+delta = 0.02
 
 x = rep(0, T)
 vx = rep(0, T)
 x[1] = rnorm(1, 4.77, 1.26)
-vx[1] = rnorm(1, 0, 0.5)
+vx[1] = rnorm(1, 0, 0.01)
 
 for(t in 2:T){
-  vx[t] = rskew(1, vx[t-1], sigSqE, nu, delta)
+  vx[t] = rskew(1, phi*vx[t-1], sigSqE, nu, delta)
   x[t] = x[t-1] + 0.01*vx[t] + sqrt(sigSqX) * rnorm(1)
 }
 
+ggplot() + geom_path(aes(x, 1:T))
 
-mean = c(-3, -3, 2, 0, 0)
-var = rep(0.1, 5)
+mean = c(-4, -4, 2.5, 0.8, 0.02, 0)
+var = rep(0.1, 6)
 lambda = cbind(mean, diag(var))
 
 VB = VB_Cars(x = x,
-             lamndaIn = lambda, 
-             hyperParams = c(5, 0.5, 5, 0.5, 2, 0.05, 0, 5),
-             S = 10,
+             lambdaIn = lambda, 
+             hyperParams = c(5, 0.5, 5, 0.5, 2, 0.05, 0.5, 0.25, 0, 0.1),
+             alpha = 0.1,
+             S = 1,
              maxIter = 5000,
-             thresholdIS = 0.9)
+             threshold = 0.001,
+             thresholdIS = 0.8)
+
+Sigma = t(VB$U) %*% VB$U
+
+
+
+
 
 MCMC = PMCMC(x, 10000, 50, c(5, 0.5, 5, 0.5, 2, 0.05, 0, 5), c(0.05, 0.1, 0.1), 0, 0.5)
 
