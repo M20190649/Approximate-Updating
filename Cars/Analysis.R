@@ -54,7 +54,7 @@ cars %>%
   group_by(lane, yQ) %>%
   summarise(lowerMid = quantile(x, 0.025),
             upperMid = quantile(x, 0.975),
-            medianMid = quantile(x, 0.5)
+            medianMid = quantile(x, 0.5),
             lowerLeft = quantile(xmin, 0.025),
             medianLeft = quantile(xmin, 0.5),
             upperRight = quantile(xmax, 0.975),
@@ -72,7 +72,7 @@ cars %>%
 
 cars %>% 
   filter(ID %in% head(sort(unique(cars$ID)), 10)) %>%
-  ggplot() + geom_path(aes(x, y, group = ID, colour = factor(ID))) #+ theme(legend.position = 'none')
+  ggplot() + geom_path(aes(x, y, group = ID, colour = factor(ID))) + theme(legend.position = 'none')
 
 cars %>%
   filter(ID %in% laneChange$ID) %>%
@@ -137,38 +137,41 @@ rskew = function(n=1, mu, sigmaSq, nu, delta){
 }
 #sourceCpp('carsPMCMC.cpp')
 sourceCpp('cars.cpp')
-set.seed(13241)
-T = 300
+set.seed(34)
+T = 500
 sigSqX = 0.01
 sigSqE = 0.01
 nu = 15
 phi = 0.9
-delta = 0.02
 
 x = rep(0, T)
 vx = rep(0, T)
 x[1] = rnorm(1, 4.77, 1.26)
-vx[1] = rnorm(1, 0, 0.01)
+vx[1] = rnorm(1, 0, sqrt(sigSqE/(1-phi^2)))
 
 for(t in 2:T){
-  vx[t] = rskew(1, phi*vx[t-1], sigSqE, nu, delta)
-  x[t] = x[t-1] + 0.01*vx[t] + sqrt(sigSqX) * rnorm(1)
+  vx[t] = phi*vx[t-1] + sqrt(sigSqE) * rt(1, nu)
+  x[t] = x[t-1] + vx[t] + sqrt(sigSqX) * rnorm(1)
 }
 
+dx = x[2:T] - x[1:(T-1)]
 ggplot() + geom_path(aes(x, 1:T))
+#ggplot() + geom_point(aes(vx[2:T], dx))
 
-mean = c(-4, -4, 2.5, 0.8, 0.02, 0)
-var = rep(0.1, 6)
+mean = c(-3, -3, 2.5, 0.5, 0)
+var = rep(0.1, 5)
 lambda = cbind(mean, diag(var))
 
 VB = VB_Cars(x = x,
              lambdaIn = lambda, 
-             hyperParams = c(5, 0.5, 5, 0.5, 2, 0.05, 0.5, 0.25, 0, 0.1),
-             alpha = 0.1,
+             hyperParams = c(15, 0.1, 15, 0.02, 2, 0.05, 0.5, 0.1),
+             alpha = 0.05,
              S = 1,
+             N = 10,
              maxIter = 5000,
-             threshold = 0.001,
+             threshold = 0.01,
              thresholdIS = 0.8)
+lambda
 
 Sigma = t(VB$U) %*% VB$U
 
