@@ -4,13 +4,16 @@ library(RcppArmadillo)
 library(GGally)
 
 # Load data
-cars1 = read.table('vehicle-trajectory-data/trajectories1.txt')
 
-cars2 = read.table('vehicle-trajectory-data/trajectories2.txt')
+dataset = '101'
+
+cars1 = read.table(paste0(dataset, '/vehicle-trajectory-data/trajectories1.txt'))
+
+cars2 = read.table(paste0(dataset, '/vehicle-trajectory-data/trajectories2.txt'))
 cars2[,1] = cars2[,1] + max(cars1[,1])
 
-cars3 = read.table('vehicle-trajectory-data/trajectories3.txt')
-cars3[,1] = cars3[,1] + max(cars2[,1])
+cars3 = read.table(paste0(dataset, '/vehicle-trajectory-data/trajectories3.txt'))
+cars3[,1] = cars3[,1] + max(cars2[,1]) 
 
 cars = rbind(cars1, cars2, cars3)
 rm(cars1, cars2, cars3)
@@ -46,11 +49,11 @@ cars %>%
 startLanes %>%
   filter(lane == 1) -> startIn1
 
-yQuantiles = quantile(cars$y, seq(0, 1, 0.0001))
+yQuantiles = quantile(cars$y, seq(0, 1, 0.001))
 cars$yQ = sapply(cars$y, function(x) max(which(yQuantiles <= x)))
 
 cars %>%
-  filter(lane < 6 & yQ < max(yQ)) %>%
+  filter(lane < 7 & yQ < max(yQ)) %>%
   group_by(lane, yQ) %>%
   summarise(lowerMid = quantile(x, 0.025),
             upperMid = quantile(x, 0.975),
@@ -71,16 +74,16 @@ cars %>%
   ggplot() + geom_histogram(aes(n))
 
 cars %>% 
-  filter(ID %in% head(sort(unique(cars$ID)), 10)) %>%
+  filter(ID %in% head(sort(unique(cars$ID)), 20)) %>%
   ggplot() + geom_path(aes(x, y, group = ID, colour = factor(ID))) + theme(legend.position = 'none')
 
 cars %>%
-  filter(ID %in% laneChange$ID) %>%
+  filter(changed == TRUE) %>%
   filter(ID %in% head(sort(unique(.$ID)), 25)) %>%
   ggplot() + geom_path(aes(x, y, group = ID, colour = factor(lane))) + theme(legend.position = 'none')
 
 cars %>%
-  filter(ID %in% stayed$ID) %>%
+  filter(changed == FALSE) %>%
   filter(ID %in% head(sort(unique(.$ID)), 500)) %>%
   ggplot() + geom_path(aes(x, y, group = ID, colour = factor(ID), alpha=0.1)) +
   geom_path(data = lanePath, aes(lowerMid, yQ, group=factor(lane))) +
@@ -88,31 +91,42 @@ cars %>%
   theme(legend.position = 'none')
 
 cars %>%
-  filter(ID %in% stayed$ID) %>%
+  filter(changed == FALSE) %>%
   filter(ID %in% head(sort(unique(.$ID)), 100)) %>%
   ggplot() + geom_path(aes(xmin, y, group = ID, colour = factor(ID), alpha=0.1)) +
   geom_path(aes(xmax, y, group = ID, colour = factor(ID), alpha=0.1)) +
-  geom_path(data = lanePath, aes(lowerOut, yQ, group=factor(lane))) +
-  geom_path(data = lanePath, aes(upperOut, yQ, group=factor(lane))) +
+  geom_path(data = lanePath, aes(lowerLeft, yQ, group=factor(lane))) +
+  geom_path(data = lanePath, aes(upperRight, yQ, group=factor(lane))) +
   theme(legend.position = 'none')
 
+# what is this trying to do- it fails
 cars %>% group_by(ID) %>%
   summarise(startTime = min(time)) %>%
   right_join(cars, by = 'ID') %>%
   filter(ID %in% startIn1$ID &
            enterExit == FALSE) %>%
   filter(ID %in% head(sort(unique(.$ID)), 15)) %>%
-  mutate(xL = lanePath$medianUpper[yQ],
-         xU = lanePath$medianUpper[yQ+1],
+  mutate(xL = lanePath$medianRight[yQ],
+         xU = lanePath$medianRight[yQ+1],
          yL = yQuantiles[yQ],
          yU = yQuantiles[yQ+1],
          xAdj = xL + (y - yL) * (xU - xL) / (yU - yL))  %>%
-  ggplot() + geom_path(aes(xmax, time - startTime, group = ID, colour = changed, alpha = 0.01)) #+ 
-geom_path(data = filter(lanePath, lane == 1), aes(medianUpper, yQ)) + 
+  ggplot() + geom_path(aes(xmax, time - startTime, group = ID, colour = changed, alpha = 0.01)) + 
+geom_path(data = filter(lanePath, lane == 1), aes(medianRight, yQ)) + 
   theme(legend.position = 'none')
 
-grid = seq(-5, 12, length.out = 1000)
-dens = dnorm(grid, 4.77086, 1.26847)
+
+cars %>%
+  group_by(ID) %>%
+  summarise(startTime = min(time)) %>%
+  right_join(cars, by = 'ID') %>%
+  filter(time == startTime &
+           lane == 1)  %>%
+  ungroup() %>%
+  summarise(mean(x), sd(x)) -> estims
+
+grid = seq(0, 12, length.out = 1000)
+dens = dnorm(grid, estims$`mean(x)`, estims$`sd(x)`)
 df = data.frame(grid, dens) 
 
 cars %>%
@@ -155,7 +169,7 @@ for(t in 2:T){
 }
 
 dx = x[2:T] - x[1:(T-1)]
-ggplot() + geom_path(aes(x, 1:T))
+ggplot() + geom_path(aes(vx, 1:T))
 #ggplot() + geom_point(aes(vx[2:T], dx))
 
 mean = c(-3, -3, 2.5, 0.5, 0)
@@ -164,13 +178,14 @@ lambda = cbind(mean, diag(var))
 
 VB = VB_Cars(x = x,
              lambdaIn = lambda, 
-             hyperParams = c(15, 0.1, 15, 0.02, 2, 0.05, 0.5, 0.1),
-             alpha = 0.05,
+             hyperParams = c(15, 0.1, 15, 0.1, 2, 0.05, 0.5, 0.1),
+             alpha = 0.2,
              S = 1,
              N = 10,
              maxIter = 5000,
+             minIter = 500,
              threshold = 0.01,
-             thresholdIS = 0.8)
+             thresholdIS = 0.95)
 lambda
 
 Sigma = t(VB$U) %*% VB$U
@@ -277,3 +292,18 @@ ggplot() + geom_path(data=car2Path, aes(x, y)) +
   geom_path(data=predictions, aes(value, y, group=stat), colour = 'red')
 
 
+
+
+
+cars %>% 
+  filter(time > 50000 & time < 200000 &
+           y > 600 & y < 900) %>%
+  mutate(ymin = y - length,
+         xmin = x - 0.5 * width,
+         xmax = x + 0.5 * width) %>%
+  ggplot() + geom_rect(aes(xmin = xmin, xmax = xmax,
+                           ymin = ymin, ymax = y, frame = frame)) +
+  ylim(600, 900) + coord_equal() -> p
+
+animation::ani.options(interval = 0.01)
+gganimate::gganimate(p)

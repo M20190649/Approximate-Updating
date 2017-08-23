@@ -56,7 +56,7 @@ struct logP {
       pow(phi - hyperParams(6), 2) / (2 * hyperParams(7));
 
     // Set up for particle filtering
-    Matrix<T, Dynamic, 1> vOld(N), vNew(N), vResample(N), pi(N), piSum(N), omega(N);
+    Matrix<T, Dynamic, 1> vOld(N), vNew(N), vResample(N), pi(N), piSum(N), omega(N), stepAhead(N), lambda(N), lambdaSum(N), kDraws(N);
     pi.fill(1.0/N); // initial weights
     T dxAllDens, dxtDens, omegaSum, VTplus1Dens;
     
@@ -82,10 +82,34 @@ struct logP {
           }
         }
       }
-      // Calculate weights
+      // Calculate Step Ahead Means and k density
+      for(int k = 0; k < N; ++k){
+        stepAhead(k) = phi * vResample(k);
+        lambda(k) = 1.0 / sqrt(2 * 3.14159 * sigSqX) * exp(-pow(x(t) - x(t-1) - stepAhead(k), 2) / 2*sigSqX);
+        if(k == 0){
+          lambdaSum(k) = lambda(k);
+        } else {
+          lambdaSum(k) = lambda(k) + lambdaSum(k-1);
+        }
+      }
+      // Normalise
+      for(int k = 0; k < N; ++k){
+        lambdaSum(k) = lambdaSum(k) / lambdaSum(N-1);
+      }
+      
+      // Draw index k using lambda as weights
+      for(int k = 0; k < N; ++k){
+        double u = randu<vec>(1)[0];
+        for(int i = 0; i < N; ++i){
+          if(u < lambdaSum(i)){
+            kDraws(k) = vResample(i);
+          }
+        }
+      }
+     // Calculate weights
       omegaSum = 0;
       for(int k = 0; k < N; ++k){
-        vNew(k) = phi * vResample(k)  +  sqrt(sigSqE / theta(5+t*N+k)) * randn<vec>(1)[0];; // Step Ahead transition
+        vNew(k) = phi * kDraws(k)  +  sqrt(sigSqE / theta(5+t*N+k)) * randn<vec>(1)[0];; // Step Ahead transition
         omega(k) = 1.0 / sqrt(2*3.14159*sigSqX) * exp(-pow(x(t) - x(t-1) - vNew(k), 2) / (2*sigSqX)); // Measurement density
         omegaSum += omega(k); // sum of weights for normalisation
       }
@@ -325,7 +349,7 @@ mat shuffle(mat sobol){
 // Main VB algorithm
 // [[Rcpp::export]]
 Rcpp::List VB_Cars (vec x, Rcpp::NumericMatrix lambdaIn, vec hyperParams, int S = 1, int N = 100, int maxIter = 5000,
-                    double alpha = 0.1, double threshold = 0.01, double thresholdIS = 0){
+                    int minIter = 1, double alpha = 0.1, double threshold = 0.01, double thresholdIS = 0){
   
   // convert to Eigen format
   Map<MatrixXd> lambdaMat(Rcpp::as<Map<MatrixXd> >(lambdaIn));
@@ -349,7 +373,7 @@ Rcpp::List VB_Cars (vec x, Rcpp::NumericMatrix lambdaIn, vec hyperParams, int S 
   double meanLB = 0;
   double omeanLB;
   
-  while(diff > threshold){
+  while(diff > threshold | iter < minIter){
     iter += 1;
     if(iter > maxIter){
       break;
