@@ -296,14 +296,107 @@ ggplot() + geom_path(data=car2Path, aes(x, y)) +
 
 
 cars %>% 
-  filter(time > 50000 & time < 200000 &
-           y > 600 & y < 900) %>%
+  filter(time > 550000 & time < 610000 &
+           y > 1100 & y < 1500) %>%
   mutate(ymin = y - length,
          xmin = x - 0.5 * width,
          xmax = x + 0.5 * width) %>%
   ggplot() + geom_rect(aes(xmin = xmin, xmax = xmax,
                            ymin = ymin, ymax = y, frame = frame)) +
-  ylim(600, 900) + coord_equal() -> p
+  coord_equal() -> p
 
-animation::ani.options(interval = 0.01)
-gganimate::gganimate(p)
+animation::ani.options(interval = 0.1)
+gganimate::gganimate(p, "Traffic.gif")
+
+
+
+accel = numeric(0)
+uniqueID = unique(cars$ID)
+for(j in 1:length(uniqueID)){
+  carID = filter(cars, ID == uniqueID[j])
+  veloc = numeric(0)
+  for(i in 2:nrow(carID)){
+    veloc = c(veloc, carID$x[i] - carID$x[i-1])
+  }
+  acc = numeric(0)
+  for(i in 2:length(veloc)){
+    acc = c(acc, veloc[i] - veloc[i-1])
+  }
+  accel = c(accel, acc)
+  if(j %% 100 == 0){
+    print(j)
+  }
+}
+
+ggplot() + geom_density(aes(accel))
+
+
+
+
+Sigma = 0.001 * matrix(c(1, 0.5, 0.5, 1), 2)
+sigE = 0.01
+sigZ = 0.005
+phi = 0.9
+lambda = 0.95
+gamma = 0.005
+
+a0 = rnorm(1, 0, sigA / sqrt(1 - phi^2))
+v0 = 5
+x0 = 5
+y0 = 0
+t0 = pi/2
+
+T = 500
+path = data.frame()
+for(i in 1:10){
+  position = data.frame()
+  x0 = 5*i
+  for(t in 1:T){
+    if(t == 1){
+      notice = FALSE
+      delta = pi/2 + lambda * (t0 - pi/2)  +  sigZ * rt(1, 5)
+      acc = phi * a0  +  sigE * rt(1, 5)
+      vel = v0  +  acc
+      error = mvtnorm::rmvnorm(1, c(0, 0), Sigma)
+      x = x0  +  vel * cos(delta)
+      y = y0  +  vel * sin(delta)
+      measurex = x + error[1]
+      measurey = y + error[2]
+    } else {
+      if(!notice){
+        delta = pi/2  +  lambda * (position$delta[t-1] - pi/2)  +  sigZ * rt(1, 5)
+        if(10 * runif(1)  < abs(position$x[t-1] - x0)){
+          notice = TRUE
+        }
+      } else {
+        delta = pi/2  +  gamma * (position$x[t-1] - x0) +  sigZ * rt(1, 5)
+        if(runif(1) > abs(position$x[t-1] - x0)){
+          notice = FALSE
+        }
+      }
+      acc = phi * position$acc[t-1]  +  sigE * rt(1, 5)
+      vel = position$vel[t-1]  +  acc
+      error = mvtnorm::rmvnorm(1, c(0, 0), Sigma)
+      x = position$x[t-1]  +  vel * cos(delta)
+      y = position$y[t-1]  +  vel * sin(delta)
+      measurex = x + error[1]
+      measurey = y + error[2]
+    }
+    position = rbind(position,
+                   data.frame(x=x, y=y, measurex=measurex, measurey=measurey, vel=vel, delta=delta, acc=acc, t=t, notice=notice, car = i))
+  }
+  path = rbind(path, position)
+}
+p1 <- ggplot(path) + geom_path(aes(measurex, t*4, group=car, colour=factor(car))) + theme(legend.position = 'none') +
+  labs(x="Simulated", y=NULL)
+cars %>%
+  filter(changed == FALSE) %>%
+  filter(ID %in% head(sort(unique(.$ID)), 10)) %>%
+  ggplot() + geom_path(aes(x, y, colour = factor(ID))) + theme(legend.position = 'none') +
+  labs(x="Actual", y=NULL) -> p2
+gridExtra::grid.arrange(p1, p2)
+
+
+
+
+
