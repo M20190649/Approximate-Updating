@@ -66,9 +66,9 @@ struct logPZ {
       States(k, 0) = sqrt(sigSqA / (1 - pow(phi, 2))) * randn<vec>(1)[0];
       States(k, 1) = 0;
       States(k, 2) = pi / 2  +  sqrt(sigSqD) * randn<vec>(1)[0];
-      States(k, 3) = 5.0 + 0.01 * randn<vec>(1)[0];
-      States(k, 4) = 5.0 + 0.01 * randn<vec>(1)[0];
-      States(k, 5) = 0.1 * randn<vec>(1)[0];
+      States(k, 3) = 4.5 + 0.01 * randn<vec>(1)[0];
+      States(k, 4) = x(0, 0) + 0.01 * randn<vec>(1)[0];
+      States(k, 5) = 2*x(0, 1) - x(1, 1) + 0.1 * randn<vec>(1)[0];
     }
     xAllDens = 0;
     
@@ -176,13 +176,13 @@ struct logPZ {
   }
 };
 
-struct logP{
+struct logPJ{
   const mat x;
   const int obs;
   const int N;
   const vec epsilon;
   const vec hyperParams;
-  logP(const mat& xIn, const int& obsIn, const int& nIn, const vec& epsIn, const vec& hypIn) :
+  logPJ(const mat& xIn, const int& obsIn, const int& nIn, const vec& epsIn, const vec& hypIn) :
     x(xIn), obs(obsIn), N(nIn), epsilon(epsIn), hyperParams(hypIn) {}
   template <typename T> //
   T operator ()(const Matrix<T, Dynamic, 1>& lambdaV)
@@ -213,11 +213,22 @@ struct logP{
       pow(beta0 - hyperParams(16), 2) / (2*hyperParams(17))  -
       pow(alpha1 - hyperParams(18), 2) / (2*hyperParams(19))  -
       pow(beta1 - hyperParams(20), 2) / (2*hyperParams(21)); 
+    // Evaluate Log Det J
+    T logdet = 0;
+    for(int i = 0; i < 11; ++i){
+      if(i >= 6){ // linear
+        logdet += log(sqrt(pow(lambdaV(11+i), 2)));
+      } else if(i < 4){ // exponential
+        logdet += log(sqrt(pow(lambdaV(11+i), 2))) + lambdaV(i) + sqrt(pow(lambdaV(11+i), 2))*epsilon(i);
+      } else { // sigmoid
+        logdet += log(sqrt(pow(lambdaV(11+i), 2))) + lambdaV(i) + sqrt(pow(lambdaV(11+i), 2))*epsilon(i) - 2*log(1 + exp(lambdaV(i) + sqrt(pow(lambdaV(11+i), 2))*epsilon(i)));
+      }
+    }
     // Set up for particle filtering
     T xAllDens, xtDens, omegaSum;
-    Matrix<T, Dynamic, Dynamic> States(N, 6), Resample(N, 6);//, Ahead(N, 6);
-    Matrix<T, Dynamic, 1> pweights(N), piSum(N), omega(N); //lweights(N), lambdaSum(N);
-    //Matrix<int, Dynamic, 1> kDraws(N);
+    Matrix<T, Dynamic, Dynamic> States(N, 6), Resample(N, 6);// Ahead(N, 6);
+    Matrix<T, Dynamic, 1> pweights(N), piSum(N), omega(N);// logLweights(N), lambdaSum(N);
+    Matrix<int, Dynamic, 1> kDraws(N);
     pweights.fill(1.0/N); // initial weights
     
     // Sample z0 from stationary distribution
@@ -254,19 +265,19 @@ struct logP{
       
       // Calculate Step Ahead Means and k density
       //for(int k = 0; k < N; ++k){
-      //  Ahead(k, 0) = phi * Resample(k, 0);
-      //  Ahead(k, 1) = Resample(k, 1);
+      //  Ahead(k, 0) = phi * Resample(k, 0)  +  sqrt(sigSqA) * randn<vec>(1)[0];
+      //  Ahead(k, 1) = 1.0 / (1 + exp(- (1-Resample(k, 1))*(alpha0 + beta0 * abs(Resample(k, 4) - 5)) - 
+      //    Resample(k, 1)*(alpha1 + beta1 * abs(Resample(k, 4) - 5)) + 0.1*randn<vec>(1)[0]));
       //  Ahead(k, 2) = pi/2  +  (1 - Ahead(k, 1)) * lambda * (Resample(k, 2) - pi/2)  +
-      //    Ahead(k, 1) * gamma * (Resample(k, 4) - 5);
+      //    Ahead(k, 1) * gamma * (Resample(k, 4) - 5)  +  sqrt(sigSqD) * randn<vec>(1)[0];
       //  Ahead(k, 3) = Resample(k, 3)  +  Ahead(k, 0);
       //  Ahead(k, 4) = Resample(k, 4)  +   Ahead(k, 3) * cos(Ahead(k, 2));
       //  Ahead(k, 5) = Resample(k, 5)  +   Ahead(k, 3) * sin(Ahead(k, 2));
-      //  lweights(k) = 1.0 / sqrt(2 * pi * sigSqX) * exp(-pow(x(t, 0) - Ahead(k, 4), 2) / (2*sigSqX)) *
-      //    1.0 / sqrt(2 * pi * sigSqY) * exp(-pow(x(t, 1) - Ahead(k, 5), 2) / (2*sigSqY));
+      //  logLweights(k) = -  pow(x(t, 0) - Ahead(k, 4), 2) / (2*sigSqX)  -  pow(x(t, 1) - Ahead(k, 5), 2) / (2*sigSqY);
       //  if(k == 0){
-      //    lambdaSum(k) = lweights(k);
+      //    lambdaSum(k) = exp(logLweights(k));
       //  } else {
-      //    lambdaSum(k) = lweights(k) + lambdaSum(k-1);
+      //    lambdaSum(k) = exp(logLweights(k)) + lambdaSum(k-1);
       //  }
       //}
       // Normalise
@@ -298,12 +309,11 @@ struct logP{
         States(k, 4) = Resample(k, 4)  +  States(k, 3) * cos(States(k, 2));
         States(k, 5) = Resample(k, 5)  +  States(k, 3) * sin(States(k, 2));
         // Measurement density
-        omega(k) =  1.0 / sqrt(2 * pi * sigSqX) * exp(-pow(x(t, 0) - States(k, 4), 2) / (2*sigSqX)) *
-          1.0 / sqrt(2 * pi * sigSqY) * exp(-pow(x(t, 1) - States(k, 5), 2) / (2*sigSqY));
+        omega(k) =  1.0 / sqrt(2*pi*sigSqX) * exp(-pow(x(t, 0) - States(k, 4), 2) / (2*sigSqX)) * 
+          1.0 / sqrt(2*pi*sigSqY) * exp(-pow(x(t, 1) - States(k, 5), 2) / (2*sigSqY));
         // sum of weights for normalisation
-        omegaSum += omega(k);
+        omegaSum +=  omega(k);
       }
-      
       // Normalise weights
       for(int k = 0; k < N; ++k){
         pweights(k) = omega(k) / omegaSum;
@@ -313,55 +323,21 @@ struct logP{
       xAllDens += xtDens;
     }
     // end of particle filter loop
-    return xAllDens + prior;
+    return xAllDens + prior + logdet;
   }
 };
 
-struct logDetJ {
-  const vec epsilon;
-  logDetJ(const vec epsIn) : // constructor
-    epsilon(epsIn){}
-  template <typename T> // 
-  T operator ()(const Matrix<T, Dynamic, 1>& lambda) // derivative is with respect to lambda
-    const{
-    using std::log; using std::exp; 
-    T logdet = 0;
-    for(int i = 0; i < 11; ++i){
-      if(i >= 6){ // linear
-        logdet += log(sqrt(pow(lambda(11+i), 2)));
-      } else if(i < 4){ // exponential
-        logdet += log(sqrt(pow(lambda(11+i), 2))) + lambda(i) + sqrt(pow(lambda(11+i), 2))*epsilon(i);
-      } else { // sigmoid
-        logdet += log(sqrt(pow(lambda(11+i), 2))) + lambda(i) + sqrt(pow(lambda(11+i), 2))*epsilon(i) - 2*log(1 + exp(lambda(i) + sqrt(pow(lambda(11+i), 2))*epsilon(i)));
-      }
-    }
-    return logdet;
-  }
-};
 
 // [[Rcpp::export]]
-Rcpp::List pDeriv(mat x, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec hyperParams, int N){
+Rcpp::List PFDeriv(mat x, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec hyperParams, int N){
   Map<MatrixXd> lambda(Rcpp::as<Map<MatrixXd> >(lambdaIn));
   double eval;
   int T = x.n_rows;
   Matrix<double, Dynamic, 1> grad(22);
   // Autodiff
-  logP p(x, T, N, epsilon, hyperParams);
+  logPJ p(x, T, N, epsilon, hyperParams);
   stan::math::set_zero_all_adjoints();
   stan::math::gradient(p, lambda, eval, grad);
-  return Rcpp::List::create(Rcpp::Named("grad") = grad,
-                            Rcpp::Named("val") = eval);
-}
-
-// [[Rcpp::export]]
-Rcpp::List jDeriv(Rcpp::NumericMatrix lambdaIn, vec epsilon){
-  Map<MatrixXd> lambda(Rcpp::as<Map<MatrixXd> >(lambdaIn));
-  double eval;
-  Matrix<double, Dynamic, 1> grad(22);
-  // Autodiff
-  logDetJ j(epsilon);
-  stan::math::set_zero_all_adjoints();
-  stan::math::gradient(j, lambda, eval, grad);
   return Rcpp::List::create(Rcpp::Named("grad") = grad,
                             Rcpp::Named("val") = eval);
 }

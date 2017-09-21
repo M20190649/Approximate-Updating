@@ -1,0 +1,142 @@
+\documentclass[12pt,a4paper]{article}\usepackage[]{graphicx}\usepackage[]{color}
+%% maxwidth is the original width if it is less than linewidth
+%% otherwise use linewidth (to make sure the graphics do not exceed the margin)
+\makeatletter
+\def\maxwidth{ %
+  \ifdim\Gin@nat@width>\linewidth
+    \linewidth
+  \else
+    \Gin@nat@width
+  \fi
+}
+\makeatother
+
+\usepackage{alltt}%
+\usepackage[]{graphicx}\usepackage[]{color}
+%% maxwidth is the original width if it is less than linewidth
+%% otherwise use linewidth (to make sure the graphics do not exceed the margin)
+
+%2multibyte Version: 5.50.0.2960 CodePage: 1252
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage[centertags]{amsmath}
+\usepackage{graphicx}%
+\usepackage{natbib}
+\usepackage{color}
+\usepackage[dvipsnames,svgnames*]{xcolor}
+\usepackage{array}
+\usepackage[hidelinks]{hyperref}
+\usepackage[font=small,skip=5pt]{caption}
+\usepackage[aboveskip=2pt]{subcaption}
+\usepackage{amsmath}
+\usepackage{amsthm}
+%\usepackage{tikz}
+%\usetikzlibrary{bayesnet}
+\usepackage{url}
+\usepackage{ulem}
+\usepackage{afterpage}
+\setcounter{MaxMatrixCols}{30}
+
+\setlength{\topmargin}{0in}
+\setlength{\oddsidemargin}{0.1in}
+\setlength{\evensidemargin}{0.1in}
+\setlength{\textwidth}{6.5in}
+\setlength{\textheight}{8.25in}
+\setlength\parindent{0pt}
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+
+\begin{document}
+
+\section{The Basic Model}
+
+Consider the motion model where x, y coordinates in eucliedean space can be determined by the history of coordinates as well as the current velocity, $v$, and steering angle, $\delta$, at time $t$ by
+\begin{align}
+x_t &= x_{t-1} + v_t \cos(\delta_t) \label{xEq} \\
+y_t &= y_{t-1} + v_t \sin(\delta_t). \label{yEq}
+\end{align}
+
+The change in velocity equals acceleration, $a$, which is a stationary autoregressive process.
+\begin{align}
+v_t &= v_{t-1} + a_t \label{vEq} \\
+a_t &= \phi a_{t-1} + \epsilon_t \label{aEq}
+\end{align}
+reducing to an ARIMA(1, 1, 0) process for velocity:
+\begin{equation}
+v_t - v_{t-1} = \phi(v_{t-1} - v_{t-2}) + \epsilon_t. \label{vARIMA}
+\end{equation}
+
+Finally, steering angle follows an AR(1) process with mean $\pi/2$.
+\begin{equation}
+\delta_t = \pi / 2 + \gamma (\delta_{t-1} - \pi / 2) + \eta_t \label{dEq}.
+\end{equation}
+
+Note that $v_t$ and $\delta_t$ in (\ref{xEq}) and (\ref{yEq}) are fully identifiable from observations of $\Delta x_t = x_t -  x_{t-1}$ and $\Delta y_t = y_t - y_{t-1}$,
+\begin{align}
+v_t &= v(\Delta x_t, \Delta y_t) = \sqrt{\Delta x_t^2 + \Delta y_t^2} \label{vEq2} \\
+\delta_t &= \delta(\Delta x_t, \Delta y_t) = \tan^{-1}\left(\frac{\Delta y_t}{\Delta x_t} \right). \label{dEq2}
+\end{align}
+
+\iffalse
+These can be substituted into (\ref{vARIMA}) and (\ref{dEq}) to give
+\begin{align}
+\sqrt{\Delta x_t^2 + \Delta y_t^2} &=  \sqrt{\Delta x_{t-1}^2 + \Delta y_{t-1}^2} + \phi \left(\sqrt{\Delta x_{t-1}^2 + \Delta y_{t-1}^2} - \sqrt{\Delta x_{t-2}^2 + \Delta y_{t-2}^2}\right) + \epsilon_t \label{vEq3} \\
+\tan^{-1}\left(\frac{\Delta y_t}{\Delta x_t} \right) &= \pi / 2 + \gamma \left(\tan^{-1}\left(\frac{\Delta y_{t-1}}{\Delta x_{t-1}} \right) - \pi/2 \right) + \eta_t \label{dEq3}
+\end{align}
+\fi
+
+Assuming that $\epsilon_t \sim N(0, \sigma^2_{\epsilon})$ and $\eta_t \sim N(0, \sigma^2_{\eta})$, using the notation that $x_{1:T} = \{x_t | t = 1, \dots T\}$, $y_{1:T} = \{y_t | t = 1, \dots T\}$, and $\theta = \{\gamma, \phi, \sigma^2_{\epsilon}, \sigma^2_{\eta}\}$, as well as treating $x_{1:3}$ and $y_{1:3}$ as given, the likelihood can be written as
+\begin{equation}
+p(x_{4:T}, y_{4:T} | \theta) = \prod_{t=4}^T \left(p_v(x_t, y_t | \theta) p_{\delta}(x_t, y_t | \theta) \right)
+\end{equation}
+where
+\begin{align}
+p_v(x_t, y_t | \theta) &\propto  \sigma_{\epsilon}^{-1} \exp\left\{\frac{-1}{2 \sigma^2_{\epsilon}} \left(v(\Delta x_t, \Delta y_t) - (1+\phi) v(\Delta x_{t-1}, \Delta y_{t-1}) + \phi v(\Delta x_{t-2}, \Delta y_{t-2})\right)^2  \right\} \label{vDens} \\
+p_{\delta}(x_t, y_t | \theta) &\propto  \sigma_{\eta}^{-1} \exp\left\{\frac{-1}{2 \sigma^2_{\eta}} \left(\delta(\Delta x_t, \Delta y_t) - \pi/2 - \gamma \left(\delta(\Delta x_{t-1}, \Delta y_{t-1}) - \pi/2\right)\right)^2 \right\} \label{dDens} 
+\end{align}
+The following priors are used, where $IG$ denotes the inverse of a Gamma(shape, rate) distribution,
+\begin{align*}
+\gamma &\sim B(\alpha_{\gamma}, \beta_{\gamma}) \\
+\phi &\sim B(\alpha_{\phi}, \beta_{\phi}) \\
+\sigma^2_{\epsilon} &\sim IG(\alpha_{\epsilon}, \beta_{\epsilon}) \\
+\sigma^2_{\eta} &\sim IG(\alpha_{\eta}, \beta_{\eta})
+\end{align*}
+
+A variational approximation is constructed for $\theta^* = \{\log(\gamma / (1-\gamma)), \log(\phi / (1-\phi)), \log(\sigma^2_{\epsilon}), \log(\sigma^2_{\eta})\}$, approximating the unknown posterior of $p(\theta^* | x_{1:T}, y_{1:T})$ with a multivariate normal distribution $q_{\lambda}(\theta^* | x_{1:T}, y_{1:T})$, choosing the set of paramaters $\lambda$ that minimises the Kullback-Leibler divergence from $q$ to $p$,
+\begin{equation}
+KL(q || p) = \int_{\theta^*} q_{\lambda}(\theta^* | x_{1:T}, y_{1:T}) \log \left( \frac{ q_{\lambda}(\theta^* | x_{1:T}, y_{1:T})}{p(\theta^* | x_{1:T}, y_{1:T})} \right) d_{\theta^*}.
+\end{equation}
+
+\begin{figure}[hb]
+\centering
+\includegraphics[width = 0.6\textwidth]{basicFit.png}
+\end{figure}
+
+\section{Adding a Markov Switching Variable}
+
+The complexity of the steering process in (\ref{dEq}) is increased by introducing a two-state Markov switching variable $s_t$, where $s_t = 0$ indicates that the driver is continuing on their current path, and $s_t = 1$ will turn the car towards the centre of the lane. The new steering equation is described by
+\begin{equation}
+\delta_t = (1 - s_t) \delta_{t-1}  s_t (pi/2 + \zeta(x_{t-1} - M)) +  \eta_t \label{dEqMS}.
+\end{equation}
+where $M$ denotes the midpoint of the lane. Note that this now describes a random walk when $s_t = 0$, with large departures from $x_t = M$ controlled when $s_t = 1$.  $s_t$ is governed by the transition probabilities $\rho_{ij} = p(s_t = j | s_{t-1} = 1)$, with $\rho_{00} = 1 - \rho_{01}$ and $\rho_{10} = 1 - \rho_{11}$. As drivers are more likely to steer towards the centre of the lane the further away they are from the centre, $\rho_{10}$ and $\rho_{11}$ are given by 
+\begin{equation}
+\rho_{i1} = \frac{1}{1 + \exp\{-(\alpha_i + \beta_i (x_{t-1} - M)^2)\}} \mbox{ for } i = 0, 1.
+\end{equation}
+With this formulation, $s_t =  0$ represents a default driving state, and $s_t = 1$ represents the driver actively correcting for drift.
+
+This formulation removes $\gamma$ from $\theta$, but adds five additional parameters, $\zeta, \alpha_0, \beta_0, \alpha_1$, and $\beta_1$, each with a $N(\mu_i, \tau_i^2)$ prior. The likelihood can be calculated by the Hamilton filter, and is given by
+\begin{equation}
+p(x_{4:T}, y_{4:T} | \theta) = \prod_{t=4}^T \left(\sum_{i=0}^1 \sum_{j=0}^1 \rho_{ij} \xi_{i, t-1} p_{v}(x_t, y_t | \theta) p_{\delta j}(x_t, y_t | \theta) \right)
+\end{equation}
+where
+\begin{align}
+p_{\delta 0}(x_t, y_t | \theta) &\propto  \sigma_{\eta}^{-1} \exp\left\{\frac{-1}{2 \sigma^2_{\eta}} \left(\delta(\Delta x_t, \Delta y_t) - \delta(\Delta x_{t-1}, \Delta y_{t-1}) \right)^2 \right\} \label{dDensS0}, \\
+p_{\delta 1}(x_t, y_t | \theta) &\propto   \sigma_{\eta}^{-1} \exp\left\{\frac{-1}{2 \sigma^2_{\eta}} \left(\delta(\Delta x_t, \Delta y_t) - \pi/2 - \zeta (x_{t-1} - M)\right)^2  \right\} \label{dDensS1},
+\end{align}
+and
+\begin{align}
+\xi_{j, t} &= P(s_t = j | x_0, y_0, \dots, x_{t}, y_{t}, \theta) \\
+&= \frac{\sum_{i=0}^1\rho_{ij} \xi_{i, t-1} p_v(x_{t}, y_{t})p_{\delta j}(x_{t}, y_{t})}
+{\sum_{i=0}^1 \sum_{j=0}^1 \rho_{ij} \xi_{i, t-1} p_{v}(x_t, y_t | \theta) p_{\delta j}(x_t, y_t | \theta)} \label{HF}.
+\end{align}
+The recursion in (\ref{HF}) is initialised at $\xi_3 = \{0.9, 0.1\}$.
+\end{document}
