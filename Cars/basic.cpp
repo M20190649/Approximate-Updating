@@ -49,11 +49,11 @@ struct logPJ {
       (hyperParams(2) + 1) * log(sigSqD)  -  hyperParams(3) / sigSqD  +
       (hyperParams(4) - 1) * log(phi)  +  (hyperParams(5)-1) * log(1-phi)  +
       (hyperParams(6) - 1) * log(gamma)  +  (hyperParams(7)-1) * log(1-gamma);
-   
+    
     // Evaluate Log Det J
     T logdetJ = log(lambda(4))  +  log(lambda(9))  +  log(lambda(14))  +  log(lambda(19))  +  lambda(0)  +  theta(0)  +  theta(1)  +
       theta(2)  +  theta(3)  - 2 * log(phi + 1)  - 2 * log(gamma + 1);
-
+    
     // Evaluate log likelihood
     T logLik = 0;
     for(int t = 2; t < N; ++t){
@@ -68,8 +68,9 @@ struct hamiltonFilter {
   const mat data;
   const vec epsilon;
   const vec hyperParams;
-  hamiltonFilter (const mat& dataIn, const vec& epsIn, const vec& hypIn) :
-    data(dataIn), epsilon(epsIn), hyperParams(hypIn) {}
+  const double M;
+  hamiltonFilter (const mat& dataIn, const vec& epsIn, const vec& hypIn, const double& MIn) :
+    data(dataIn), epsilon(epsIn), hyperParams(hypIn), M(MIn) {}
   template <typename T> //
   T operator ()(const Matrix<T, Dynamic, 1>& lambda)
     const{
@@ -95,35 +96,37 @@ struct hamiltonFilter {
     // Evaluate log(p(theta))
     T prior = -(hyperParams(0) + 1) * log(sigSqV)  -  hyperParams(1) / sigSqV  - 
       (hyperParams(2) + 1) * log(sigSqD)  -  hyperParams(3) / sigSqD  -
-     // (hyperParams(4) - 1) * log(phi)  +  (hyperParams(5)-1) * log(1-phi)  -
+      // (hyperParams(4) - 1) * log(phi)  +  (hyperParams(5)-1) * log(1-phi)  -
       pow(zeta - hyperParams(4), 2) / (2 * hyperParams(5)) - 
       pow(a0 - hyperParams(6), 2) / (2 * hyperParams(7)) - 
       pow(b0 - hyperParams(8), 2) / (2 * hyperParams(9)) - 
       pow(a1 - hyperParams(10), 2) / (2 * hyperParams(11)) - 
       pow(b1 - hyperParams(12), 2) / (2 * hyperParams(13));
-
+    
     // Evaluate Log Det J
     T logdetJ = theta(0)  +  theta(1);// -  theta(2)  +  2 * log(phi);
     for(int i = 0; i < 7; ++i){
       logdetJ += log(fabs(lambda(8*i + 7)));
     }
-
+    
     // Initialise the filter
     Matrix<T, Dynamic, 1> xi(N), rho01(N), rho11(N), pv(N), pd0(N), pd1(N), likelihood(N);
-    xi(1) = 0.95;
+    xi(0) = 0.95;
     T loglik = 0;
-    for(int t = 2; t < N; ++t){
-      rho01(t) = 1.0 / (1 + exp(-(a0 + b0 * pow(data(t, 0) - 5, 2))));
-      rho11(t) = 1.0 / (1 + exp(-(a1 + b1 * pow(data(t, 0) - 5, 2))));
+    for(int t = 1; t < N; ++t){
+      rho01(t) = 1.0 / (1 + exp(-(a0 + b0 * pow(data(t, 0) - M, 2))));
+      rho11(t) = 1.0 / (1 + exp(-(a1 + b1 * pow(data(t, 0) - M, 2))));
       pv(t) = - 0.5 * log(2 * pi * sigSqV)  -  pow(data(t, 1) - data(t-1, 1), 2) / (2*sigSqV);// - phi * (data(t-1, 1) - data(t-2, 1)), 2)/(2*sigSqV);
       pd0(t) = -0.5 * log(2 * pi * sigSqD)  -  pow(data(t, 2) - data(t-1, 2), 2) / (2*sigSqD);
-      pd1(t) = -0.5 * log(2 * pi * sigSqD)  -  pow(data(t, 2) - pi/2 - zeta * (data(t, 0) - 5), 2) / (2*sigSqD);
+      pd1(t) = -0.5 * log(2 * pi * sigSqD)  -  pow(data(t, 2) - pi/2 - zeta * (data(t, 0) - M), 2) / (2*sigSqD);
       likelihood(t) =  xi(t-1) * (1 - rho01(t)) * exp(pv(t) + pd0(t))  +   //i = 0, j = 0
         xi(t-1) * rho01(t) * exp(pv(t) + pd1(t))  +                        //i = 0, j = 1
         (1 - xi(t-1)) * (1 - rho11(t)) * exp(pv(t) + pd0(t))  +            //i = 1, j = 0
         (1 - xi(t-1)) * rho11(t) * exp(pv(t) + pd1(t));                    //i = 1, j = 1
       xi(t) = ((1 - rho01(t)) * xi(t-1) * exp(pv(t) + pd0(t))  +  (1 - rho11(t)) * (1 - xi(t-1)) * exp(pv(t) + pd0(t))) / likelihood(t);
+      //Rcpp::Rcout << pd0(t) << " " << pd1(t) << std::endl;
       loglik += log(likelihood(t));
+
     }
     
     // Evaluate log(q(eps))
@@ -135,9 +138,107 @@ struct hamiltonFilter {
   }
 };
 
+struct arimaVD {
+  const mat data;
+  const vec epsilon;
+  const vec hyperParams;
+  arimaVD(const mat& dataIn, const vec& epsIn, const vec& hypIn) :
+    data(dataIn), epsilon(epsIn), hyperParams(hypIn) {}
+  template <typename T> //
+  T operator ()(const Matrix<T, Dynamic, 1>& lambda)
+    const{
+    using std::log; using std::exp; using std::pow; using std::sqrt;
+    int N = data.n_rows;
+    // Create theta as Mu + U %*% Eps
+    Matrix<T, Dynamic, 1> theta(6);
+    for(int i = 0; i < 6; ++i){
+      theta(i) = lambda(i);
+      for(int j = 0; j <= i; ++j){
+        theta(i) += lambda(6*(i+1) + j) * epsilon(j);
+      }
+    }
+    // Constrained Positive
+    T sigSqV = exp(theta(0)), sigSqD = exp(theta(1));
+    // Constrained to (0, 1)
+    T arV = 1.0 / (1 + exp(-theta(2))), maV = 1.0 / (1 + exp(-theta(3))),
+      arD = 1.0 / (1 + exp(-theta(4))), maD = 1.0 / (1 + exp(-theta(5)));
+    double pi = 3.14159;
+    // Evaluate log(p(theta))
+    T prior =  -(hyperParams(0) + 1) * log(sigSqV)  -  hyperParams(1) / sigSqV  - 
+      (hyperParams(2) + 1) * log(sigSqD)  -  hyperParams(3) / sigSqD  +
+      (hyperParams(4) - 1) * log(arD)  +  (hyperParams(5)-1) * log(1-arD)  +
+      (hyperParams(6) - 1) * log(arV)  +  (hyperParams(7)-1) * log(1-arV)  +
+      (hyperParams(8) - 1) * log(maD)  +  (hyperParams(9)-1) * log(1-maD)  +
+      (hyperParams(10) - 1) * log(maV)  +  (hyperParams(11)-1) * log(1-maV);
+    
+    // Evaluate Log Det J
+     T logdetJ = theta(0)  +  theta(1)  -  theta(2)  -  theta(3)  -  theta(4)  -  theta(5)  +  
+       2 * (log(arD)  +  log(arV)  + log(maD)  + log(maV));
+    for(int i = 0; i < 6; ++i){
+      logdetJ += theta(i) + log(fabs(lambda(7*i+6)));
+    }
+    // Filter errors
+    Matrix<T, Dynamic, 1> epsilonV(N), epsilonD(N);
+    epsilonV(0) = 0;
+    epsilonD(0) = 0;
+    for(int t = 1; t < N; ++t){
+      epsilonV(t) = data(t, 0)  -  arV * data(t-1, 0)  -  maV * epsilonV(t-1);
+      epsilonD(t) = data(t, 1)  -  pi/2   -  arD * (data(t-1, 1) - pi/2)  -  maD * epsilonD(t-1);
+    }
+    // Evaluate log likelihood
+    T logLik = 0;
+    for(int t = 2; t < N; ++t){
+      logLik += - 0.5 * theta(0) - pow(data(t, 0) - arV * data(t-1, 0) - maV * epsilonV(t-1), 2) / (2*sigSqV);
+      logLik += - 0.5 * theta(1) - pow(data(t, 1) - pi/2 - arD * (data(t-1, 1) - pi/2) - maD * epsilonD(t-1), 2) / (2*sigSqD);
+    }
+    return prior + logLik + logdetJ;
+  }
+};
 
-  
-  
+struct ar1VD {
+  const mat data;
+  const vec epsilon;
+  const vec hyperParams;
+  ar1VD(const mat& dataIn, const vec& epsIn, const vec& hypIn) :
+    data(dataIn), epsilon(epsIn), hyperParams(hypIn) {}
+  template <typename T> //
+  T operator ()(const Matrix<T, Dynamic, 1>& lambda)
+    const{
+    using std::log; using std::exp; using std::pow; using std::sqrt;
+    int N = data.n_rows;
+    // Create theta as Mu + U %*% Eps
+    Matrix<T, Dynamic, 1> theta(4);
+    for(int i = 0; i < 4; ++i){
+      theta(i) = lambda(i);
+      for(int j = 0; j <= i; ++j){
+        theta(i) += lambda(4*(i+1) + j) * epsilon(j);
+      }
+    }
+    // Constrained Positive
+    T sigSqV = exp(theta(0)), sigSqD = exp(theta(1));
+    // Constrained to (-1, 1)
+    T arV = 2.0 / (1 + exp(-theta(2))) - 1, arD = 2.0 / (1 + exp(-theta(3))) - 1;
+    double pi = 3.14159;
+    // Evaluate log(p(theta))
+    T prior =  -(hyperParams(0) + 1) * log(sigSqV)  -  hyperParams(1) / sigSqV  - 
+      (hyperParams(2) + 1) * log(sigSqD)  -  hyperParams(3) / sigSqD  +
+      (hyperParams(4) - 1) * log(1+arD)  +  (hyperParams(5)-1) * log(1-arD)  +
+      (hyperParams(6) - 1) * log(1+arV)  +  (hyperParams(7)-1) * log(1-arV);
+    
+    // Evaluate Log Det J
+    T logdetJ = theta(0)  +  theta(1)  -  theta(2)  -  theta(3)  +  2 * (log(arD)  +  log(arV));
+    for(int i = 0; i < 4; ++i){
+      logdetJ += log(fabs(lambda(5*i+4)));
+    }
+    // Evaluate log likelihood
+    T logLik = 0;
+    for(int t = 1; t < N; ++t){
+      logLik += - 0.5 * theta(0) - pow(data(t, 0) - arV * data(t-1, 0), 2) / (2*sigSqV);
+      logLik += - 0.5 * theta(1) - pow(data(t, 1) - pi/2 - arD * (data(t-1, 1) - pi/2), 2) / (2*sigSqD);
+    }
+    return prior + logLik + logdetJ;
+  }
+};
   
 // generate sobol points
 // [[Rcpp::export]]
@@ -283,15 +384,106 @@ Rcpp::List PJDeriv(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec hype
 }
 
 // [[Rcpp::export]]
-Rcpp::List HFDeriv(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec hyperParams){
+Rcpp::List HFDeriv(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec hyperParams, double M = 5){
   Map<MatrixXd> lambda(Rcpp::as<Map<MatrixXd> >(lambdaIn));
   double eval;
   Matrix<double, Dynamic, 1> grad(56);
   // Autodiff
-  hamiltonFilter hf(data, epsilon, hyperParams);
+  hamiltonFilter hf(data, epsilon, hyperParams, M);
   stan::math::set_zero_all_adjoints();
   stan::math::gradient(hf, lambda, eval, grad);
   return Rcpp::List::create(Rcpp::Named("grad") = grad,
                             Rcpp::Named("val") = eval);
+}
+
+// [[Rcpp::export]]
+Rcpp::List arimaDeriv(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec hyperParams){
+  Map<MatrixXd> lambda(Rcpp::as<Map<MatrixXd> >(lambdaIn));
+  double eval;
+  Matrix<double, Dynamic, 1> grad(42);
+  // Autodiff
+  arimaVD p(data, epsilon, hyperParams);
+  stan::math::set_zero_all_adjoints();
+  stan::math::gradient(p, lambda, eval, grad);
+  return Rcpp::List::create(Rcpp::Named("grad") = grad,
+                            Rcpp::Named("val") = eval);
+}
+
+
+// [[Rcpp::export]]
+Rcpp::List ar1Deriv(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec hyperParams){
+  Map<MatrixXd> lambda(Rcpp::as<Map<MatrixXd> >(lambdaIn));
+  double eval;
+  Matrix<double, Dynamic, 1> grad(20);
+  // Autodiff
+  ar1VD p(data, epsilon, hyperParams);
+  stan::math::set_zero_all_adjoints();
+  stan::math::gradient(p, lambda, eval, grad);
+  return Rcpp::List::create(Rcpp::Named("grad") = grad,
+                            Rcpp::Named("val") = eval);
+}
+
+
+
+double MCMCfilter (mat data, rowvec theta, vec hyperParams, double M){
+  int N = data.n_rows;
+  double xi, rho01, rho11, pv, pd0, pd1, likelihood;
+  xi = 0.95;
+  double loglik = 0, sigSqV = theta(0), sigSqD = theta(1), zeta = theta(2), a0 = theta(3), b0 = theta(4), a1 = theta(5), b1 = theta(6), pi = 3.14159;
+  
+  
+  for(int t = 1; t < N; ++t){
+    rho01 = 1.0 / (1 + exp(-(a0 + b0 * pow(data(t, 0) - M, 2))));
+    rho11 = 1.0 / (1 + exp(-(a1 + b1 * pow(data(t, 0) - M, 2))));
+    pv = - 0.5 * log(2 * pi * sigSqV)  -  pow(data(t, 1) - data(t-1, 1), 2) / (2*sigSqV);// - phi * (data(t-1, 1) - data(t-2, 1)), 2)/(2*sigSqV);
+    pd0 = -0.5 * log(2 * pi * sigSqD)  -  pow(data(t, 2) - data(t-1, 2), 2) / (2*sigSqD);
+    pd1 = -0.5 * log(2 * pi * sigSqD)  -  pow(data(t, 2) - pi/2 - zeta * (data(t, 0) - M), 2) / (2*sigSqD);
+    likelihood =  xi * (1 - rho01) * exp(pv + pd0)  +   //i = 0, j = 0
+      xi * rho01 * exp(pv + pd1)  +                        //i = 0, j = 1
+      (1 - xi) * (1 - rho11) * exp(pv + pd0)  +            //i = 1, j = 0
+      (1 - xi) * rho11 * exp(pv + pd1);                    //i = 1, j = 1
+    xi = ((1 - rho01) * xi * exp(pv + pd0)  +  (1 - rho11) * (1 - xi) * exp(pv + pd0)) / likelihood;
+    loglik += log(likelihood);
+  }
+  
+  double prior = -(hyperParams(0) + 1) * log(sigSqV)  -  hyperParams(1) / sigSqV  - 
+    (hyperParams(2) + 1) * log(sigSqD)  -  hyperParams(3) / sigSqD  -
+    // (hyperParams(4) - 1) * log(phi)  +  (hyperParams(5)-1) * log(1-phi)  -
+    pow(zeta - hyperParams(4), 2) / (2 * hyperParams(5)) - 
+    pow(a0 - hyperParams(6), 2) / (2 * hyperParams(7)) - 
+    pow(b0 - hyperParams(8), 2) / (2 * hyperParams(9)) - 
+    pow(a1 - hyperParams(10), 2) / (2 * hyperParams(11)) - 
+    pow(b1 - hyperParams(12), 2) / (2 * hyperParams(13));
+  
+  return loglik + prior;
+}
+
+// [[Rcpp::export]]
+mat HFMCMC (mat data, int reps, rowvec stepsize, vec hyperParams, double Mid){
+  int N = data.n_rows;
+  mat theta(reps, 7);
+  rowvec initial = {0.01, 0.00001, 0.05, -5, 1, 3, 12};
+  theta.row(0) = initial;
+  int accept = 0;
+  double loglik = MCMCfilter(data, initial, hyperParams, Mid);
+  for(int iter = 1; iter < reps; ++iter){
+    rowvec candidate = theta.row(iter-1) + stepsize % randn<rowvec>(7);
+    double canLoglik = MCMCfilter(data, candidate, hyperParams, Mid);
+    double ratio = exp(canLoglik - loglik);
+    double u = randu<vec>(1)[0];
+    if(u < ratio){
+      accept += 1;
+      theta.row(iter) = candidate;
+      loglik = canLoglik;
+    } else {
+      theta.row(iter) = theta.row(iter-1);
+    }
+    if(iter % 10000 == 0){
+      Rcpp::Rcout << "Iteration: " << iter << std::endl;
+    }
+  }
+  Rcpp::Rcout << "Iteration: " << reps << std::endl;
+  Rcpp::Rcout << accept * 1.0 / reps << std::endl;
+  return theta; 
 }
 

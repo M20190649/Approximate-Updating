@@ -10,10 +10,12 @@ dataset = '101'
 cars1 = read.table(paste0(dataset, '/vehicle-trajectory-data/trajectories1.txt'))
 
 cars2 = read.table(paste0(dataset, '/vehicle-trajectory-data/trajectories2.txt'))
-cars2[,1] = cars2[,1] + max(cars1[,1])
+cars2[,1] = cars2[,1] + 10000
+cars2[,15] = cars2[,15] + 10000
 
 cars3 = read.table(paste0(dataset, '/vehicle-trajectory-data/trajectories3.txt'))
-cars3[,1] = cars3[,1] + max(cars2[,1]) 
+cars3[,1] = cars3[,1] + 20000
+cars3[,15] = cars3[,15] + 20000
 
 cars = rbind(cars1, cars2, cars3)
 rm(cars1, cars2, cars3)
@@ -49,7 +51,7 @@ cars %>%
 startLanes %>%
   filter(lane == 1) -> startIn1
 
-yQuantiles = quantile(cars$y, seq(0, 1, 0.001))
+yQuantiles = quantile(cars$y, seq(0, 1, 0.01))
 cars$yQ = sapply(cars$y, function(x) max(which(yQuantiles <= x)))
 
 cars %>%
@@ -64,6 +66,13 @@ cars %>%
             medianRight = quantile(xmax, 0.5)) %>%
   mutate(yQ = yQuantiles[yQ]) -> lanePath
 
+cars %>%
+  filter(lane == 1) %>%
+  group_by(yQ) %>%
+  summarise(xMed = median(x)) %>%
+  mutate(y = yQuantiles[yQ],
+         xmin = xMed - 2, 
+         xmax = xMed + 2) -> lane1Path
 
 length(unique(cars$ID))
 
