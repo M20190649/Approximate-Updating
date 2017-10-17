@@ -69,11 +69,15 @@ vbDensity <- function(fit, transform, names, supports = NULL){
   if(is.null(supports)){
     supports = as.list(rep(NA, n))
   }
-  mu = fit[1:n]
-  if(length(fit) == n*(n+1)){
-    u = matrix(fit[(n+1):length(fit)], n)
+  mu = fit$mean
+  if(length(fit$U) == n^2){
+    u = matrix(fit$U, n)
   } else {
-    u = matrix(c(fit[n+1], 0, 0, 0, fit[n+2:3], 0, 0, fit[n+4:6], 0, fit[n+7:10]), n)
+    u = NULL
+    for(i in 1:n){
+      u = c(u, fit$U[sum(0:(i-1))+1:i], rep(0, n - i))
+    }
+    u = matrix(u, n)
   }
   sigma = sqrt(diag(t(u) %*% u))
   dens = data.frame()
@@ -121,29 +125,35 @@ vbDensity <- function(fit, transform, names, supports = NULL){
   dens
 }
 
-compareModels <- function(heirList, IDvec, j) {
+compareModels <- function(heirList, IDvec, j, transform = c(rep('exp', 2), rep('stretchedSigmoid', 2)), 
+                          names = c('sigma^2[V]', 'sigma^2[D]', 'phi[V]', 'phi[D]')) {
+  size = length(transform)
   L3Y600 %>%
     filter(ID == IDvec[j]) %>%
     select(v, delta) -> car
   
   data <- cbind(car$v[2:nrow(car)] - car$v[1:(nrow(car)-1)], car$delta[2:nrow(car)])
-  mu <- c(0, 0, 0, 0)
-  sd <- c(1, 1, 1, 1)
-  lambda <- matrix(c(mu, diag(sd)), nrow=20)
-  hyper <- c(2, 0.0002, 2, 0.00002, 1, 1, 1, 1)
+  mu <- rep(0, size)
+  sd <- rep(1, size)
+  lambda <- matrix(c(mu, diag(sd)), nrow=size*(size+1))
+  hyper <- c(2, 0.0002, 2, 0.00002, rep(1, 2*(size-2)))
   
-  fit <- carsVB(data, lambda, hyper=hyper, S=5, maxIter=5000, alpha=0.01, beta1=0.9, beta2=0.99,
-                dimTheta=4, model = ar1Deriv, threshold=0.01)
-  
+  if(size == 4){
+    fit <- carsVB(data, lambda, hyper=hyper, S=5, maxIter=5000, alpha=0.01, beta1=0.9, beta2=0.99,
+                  dimTheta=4, model = ar1Deriv, threshold=0.01)
+  } else {
+    fit <- carsVB(data, lambda, hyper=hyper, S=5, maxIter=5000, alpha=0.01, beta1=0.9, beta2=0.99,
+                  dimTheta=6, model = var1Deriv, threshold=0.01)
+  }
   
   heirDensity <- vbDensity(fit = heirList[[j+1]],
-                           transform = c(rep('exp', 2), rep('stretchedSigmoid', 2)),
-                           names = c('sigma^2[V]', 'sigma^2[D]', 'phi[V]', 'phi[D]'))
+                           transform = transform,
+                           names = names)
   heirDensity$method <- 'heirarchical'
   
-  density <- vbDensity(fit = fit,
-                       transform = c(rep('exp', 2), rep('stretchedSigmoid', 2)),
-                       names = c('sigma^2[V]', 'sigma^2[D]', 'phi[V]', 'phi[D]'),
+  density <- vbDensity(fit = list(mean = fit[1:size], U = fit[(size+1):(size*(size+1))]),
+                       transform = transform,
+                       names = names,
                        supports = heirDensity %>% 
                          select(var, support) %>% 
                          group_by(var) %>%
@@ -156,7 +166,7 @@ compareModels <- function(heirList, IDvec, j) {
   density %>%
     rbind(heirDensity) %>%
     ggplot() + geom_line(aes(support, density)) + 
-    facet_wrap(method~var, scales = 'free', ncol =4) + 
+    facet_wrap(method~var, scales = 'free', ncol = size) + 
     theme_bw() + 
     theme(strip.background = element_blank()) + 
     labs(x = NULL, y = NULL, title = paste0('carID: ', IDvec[j])) -> plot
@@ -166,4 +176,21 @@ compareModels <- function(heirList, IDvec, j) {
     rbind(heirDensity) %>%
     group_by(var, method) %>%
     summarise(map = support[which.max(density)])
+}
+
+drawTheta <- function(thetaHat, var){
+  require(mvtnorm)
+  B <- t(matrix(c(thetaHat[5], 0, 0, 0, thetaHat[6:7], 0, 0, thetaHat[8:10], 0, thetaHat[11:14]), 4)) %*% 
+    matrix(c(thetaHat[5], 0, 0, 0, thetaHat[6:7], 0, 0, thetaHat[8:10], 0, thetaHat[11:14]), 4)
+  mean <- thetaHat[1:4]
+  
+  draw <- NULL
+  for(i in 1:1000){
+    inv <- rnorm(10, var$mean, abs(var$sd))
+    Uinv <- matrix(c(Linv[1], 0, 0, 0, Linv[2:3], 0, 0, Linv[4:6], 0, Linv[7:10]), 4, 4)
+    Sig <- solve(t(Uinv) %*% Uinv)
+    Var <- B + Sig
+    draw <- rbind(draw, rmvnorm(1, mean, Var))
+  }
+  draw
 }

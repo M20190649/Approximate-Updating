@@ -108,7 +108,7 @@ KL(q || p) = \int_{\theta^*} q_{\lambda}(\theta^* | x_{1:T}, y_{1:T}) \log \left
 
 \begin{figure}[hb]
 \centering
-\includegraphics[width = 0.6\textwidth]{basicFit.png}
+\includegraphics[width = 1\textwidth]{basicFit.png}
 \end{figure}
 
 \section{Adding a Markov Switching Variable}
@@ -121,14 +121,19 @@ where $M$ denotes the midpoint of the lane. Note that this now describes a rando
 \begin{equation}
 \rho_{i1} = \frac{1}{1 + \exp\{-(\alpha_i + \beta_i (x_{t-1} - M)^2)\}} \mbox{ for } i = 0, 1.
 \end{equation}
+The velocity equation is also simplified for computational purposes (though the results had the same problems with it the same as earlier - so this did not really help).
+\begin{equation}
+v_t = v_{t-1} + \epsilon_t \label{vEqMS}
+\end{equation}
 With this formulation, $s_t =  0$ represents a default driving state, and $s_t = 1$ represents the driver actively correcting for drift.
 
-This formulation removes $\gamma$ from $\theta$, but adds five additional parameters, $\zeta, \alpha_0, \beta_0, \alpha_1$, and $\beta_1$, each with a $N(\mu_i, \tau_i^2)$ prior. The likelihood can be calculated by the Hamilton filter, and is given by
+This formulation removes $\gamma$ and $\phi$ from $\theta$, but adds five additional parameters, $\zeta, \alpha_0, \beta_0, \alpha_1$, and $\beta_1$, each with a $N(\mu_i, \tau_i^2)$ prior. The likelihood can be calculated by the Hamilton filter, and is given by
 \begin{equation}
 p(x_{4:T}, y_{4:T} | \theta) = \prod_{t=4}^T \left(\sum_{i=0}^1 \sum_{j=0}^1 \rho_{ij} \xi_{i, t-1} p_{v}(x_t, y_t | \theta) p_{\delta j}(x_t, y_t | \theta) \right)
 \end{equation}
 where
 \begin{align}
+p_v(x_t, y_t) &\propto \sigma_{\epsilon}^{-1} \exp\left\{ \frac{-1}{2 \sigma^2_{\epsilon}} \left(v(\Delta x_t, \Delta y_t) - v(\Delta x_{t-1}, \Delta y_{t-1})\right)^2\right\} \label{vDensS} \\
 p_{\delta 0}(x_t, y_t | \theta) &\propto  \sigma_{\eta}^{-1} \exp\left\{\frac{-1}{2 \sigma^2_{\eta}} \left(\delta(\Delta x_t, \Delta y_t) - \delta(\Delta x_{t-1}, \Delta y_{t-1}) \right)^2 \right\} \label{dDensS0}, \\
 p_{\delta 1}(x_t, y_t | \theta) &\propto   \sigma_{\eta}^{-1} \exp\left\{\frac{-1}{2 \sigma^2_{\eta}} \left(\delta(\Delta x_t, \Delta y_t) - \pi/2 - \zeta (x_{t-1} - M)\right)^2  \right\} \label{dDensS1},
 \end{align}
@@ -138,5 +143,10 @@ and
 &= \frac{\sum_{i=0}^1\rho_{ij} \xi_{i, t-1} p_v(x_{t}, y_{t})p_{\delta j}(x_{t}, y_{t})}
 {\sum_{i=0}^1 \sum_{j=0}^1 \rho_{ij} \xi_{i, t-1} p_{v}(x_t, y_t | \theta) p_{\delta j}(x_t, y_t | \theta)} \label{HF}.
 \end{align}
-The recursion in (\ref{HF}) is initialised at $\xi_3 = \{0.9, 0.1\}$.
+The recursion in (\ref{HF}) is initialised at $\xi_2 = \{0.9, 0.1\}$.
+
+\begin{figure}[hb]
+\centering
+\includegraphics[width = 1\textwidth]{VBMCMC}
+\end{figure}
 \end{document}

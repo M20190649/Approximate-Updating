@@ -8,6 +8,11 @@ source('carsVBfuns.R')
 sourceCpp('basic.cpp')
 sourceCpp('heirarchical.cpp')
 L3Y600 <- readr::read_csv('L3Y600.csv')
+L3Y600 %>% 
+  group_by(ID) %>%
+  filter(min(v) > 0.1 & changed == FALSE) %>%
+  .$ID %>%
+  unique() -> noChange
 
 plots{
 L3Y600 %>%
@@ -78,25 +83,43 @@ gridExtra::grid.arrange(p1, p4, ncol=1)
 
 fitARIMAfc{
 tsFits <- data.frame()
-for(i in 0:1){
-  for(k in 0:1){
+for(i in 0:5){
+  #for(k in 0:1){
     for(l in seq_along(noChange)){
       car <- filter(L3Y600, ID == noChange[l])
       train <- car[1:(nrow(car)-50),]
       test <- car[(nrow(car)-49):nrow(car),]
       train$delta %>% 
-        Arima(order = c(i, 0, k), method = 'ML') %>%
+        Arima(order = c(i, 0, 0), method = 'ML') %>%
         forecast(h = 50) -> fc
       mse <- mean((fc$mean - test$delta)^2)
+      ls <- sum(dnorm(test$delta, fc$mean, sqrt(fc$model$sigma2), log=TRUE))
       tsFits <- rbind(tsFits, 
-                      data.frame(var = 'delta', ID = noChange[l], ar = i, i = j, ma = k, mse = mse,
-                                 ll = fc$model$loglik, aic = fc$model$aic, bic = fc$model$bic))
-        if(l %% 500 == 0){
+                      data.frame(var = 'delta', ID = noChange[l], ar = i, mse = mse,
+                                 ll = fc$model$loglik, aic = fc$model$aic, bic = fc$model$bic, logscore = ls))
+      train$v %>%
+        Arima(order = c(i, 1, 0), method = 'ML') %>%
+        forecast(h = 50) -> fc
+      mse <- mean((fc$mean - test$v)^2)
+      ls <- sum(dnorm(test$v, fc$mean, sqrt(fc$model$sigma2), log=TRUE))
+      tsFits <- rbind(tsFits, 
+                      data.frame(var = 'v', ID = noChange[l], ar = i, mse = mse,
+                                 ll = fc$model$loglik, aic = fc$model$aic, bic = fc$model$bic, logscore = ls))
+      
+        if(l %% 200 == 0){
         print(l)
       }
     }
-    print(paste(i, k))
-  }
+    print(i)
+  #}
+}
+arFits <- NULL
+for(l in seq_along(noChange)){
+  car <- filter(L3Y600, ID == noChange[l])
+  fitD <- auto.arima(car$delta, max.q = 0)
+  fitV <- auto.arima(car$v, max.q = 0)
+  arFits <- rbind(arFits,
+                  data.frame(v = length(fitV$model$phi), d = length(fitD$model$phi)))
 }
 
 
@@ -123,8 +146,8 @@ for(i in 0:2){
 }
 
 tsFits %>%
-  mutate(model = paste(ar, i, ma)) %>%
-  group_by(model) %>%
+  #mutate(model = paste(ar, i, ma)) %>%
+  group_by(var, ar) %>%
   summarise(mean(mse), mean(aic), mean(bic), mean(ll), mean(logscore))
 # Delta - ARMA(1, 1)
 # Velocity - ARIMA(1, 1, 1)
@@ -326,14 +349,8 @@ density %>%
 }
 
 heterogeneity{
-  
-L3Y600 %>% 
-    group_by(ID) %>%
-    filter(min(v) > 1 & changed == FALSE) %>%
-    .$ID %>%
-    unique() -> noChange
 
-N <- 710
+N <- 20
 idSubset <- sort(sample(noChange, N))
   
 L3Y600 %>%
@@ -364,32 +381,39 @@ carhetero %>%
   ungroup() %>%
   select(vdiff, delta) %>%
   as.matrix() -> data
-    
 
-lambda <- matrix(c(rep(0, 4*(N+1)), rep(c(0.1, 0, 0.1, 0, 0, 0.1, 0, 0, 0, 0.1), N+1)), ncol=1)
-hyperMean <- c(-5, 5, 0, 0)
-hyperVar <- diag(5, 4)
+    
+dim = 6
+dim2 = 0.5 * dim * (dim + 1)
+varSeq <- 0.1
+for(i in 1:(dim - 1)){
+  varSeq <- c(varSeq, rep(0, i), 0.1)
+}
+lambda <- matrix(c(rep(0, dim*(N+1)), rep(varSeq, N+1)), ncol=1)
+hyperMean <- c(-5, 5, rep(0, dim-2))
+hyperVar <- diag(5, dim)
 hyperLinv <- solve(chol(hyperVar))
 Linv <- hyperLinv
 
 heirFit <- carsVB(data = data,
                   lambda = lambda,
-                  S = 2,
+                  S = 15,
                   maxIter = 5000,
-                  model = heirAr1Deriv,
-                  dimTheta = 4*(N+1),
+                  model = heirAr2Deriv,  ## Remember this line
+                  dimTheta = dim*(N+1),
                   dimLambda = length(lambda),
                   hyperMean = hyperMean,
                   hyperLinv = hyperLinv,
                   Linv = Linv,
-                  obsPer = obsSum,
+                  obsSum = obsSum,
                   threshold = 0.25)
-any(is.na(heirFit))
 
-heirList <- list()
-for(i in 1:(N+1)){
-  heirList[[i]] <- heirFit[c((i-1)*4 + 1:4, (N+1)*4 + (i-1)*10 + 1:10)]  
+
+heirList <- list(list(mean = heirFit[1:dim], U = heirFit[(N+1)*dim+1:dim2]))
+for(i in 2:(N+1)){
+  heirList[[i]] <- list(mean = heirFit[(i-1)*dim + 1:dim], U = heirFit[(N+1)*dim+dim2*(i-1) + 1:dim2]) 
 }
+
 
 compareCar <- sample(1:N, 1)
 compareModels(heirList, idSubset, compareCar)
@@ -397,8 +421,8 @@ compareModels(heirList, idSubset, compareCar)
 maps <- data.frame()
 for(i in 1:N){
   dens <- vbDensity(heirList[[i+1]],
-                    c(rep('exp', 2), rep('stretchedSigmoid', 2)),
-                    c('sigma^2[V]', 'sigma^2[D]', 'phi[V]', 'phi[D]'))
+                    c(rep('exp', 2), rep('stretchedSigmoid', 4)),
+                    c('sigma^2[V]', 'sigma^2[D]', 'phi1[V]', 'phi1[D]', 'phi2[V]', 'phi2[D]'))
   map <- dens %>% group_by(var) %>% summarise(map = support[which.max(density)])
   df <- data.frame(ID = idSubset[i], map, 
                    class = carhetero %>%
@@ -409,29 +433,29 @@ for(i in 1:N){
 }
 
 maps %>%
-  ggplot() + geom_density(aes(map, fill = class), position = 'jitter') + facet_wrap(~var, scales = 'free')
+  ggplot() + geom_boxplot(aes(x = class, y = map, fill = class)) + facet_wrap(~var, scales = 'free')
 
 maps %>%
   spread(var, map) %>%
   select(-ID) %>%
-  rename(sigV = `sigma^2[V]`, sigD = `sigma^2[D]`, phiV = `phi[V]`, phiD = `phi[D]`) %>%
+  rename(sigV = `sigma^2[V]`, sigD = `sigma^2[D]`, phiV = `phi1[V]`, phiD = `phi1[D]`, phi2V = `phi2[V]`, phi2D = `phi2[D]`) %>%
   GGally::ggpairs(aes(colour = class, alpha = 0.8))
 
 
 
 heirDensity <- vbDensity(heirList[[2]], 
-                         c(rep('exp', 2), rep('stretchedSigmoid', 2)),
-                         c('sigma^2[V]', 'sigma^2[D]', 'phi[V]', 'phi[D]'))
+                         c(rep('exp', 2), rep('stretchedSigmoid', 4)),
+                         c('sigma^2[V]', 'sigma^2[D]', 'phi1[V]', 'phi1[D]', 'phi2[V]', 'phi2[D]'))
 
 heirDensity$method <- 'heirarchical model - one car'
 globalDensity <- vbDensity(heirList[[1]],
-                           c(rep('exp', 2), rep('stretchedSigmoid', 2)),
-                           c('sigma^2[V]', 'sigma^2[D]', 'phi[V]', 'phi[D]'))
+                           c(rep('exp', 2), rep('stretchedSigmoid', 4)),
+                           c('sigma^2[V]', 'sigma^2[D]', 'phi1[V]', 'phi1[D]', 'phi2[V]', 'phi2[D]'))
 globalDensity$method <- 'heirarchical model - global'
 heirDensity %>%
   rbind(globalDensity) %>%
   ggplot() + geom_line(aes(support, density)) + 
-  facet_wrap(method~var, scales = 'free', ncol =4) + 
+  facet_wrap(method~var, scales = 'free', ncol =dim) + 
   theme_bw() + 
   theme(strip.background = element_blank()) + 
   labs(x = NULL, y = NULL)

@@ -152,10 +152,10 @@ struct heirAr1 {
   const vec epsilon;
   const vec hyperMean;
   const mat hyperLinv;
-  const vec obsSum;
   const mat Linv;
-  heirAr1(const mat& dataIn, const vec& epsIn, const vec& hypMIn, const mat& hypLiIn, const mat& LiIn, const vec& obsIn) :
-    data(dataIn), epsilon(epsIn), hyperMean(hypMIn), hyperLinv(hypLiIn), Linv(LiIn), obsSum(obsIn) {}
+  const vec obsSum;
+  heirAr1(const mat& dataIn, const vec& epsIn, const vec& hypMIn, const mat& hypLiIn, const mat& LinvIn, const vec& obsIn) :
+    data(dataIn), epsilon(epsIn), hyperMean(hypMIn), hyperLinv(hypLiIn), Linv(LinvIn), obsSum(obsIn) {}
   template <typename T> //
   T operator ()(const Matrix<T, Dynamic, 1>& lambda)
     const{
@@ -175,13 +175,15 @@ struct heirAr1 {
         lCounter += 1;
       }
     }
-    //Matrix<T, Dynamic, Dynamic> L(4, 4);
+    //Matrix<T, Dynamic, Dynamic> Linv(4, 4);
     //int vCounter = 0;
     //for(int i = 0; i < 4; ++i){
-    //  for(int j = 0; j <= i; ++j)
-    //    L(i, j) = lambda(4 + vCounter) + lambda(lCounter) * epsilon(4 + vCounter);
+    //  for(int j = 0; j <= i; ++j){
+    //    Linv(i, j) = lambda(4 + vCounter) + lambda(lCounter) * epsilon(4 + vCounter);
+    //    logdetJ += log(fabs(lambda(lCounter)));
     //    lCounter += 1;
     //    vCounter += 1;
+    //  }
     //}
     
     Matrix<T, Dynamic, Dynamic> theta(4, N);
@@ -205,23 +207,14 @@ struct heirAr1 {
       arD(k) = 2.0 / (1 + exp(-theta(3, k))) - 1;
     }
     double pi = 3.14159;
-    // Evaluate Log Det J
+  
+    // Finish evaluation of Log Det J
     for(int k = 0; k < N; ++k){
       logdetJ += theta(0, k) + theta(1, k) - theta(2, k) - theta(3, k) + 2 * log(1+arV(k)) + 2 * log(1+arD(k));
     }
-    // Evaluate log(p(theta hat))
-    T hyperprior =  -log(fabs(hyperLinv(0, 0))) - log(fabs(hyperLinv(1, 1)))  -log(fabs(hyperLinv(2, 2))) - log(fabs(hyperLinv(3, 3))) -
-           0.5 * (pow((thetaHat(0) - hyperMean(0))*hyperLinv(0, 0) + (thetaHat(1) - hyperMean(1))*hyperLinv(1, 0) + 
-                      (thetaHat(2) - hyperMean(2))*hyperLinv(2, 0) + (thetaHat(3) - hyperMean(3))*hyperLinv(3, 0), 2) + 
-                  pow((thetaHat(1) - hyperMean(1))*hyperLinv(1, 1) + (thetaHat(2) - hyperMean(2))*hyperLinv(2, 1) + 
-                      (thetaHat(3) - hyperMean(3))*hyperLinv(3, 1), 2) + 
-                  pow((thetaHat(2) - hyperMean(2))*hyperLinv(2, 2) + (thetaHat(3) - hyperMean(3))*hyperLinv(3, 2), 2) + 
-                  pow((thetaHat(3) - hyperMean(3))*hyperLinv(3, 3), 2));
-
-    // L * t(L) ~ IW(hyperWish)
-
     // Invert the L matrix
     //Matrix<T, Dynamic, Dynamic> Linv(4, 4);
+    //Linv.fill(0);
     //for(int i = 0; i < 4; ++i){
     //  for(int j = i; j >= 0; --j){
     //    if(i == j){
@@ -235,6 +228,24 @@ struct heirAr1 {
     //    }
     //  }
     //}
+      
+    // Evaluate log(p(theta hat))
+    // thetaHat ~ N(M, V)
+    T hyperprior =  -log(fabs(hyperLinv(0, 0))) - log(fabs(hyperLinv(1, 1)))  -log(fabs(hyperLinv(2, 2))) - log(fabs(hyperLinv(3, 3))) -
+           0.5 * (pow((thetaHat(0) - hyperMean(0))*hyperLinv(0, 0) + (thetaHat(1) - hyperMean(1))*hyperLinv(1, 0) + 
+                      (thetaHat(2) - hyperMean(2))*hyperLinv(2, 0) + (thetaHat(3) - hyperMean(3))*hyperLinv(3, 0), 2) + 
+                  pow((thetaHat(1) - hyperMean(1))*hyperLinv(1, 1) + (thetaHat(2) - hyperMean(2))*hyperLinv(2, 1) + 
+                      (thetaHat(3) - hyperMean(3))*hyperLinv(3, 1), 2) + 
+                  pow((thetaHat(2) - hyperMean(2))*hyperLinv(2, 2) + (thetaHat(3) - hyperMean(3))*hyperLinv(3, 2), 2) + 
+                  pow((thetaHat(3) - hyperMean(3))*hyperLinv(3, 3), 2));
+
+    // Linv ~ N(0, 1)
+    //for(int i = 0; i < 4; ++i){
+    //  for(int j = 0; j <= i; ++j){
+    //    hyperprior -= 0.5 * pow(Linv(i, j), 2);
+    //  }
+    //}
+   
     // Evaluate log(p(theta | theta hat))
     T prior = 0;
     for(int k = 0; k < N; ++k){
@@ -245,7 +256,6 @@ struct heirAr1 {
         pow((theta(2, k) - thetaHat(2))*Linv(2, 2) + (theta(3, k) - thetaHat(3))*Linv(3, 2), 2) + 
         pow((theta(3, k) - thetaHat(3))*Linv(3, 3), 2));
     }
-    
     // Evaluate log likelihood
     T logLik = 0;
     for(int t = 1; t < obsSum(0); ++t){
@@ -263,13 +273,126 @@ struct heirAr1 {
 };
 
 // [[Rcpp::export]]
-Rcpp::List heirAr1Deriv(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec hyperMean, mat hyperLinv, mat Linv, vec obsPer){
+Rcpp::List heirAr1Deriv(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec hyperMean, mat hyperLinv, mat Linv, vec obsSum){
   Map<MatrixXd> lambda(Rcpp::as<Map<MatrixXd> >(lambdaIn));
   double eval;
-  int N = obsPer.n_elem;
+  int N = obsSum.n_elem;
   Matrix<double, Dynamic, 1> grad(14 * (N + 1));
   // Autodiff
-  heirAr1 p(data, epsilon, hyperMean, hyperLinv, Linv, obsPer);
+  heirAr1 p(data, epsilon, hyperMean, hyperLinv, Linv, obsSum);
+  stan::math::set_zero_all_adjoints();
+  stan::math::gradient(p, lambda, eval, grad);
+  return Rcpp::List::create(Rcpp::Named("grad") = grad,
+                            Rcpp::Named("val") = eval);
+}
+
+struct heirAr2 {
+  const mat data;
+  const vec epsilon;
+  const vec hyperMean;
+  const mat hyperLinv;
+  const mat Linv;
+  const vec obsSum;
+  heirAr2(const mat& dataIn, const vec& epsIn, const vec& hypMIn, const mat& hypLiIn, const mat& LinvIn, const vec& obsIn) :
+    data(dataIn), epsilon(epsIn), hyperMean(hypMIn), hyperLinv(hypLiIn), Linv(LinvIn), obsSum(obsIn) {}
+  template <typename T> //
+  T operator ()(const Matrix<T, Dynamic, 1>& lambda)
+    const{
+    using std::log; using std::exp; using std::pow; using std::sqrt; using std::fabs;
+    int N = obsSum.n_elem;
+    // Create thetaHat as Mu + U %*% Eps
+    Matrix<T, Dynamic, 1> thetaHat(6);
+    T logdetJ = 0;
+    int lCounter = 6*(N+1);
+    for(int i = 0; i < 6; ++i){
+      thetaHat(i) = lambda(i);
+      for(int j = 0; j <= i; ++j){
+        thetaHat(i) += lambda(lCounter) * epsilon(j);
+        if(i == j){
+          logdetJ += log(fabs(lambda(lCounter)));
+        }
+        lCounter += 1;
+      }
+    }
+    // Create theta_i as Mu_i + U_i %*% Eps
+    Matrix<T, Dynamic, Dynamic> theta(6, N);
+    for(int k = 0; k < N; ++k){
+      for(int i = 0; i < 6; ++i){
+        theta(i, k) = lambda(6 + 6*k + i);
+        for(int j = 0; j <= i; ++j){
+          theta(i, k) += lambda(lCounter) * epsilon(6 + 6*k + j);
+          if(i == j){
+            logdetJ += log(fabs(lambda(lCounter)));
+          }
+          lCounter += 1;
+        }
+      }
+    }
+    // Transform theta_i to either R+ or (-1, 1)
+    Matrix<T, Dynamic, 1> sigSqV(N), sigSqD(N), arV(N), arD(N), arV2(N), arD2(N);
+    for(int k = 0; k < N; ++k){
+      sigSqV(k) = exp(theta(0, k));
+      sigSqD(k) = exp(theta(1, k));
+      arV(k) = 4.0 / (1 + exp(-theta(2, k))) - 2;
+      arD(k) = 4.0 / (1 + exp(-theta(3, k))) - 2;
+      arV2(k) = (2.0-fabs(arV(k))) / (1 + exp(-theta(4, k))) - 1;
+      arD2(k) = (2.0-fabs(arD(k))) / (1 + exp(-theta(5, k))) - 1;
+    }
+    double pi = 3.14159;
+    
+    // Finish evaluation of Log Det J
+    for(int k = 0; k < N; ++k){
+      logdetJ += theta(0, k) + theta(1, k) - theta(2, k) - theta(3, k) -theta(4, k) - theta(5, k) 
+      + 2 * log(2+arV(k)) + 2 * log(2+arD(k)) + 2 * log(1+arV2(k)) + 2 * log(1+arD2(k)) - 2 * log(2 - fabs(arV(k))) - 2 * log(2 - fabs(arD(k)));
+    }
+    
+    // Evaluate log(p(theta hat))
+    T hyperprior = 0;
+    Matrix<T, Dynamic, 1> hypKernel(6);
+    hypKernel.fill(0);
+    for(int i = 0; i < 6; ++i){
+      for(int j = i; j < 6; ++j){
+        hypKernel(i) += (thetaHat(j) - hyperMean(j)) * hyperLinv(j, i);
+      }
+      hyperprior += - log(fabs(hyperLinv(i, i))) - 0.5 * pow(hypKernel(i), 2);
+    }
+
+    // Evaluate log(p(theta | theta hat))
+    T prior = 0;
+    Matrix<T, Dynamic, Dynamic> kernel(6, N);
+    kernel.fill(0);
+    for(int k = 0; k < N; ++k){
+      for(int i = 0; i < 6; ++i){
+        for(int j = i; j < 6; ++j){
+          kernel(i, k) += (theta(j , k) - thetaHat(j)) * Linv(j, i);
+        }
+        prior += - log(fabs(Linv(i, i))) - 0.5 * pow(kernel(i, k), 2);
+      }
+    }
+    // Evaluate log likelihood
+    T logLik = 0;
+    for(int t = 2; t < obsSum(0); ++t){
+      logLik += - 0.5 * theta(0, 0) - pow(data(t, 0) - arV(0) * data(t-1, 0) - arV2(0) * data(t-2, 0), 2) / (2*sigSqV(0));
+      logLik += - 0.5 * theta(1, 0) - pow(data(t, 1) - pi/2 - arD(0) * (data(t-1, 1) - pi/2) - arD2(0) * (data(t-2, 1) - pi/2), 2) / (2*sigSqD(0));
+    }
+    for(int k = 1; k < N; ++k){
+      for(int t = obsSum(k-1) + 2; t < obsSum(k); ++t){
+        logLik += - 0.5 * theta(0, k) - pow(data(t, 0) - arV(k) * data(t-1, 0)- arV2(k) * data(t-2, 0), 2) / (2*sigSqV(k));
+        logLik += - 0.5 * theta(1, k) - pow(data(t, 1) - pi/2 - arD(k) * (data(t-1, 1) - pi/2) - arD2(k) * (data(t-2, 1) - pi/2), 2) / (2*sigSqD(k));
+      }
+    }
+    return hyperprior + prior + logLik + logdetJ;
+  }
+};
+
+// [[Rcpp::export]]
+Rcpp::List heirAr2Deriv(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec hyperMean, mat hyperLinv, mat Linv, vec obsSum){
+  Map<MatrixXd> lambda(Rcpp::as<Map<MatrixXd> >(lambdaIn));
+  double eval;
+  int N = obsSum.n_elem;
+  Matrix<double, Dynamic, 1> grad(27 * (N + 1));
+  // Autodiff
+  heirAr2 p(data, epsilon, hyperMean, hyperLinv, Linv, obsSum);
   stan::math::set_zero_all_adjoints();
   stan::math::gradient(p, lambda, eval, grad);
   return Rcpp::List::create(Rcpp::Named("grad") = grad,
