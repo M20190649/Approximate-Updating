@@ -1,5 +1,8 @@
-carsVB <- function(data, lambda, S, maxIter, alpha = 0.01, beta1 = 0.9, beta2 = 0.99, threshold = 0.01, 
-                   dimTheta = 6, dimLambda = NULL, model = arimaDeriv, ...){
+library(tidyverse)
+Rcpp::sourceCpp('heirarchical.cpp')
+
+carsVB <- function(data, lambda, S = 25, maxIter = 5000, alpha = 0.01, beta1 = 0.9, beta2 = 0.99, threshold = 0.01, 
+                   dimTheta = 4, dimLambda = NULL, model = arimaDeriv, ...){
   if(is.null(dimLambda)){
     dimLambda = dimTheta * (dimTheta + 1)
   }
@@ -24,6 +27,8 @@ carsVB <- function(data, lambda, S, maxIter, alpha = 0.01, beta1 = 0.9, beta2 = 
     q <- numeric(S)
     unif <- shuffle(sobol)
     epsilon <- qnorm(unif[101:(100+S), ])
+    epsilon[epsilon < -3] = -3
+    epsilon[epsilon > 3] = 3
     for(s in 1:S){
       if(S == 1){
         logpj <- model(data, lambda, epsilon, ...)
@@ -37,31 +42,32 @@ carsVB <- function(data, lambda, S, maxIter, alpha = 0.01, beta1 = 0.9, beta2 = 
         grad[,s] <- logpj$grad
         q[s] <- sum(dnorm(epsilon[s,], log=TRUE))
       }
-     
+      
     }
     gradient <- rowMeans(grad, na.rm = TRUE)
     gradientSq <- rowMeans(grad^2, na.rm=TRUE)
     LB[iter] <- mean(eval - q, na.rm=TRUE) 
-    if(any(is.na(gradient)) | any(is.na(gradientSq))) {
-      break
-    }
     M <- beta1 * M + (1 - beta1) * gradient
     V <- beta2 * V + (1 - beta2) * gradientSq
     Mst <- M / (1 - beta1^iter)
     Vst <- V / (1 - beta2^iter)
+    if(any(is.na(alpha * Mst / sqrt(Vst + e)))){
+      print('Break')
+      break
+    }
     lambda <- lambda + alpha * Mst / sqrt(Vst + e)
     if(iter %% 5 == 0){
       oldMeanLB <- meanLB
       meanLB <- mean(LB[iter:(iter-4)])
       diff <- abs(meanLB - oldMeanLB)
     } 
-    if(iter %% 25 == 0){
+    if(iter %% 100 == 0){
       print(paste0('Iteration: ', iter, ' ELBO: ', meanLB))
     }
     iter <- iter + 1
   }
   print(paste0('iter: ', iter, ' ELBO: ', meanLB))
-  return(lambda)
+  return(list(lambda=lambda, LB = meanLB))
 }
 
 vbDensity <- function(fit, transform, names, supports = NULL){
@@ -125,46 +131,47 @@ vbDensity <- function(fit, transform, names, supports = NULL){
   dens
 }
 
-compareModels <- function(heirList, IDvec, j, transform = c(rep('exp', 2), rep('stretchedSigmoid', 2)), 
-                          names = c('sigma^2[V]', 'sigma^2[D]', 'phi[V]', 'phi[D]')) {
-  size = length(transform)
+compareModels <- function(origList, IDvec, j, lags, transform, names, heir = TRUE, ...) {
+  size = 2 + 2 * lags
   L3Y600 %>%
     filter(ID == IDvec[j]) %>%
     select(v, delta) -> car
   
-  data <- cbind(car$v[2:nrow(car)] - car$v[1:(nrow(car)-1)], car$delta[2:nrow(car)])
-  mu <- rep(0, size)
-  sd <- rep(1, size)
-  lambda <- matrix(c(mu, diag(sd)), nrow=size*(size+1))
-  hyper <- c(2, 0.0002, 2, 0.00002, rep(1, 2*(size-2)))
+  data <- cbind(car$v[2:nrow(car)] - car$v[1:(nrow(car)-1)], car$delta[2:nrow(car)] - pi/2)
+  mu <- rep(0, 2 + 2 * lags)
+  sd <- rep(0.2, 2 + 2 * lags)
+  lambda <- matrix(c(mu, diag(sd)), ncol=1)
+  hyper <- c(2, 0.0002, 2, 0.00002, rep(c(0, 1), 2 * lags))
   
-  if(size == 4){
-    fit <- carsVB(data, lambda, hyper=hyper, S=5, maxIter=5000, alpha=0.01, beta1=0.9, beta2=0.99,
-                  dimTheta=4, model = ar1Deriv, threshold=0.01)
+  
+  fit <- carsVB(data, lambda, hyper=hyper, dimTheta=size, model = arDeriv, lags =lags, ...)$lambda
+  
+  if(heir){
+    density1 <- vbDensity(fit = origList[[j+1]],
+                          transform = transform,
+                          names = names)
+    density1$method <- 'heirarchical'
   } else {
-    fit <- carsVB(data, lambda, hyper=hyper, S=5, maxIter=5000, alpha=0.01, beta1=0.9, beta2=0.99,
-                  dimTheta=6, model = var1Deriv, threshold=0.01)
+    density1 <- vbDensity(fit = origList,
+                          transform = transform,
+                          names = names)
+    density1$method <- 'updater'
   }
   
-  heirDensity <- vbDensity(fit = heirList[[j+1]],
-                           transform = transform,
-                           names = names)
-  heirDensity$method <- 'heirarchical'
+  density2 <- vbDensity(fit = list(mean = fit[1:size], U = fit[(size+1):(size*(size+1))]),
+                        transform = transform,
+                        names = names,
+                        supports = density1 %>% 
+                          select(var, support) %>% 
+                          group_by(var) %>%
+                          mutate(n = 1:n()) %>% 
+                          spread(var, support) %>% 
+                          select(-n) %>%
+                          as.list())
+  density2$method <- 'single'
   
-  density <- vbDensity(fit = list(mean = fit[1:size], U = fit[(size+1):(size*(size+1))]),
-                       transform = transform,
-                       names = names,
-                       supports = heirDensity %>% 
-                         select(var, support) %>% 
-                         group_by(var) %>%
-                         mutate(n = 1:n()) %>% 
-                         spread(var, support) %>% 
-                         select(-n) %>%
-                         as.list())
-  density$method <- 'single'
-
-  density %>%
-    rbind(heirDensity) %>%
+  density1 %>%
+    rbind(density2) %>%
     ggplot() + geom_line(aes(support, density)) + 
     facet_wrap(method~var, scales = 'free', ncol = size) + 
     theme_bw() + 
@@ -172,8 +179,8 @@ compareModels <- function(heirList, IDvec, j, transform = c(rep('exp', 2), rep('
     labs(x = NULL, y = NULL, title = paste0('carID: ', IDvec[j])) -> plot
   print(plot)
   
-  density %>%
-    rbind(heirDensity) %>%
+  density1 %>%
+    rbind(density2) %>%
     group_by(var, method) %>%
     summarise(map = support[which.max(density)])
 }
@@ -193,4 +200,53 @@ drawTheta <- function(thetaHat, var){
     draw <- rbind(draw, rmvnorm(1, mean, Var))
   }
   draw
+}
+
+updateVB <- function(data, lambda, hyper, stepsize = 1, lags = 1, ...){
+  dim <- 2 + 2 * lags
+  n <- stepsize + lags
+  starting <- seq(1, nrow(data), stepsize)
+  for(t in seq_along(starting)){
+    mean <- lambda[1:dim]
+    u <- matrix(lambda[(dim+1):length(lambda)], dim)
+    linv <- solve(t(u))
+    dat <- data[starting[t]:min(nrow(data), starting[t]+n-1),]
+    if(is.matrix(dat)){
+      if(nrow(dat) > lags){
+        lambda <- carsVB(dat, lambda, dimTheta = dim, model = arUpdater, mean = mean, Linv = linv, lags = lags, ...)$lambda
+      }
+    } 
+  }
+  lambda
+}
+
+sampleCars <- function(cars, IDvector){
+  cars %>%
+    filter(ID %in% IDvector) %>%
+    select(v, delta, ID, class) -> carsSub
+  
+  carsSub %>%
+    group_by(ID) %>%
+    mutate(n = seq_along(v)) %>%
+    filter(n > 1) %>%
+    summarise(n =n()) %>%
+    .$n %>%
+    cumsum() -> obsSum
+  
+  carsSub%>%
+    group_by(ID) %>%
+    mutate(n = seq_along(v),
+           vlag = ifelse(n == 1, 0, lag(v)),
+           vdiff = v - vlag,
+           delta = delta - pi/2) %>%
+    filter(n > 1) %>%
+    ungroup() %>%
+    select(vdiff, delta) %>%
+    as.matrix() -> data
+  
+  carsSub %>% 
+    group_by(ID) %>%
+    summarise(class = head(class, 1)) %>%
+    .$class -> class
+  return(list(data=data, obsSum=obsSum, class = class))
 }

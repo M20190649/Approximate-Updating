@@ -1,12 +1,11 @@
 library(tidyverse)
+library(GGally)
 library(forecast)
 library(Rcpp)
 library(RcppArmadillo)
 library(RcppEigen)
 library(rstan)
 source('carsVBfuns.R')
-sourceCpp('basic.cpp')
-sourceCpp('heirarchical.cpp')
 L3Y600 <- readr::read_csv('L3Y600.csv')
 L3Y600 %>% 
   group_by(ID) %>%
@@ -22,14 +21,14 @@ L3Y600 %>%
   filter(min(delta) > 0) %>%
   filter(ID %in% head(unique(.$ID), 24)) %>%
   ggplot() + geom_line(aes(n, delta)) +
-    facet_wrap(~ID, scales='free_x', ncol = 8) + 
-    theme_bw() + 
-    theme(axis.text.x = element_blank(),
-          #axis.text.y = element_blank(),
-          axis.ticks.x = element_blank(),
-          #axis.ticks.y = element_blank(),
-          strip.background = element_blank()) +
-    labs(x = NULL) -> p1
+  facet_wrap(~ID, scales='free_x', ncol = 8) + 
+  theme_bw() + 
+  theme(axis.text.x = element_blank(),
+        #axis.text.y = element_blank(),
+        axis.ticks.x = element_blank(),
+        #axis.ticks.y = element_blank(),
+        strip.background = element_blank()) +
+  labs(x = NULL) -> p1
 
 L3Y600 %>%
   group_by(ID) %>%
@@ -37,14 +36,14 @@ L3Y600 %>%
   filter(n > 1 & changed == TRUE & min(delta) > 0) %>%
   filter(ID %in% tail(unique(.$ID), 24)) %>%
   ggplot() + geom_line(aes(n, v - lv, colour = (ttChange < 50 | tsChange < 50) , group = 1)) +
-    facet_wrap(~ID, scales='free', ncol = 8) + 
-    theme_bw() + 
-    theme(axis.text.x = element_blank(),
-          axis.text.y = element_blank(),
-          axis.ticks.x = element_blank(),
-          axis.ticks.y = element_blank(),
-          strip.background = element_blank()) + 
-    labs(x = NULL,y = 'Change in V') -> p2
+  facet_wrap(~ID, scales='free', ncol = 8) + 
+  theme_bw() + 
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.ticks.y = element_blank(),
+        strip.background = element_blank()) + 
+  labs(x = NULL,y = 'Change in V') -> p2
 
 L3Y600 %>%
   group_by(ID) %>%
@@ -85,32 +84,32 @@ fitARIMAfc{
 tsFits <- data.frame()
 for(i in 0:5){
   #for(k in 0:1){
-    for(l in seq_along(noChange)){
-      car <- filter(L3Y600, ID == noChange[l])
-      train <- car[1:(nrow(car)-50),]
-      test <- car[(nrow(car)-49):nrow(car),]
-      train$delta %>% 
-        Arima(order = c(i, 0, 0), method = 'ML') %>%
-        forecast(h = 50) -> fc
-      mse <- mean((fc$mean - test$delta)^2)
-      ls <- sum(dnorm(test$delta, fc$mean, sqrt(fc$model$sigma2), log=TRUE))
-      tsFits <- rbind(tsFits, 
-                      data.frame(var = 'delta', ID = noChange[l], ar = i, mse = mse,
-                                 ll = fc$model$loglik, aic = fc$model$aic, bic = fc$model$bic, logscore = ls))
-      train$v %>%
-        Arima(order = c(i, 1, 0), method = 'ML') %>%
-        forecast(h = 50) -> fc
-      mse <- mean((fc$mean - test$v)^2)
-      ls <- sum(dnorm(test$v, fc$mean, sqrt(fc$model$sigma2), log=TRUE))
-      tsFits <- rbind(tsFits, 
-                      data.frame(var = 'v', ID = noChange[l], ar = i, mse = mse,
-                                 ll = fc$model$loglik, aic = fc$model$aic, bic = fc$model$bic, logscore = ls))
-      
-        if(l %% 200 == 0){
-        print(l)
-      }
+  for(l in seq_along(noChange)){
+    car <- filter(L3Y600, ID == noChange[l])
+    train <- car[1:(nrow(car)-50),]
+    test <- car[(nrow(car)-49):nrow(car),]
+    train$delta %>% 
+      Arima(order = c(i, 0, 0), method = 'ML') %>%
+      forecast(h = 50) -> fc
+    mse <- mean((fc$mean - test$delta)^2)
+    ls <- sum(dnorm(test$delta, fc$mean, sqrt(fc$model$sigma2), log=TRUE))
+    tsFits <- rbind(tsFits, 
+                    data.frame(var = 'delta', ID = noChange[l], ar = i, mse = mse,
+                               ll = fc$model$loglik, aic = fc$model$aic, bic = fc$model$bic, logscore = ls))
+    train$v %>%
+      Arima(order = c(i, 1, 0), method = 'ML') %>%
+      forecast(h = 50) -> fc
+    mse <- mean((fc$mean - test$v)^2)
+    ls <- sum(dnorm(test$v, fc$mean, sqrt(fc$model$sigma2), log=TRUE))
+    tsFits <- rbind(tsFits, 
+                    data.frame(var = 'v', ID = noChange[l], ar = i, mse = mse,
+                               ll = fc$model$loglik, aic = fc$model$aic, bic = fc$model$bic, logscore = ls))
+    
+    if(l %% 200 == 0){
+      print(l)
     }
-    print(i)
+  }
+  print(i)
   #}
 }
 arFits <- NULL
@@ -167,63 +166,15 @@ vParam %>%
 }
 
 simulateData{
-dar = 0.67
-dma = 0.29
-var = 0.68
-vma = 0.53
-sigSqD = 5.93e-05
-sigSqV = 6.62e-04
-
-T = 500
-
-v <- 3 + arima.sim(list(order = c(1, 1, 1), ar= var, ma = vma), n = T-1, n.start = 100, sd = sqrt(sigSqV))
-d <- pi/2 + arima.sim(list(ar = dar, ma = dma), n = T, n.start = 100, sd = sqrt(sigSqD))
-xdiff <- v * cos(d)
-ydiff <- v * sin(d)
-x <- cumsum(xdiff)
-y <- 600 + cumsum(ydiff)
-pos <- data.frame(x = x, y = y, v = v, delta = d, method = 'simulated')
-d <- pos$delta[2:T]
-vdiff <- pos$v[2:T] - pos$v[1:(T-1)]
-data <- cbind(vdiff, d)
-
-L3Y600 %>% 
-  filter(ID == noChange[sample(1:length(noChange), 1)]) %>%
-  ggplot() + geom_path(aes(xRel, y)) + 
-  geom_path(data = pos, aes(x, y), colour = 'red')
-}
-
-fitARIMAvb{
-
-lMean <- c(0, 0, 0, 0, 0, 0)
-lVar <- diag(0.5, 6)
-hyper <- c(2, 1e-3, 2, 1e-4, 1, 1, 1, 1, 1, 1, 1, 1)
-lambda <- as.matrix(c(lMean, lVar), ncol=1)
-
-trueV <- data.frame(true = c(sigSqV, sigSqD, dar, var, dma, vma),
-                    var = c('sigSqV', 'sigSqD', 'arD', 'arV', 'maD', 'maV'))
-
-
-
-fit <- carsArima(data, lambda, hyper, 10, 2000, 0.15, 0.9, 0.99, 0.01)
-
-vbDensity(fit, 
-          c(rep('exp', 2), rep('sigmoid', 4)),
-          c('sigSqV', 'sigSqD', 'arV', 'maV', 'arD', 'maD')) -> densities
-
-densities %>%
-  group_by(var) %>%
-  summarise(mean = sum(support * density)*(support[2] - support[1]),
-            map = support[which.max(density)]) %>%
-  merge(trueV, by = 'var')
-
-densities %>%
-  ggplot() + geom_line(aes(support, density)) +  
-    geom_vline(data = trueV, aes(xintercept=true), colour = 'red') + 
-    facet_wrap(~var, scales='free')
-
-VBSims = data.frame()
-for(i in 1:100){
+  dar = 0.67
+  dma = 0.29
+  var = 0.68
+  vma = 0.53
+  sigSqD = 5.93e-05
+  sigSqV = 6.62e-04
+  
+  T = 500
+  
   v <- 3 + arima.sim(list(order = c(1, 1, 1), ar= var, ma = vma), n = T-1, n.start = 100, sd = sqrt(sigSqV))
   d <- pi/2 + arima.sim(list(ar = dar, ma = dma), n = T, n.start = 100, sd = sqrt(sigSqD))
   xdiff <- v * cos(d)
@@ -234,109 +185,166 @@ for(i in 1:100){
   d <- pos$delta[2:T]
   vdiff <- pos$v[2:T] - pos$v[1:(T-1)]
   data <- cbind(vdiff, d)
-  fit <- carsVB(data, lambda, 10, 2000, 0.15, 0.9, 0.99, 0.01, hyper=hyper, model = arimaDeriv)
+  
+  L3Y600 %>% 
+    filter(ID == noChange[sample(1:length(noChange), 1)]) %>%
+    ggplot() + geom_path(aes(xRel, y)) + 
+    geom_path(data = pos, aes(x, y), colour = 'red')
+}
+
+fitARIMAvb{
+  
+  lMean <- c(0, 0, 0, 0, 0, 0)
+  lVar <- diag(0.5, 6)
+  hyper <- c(2, 1e-3, 2, 1e-4, 1, 1, 1, 1, 1, 1, 1, 1)
+  lambda <- as.matrix(c(lMean, lVar), ncol=1)
+  
+  trueV <- data.frame(true = c(sigSqV, sigSqD, dar, var, dma, vma),
+                      var = c('sigSqV', 'sigSqD', 'arD', 'arV', 'maD', 'maV'))
+  
+  
+  
+  fit <- carsArima(data, lambda, hyper, 10, 2000, 0.15, 0.9, 0.99, 0.01)
+  
   vbDensity(fit, 
             c(rep('exp', 2), rep('sigmoid', 4)),
             c('sigSqV', 'sigSqD', 'arV', 'maV', 'arD', 'maD')) -> densities
+  
   densities %>%
     group_by(var) %>%
     summarise(mean = sum(support * density)*(support[2] - support[1]),
-              map = support[which.max(density)],
-              iter = i) -> df
-  VBSims <- rbind(VBSims, df)
-  print(i)
-}
-
-VBSims %>%
-  gather(metric, value, -var, -iter) %>%
-  ggplot() + geom_boxplot(aes(metric, value)) + 
-  geom_hline(data=trueV, aes(yintercept = true), colour = 'red') + facet_wrap(~var, scales = 'free')
+              map = support[which.max(density)]) %>%
+    merge(trueV, by = 'var')
+  
+  densities %>%
+    ggplot() + geom_line(aes(support, density)) +  
+    geom_vline(data = trueV, aes(xintercept=true), colour = 'red') + 
+    facet_wrap(~var, scales='free')
+  
+  VBSims = data.frame()
+  for(i in 1:100){
+    v <- 3 + arima.sim(list(order = c(1, 1, 1), ar= var, ma = vma), n = T-1, n.start = 100, sd = sqrt(sigSqV))
+    d <- pi/2 + arima.sim(list(ar = dar, ma = dma), n = T, n.start = 100, sd = sqrt(sigSqD))
+    xdiff <- v * cos(d)
+    ydiff <- v * sin(d)
+    x <- cumsum(xdiff)
+    y <- 600 + cumsum(ydiff)
+    pos <- data.frame(x = x, y = y, v = v, delta = d, method = 'simulated')
+    d <- pos$delta[2:T]
+    vdiff <- pos$v[2:T] - pos$v[1:(T-1)]
+    data <- cbind(vdiff, d)
+    fit <- carsVB(data, lambda, 10, 2000, 0.15, 0.9, 0.99, 0.01, hyper=hyper, model = arimaDeriv)$lambda
+    vbDensity(fit, 
+              c(rep('exp', 2), rep('sigmoid', 4)),
+              c('sigSqV', 'sigSqD', 'arV', 'maV', 'arD', 'maD')) -> densities
+    densities %>%
+      group_by(var) %>%
+      summarise(mean = sum(support * density)*(support[2] - support[1]),
+                map = support[which.max(density)],
+                iter = i) -> df
+    VBSims <- rbind(VBSims, df)
+    print(i)
+  }
+  
+  VBSims %>%
+    gather(metric, value, -var, -iter) %>%
+    ggplot() + geom_boxplot(aes(metric, value)) + 
+    geom_hline(data=trueV, aes(yintercept = true), colour = 'red') + facet_wrap(~var, scales = 'free')
 }
 
 laneSwitching{
-
-
-sigSqV = 0.00059
-sigSqD = 0.0001
-zeta = 0.05
-M3 = 0
-M2 = -10
-M4 = 10
-v = 3
-d = pi/2
-x = 0
-y = 0
-T = 500
-pos = NULL
-var1 = 1.17
-var2 = -0.52
-vma = 0.14
-v <- 3 + arima.sim(list(order = c(2, 1, 1), ar= c(var1, var2), ma = vma), n = T-1, n.start = 100, sd = sqrt(sigSqV))
-for(t in 1:T){
-  if(t < 60){
-    M = M3
-  } else if(t < 160) {
-    M = M2
-  } else if(t < 300) {
-    M = M3
-  } else {
-    M = M4
+  
+  
+  sigSqV = 0.00059
+  sigSqD = 0.0001
+  zeta = 0.05
+  M3 = 0
+  M2 = -10
+  M4 = 10
+  v = 3
+  d = pi/2
+  x = 0
+  y = 0
+  T = 500
+  pos = NULL
+  var1 = 1.17
+  var2 = -0.52
+  vma = 0.14
+  v <- 3 + arima.sim(list(order = c(2, 1, 1), ar= c(var1, var2), ma = vma), n = T-1, n.start = 100, sd = sqrt(sigSqV))
+  for(t in 1:T){
+    if(t < 60){
+      M = M3
+    } else if(t < 160) {
+      M = M2
+    } else if(t < 300) {
+      M = M3
+    } else {
+      M = M4
+    }
+    if(is.na(acos((x-M)/(50*v[t])))) break
+    d = acos((M - x)/(30*v[t])) + rnorm(1, 0, sqrt(sigSqD))
+    x = x + v[t] * cos(d)
+    y = y + v[t] * sin(d)
+    pos = rbind(pos, data.frame(x=x, y=y, d=d, v=v[t], t=t, goal=M))
   }
-  if(is.na(acos((x-M)/(50*v[t])))) break
-  d = acos((M - x)/(30*v[t])) + rnorm(1, 0, sqrt(sigSqD))
-  x = x + v[t] * cos(d)
-  y = y + v[t] * sin(d)
-  pos = rbind(pos, data.frame(x=x, y=y, d=d, v=v[t], t=t, goal=M))
-}
-ggplot(pos) + geom_path(aes(x, y, group = 1, colour = factor(goal)))
-
-
-L3Y600 %>% 
-  filter(changed == TRUE) %>%
-  .$ID %>%
-  unique() -> changedIDs
-
-i = sample(changedIDs, 1)
-
-L3Y600 %>% 
-  filter(ID == i) -> carChange
-carChange %>%
-  ggplot() + geom_path(aes(relX, y)) -> p1
-ll <- matrix(0, nrow(carChange)-1, 3)
-for(i in 2:nrow(carChange)){
-  ll[i-1, 1] = dnorm(carChange$delta[i], acos(-carChange$relX[i-1]/(30*carChange$v[i])), sqrt(0.0005))
-  ll[i-1, 2] = dnorm(carChange$delta[i], acos((-10-carChange$relX[i-1])/(30*carChange$v[i])), sqrt(0.0005))
-  ll[i-1, 3] = dnorm(carChange$delta[i], acos((10-carChange$relX[i-1])/(30*carChange$v[i])), sqrt(0.0005))
-}
-ll <- as.data.frame(ll)
-colnames(ll) <- c('M3', 'M2', 'M4')
-ll$t <- 2:nrow(carChange)
-ll %>% 
-  mutate(l2 = M2 / (M2 + M3 + M4), l3 = M3 / (M2 + M3 + M4), l4 = M4 / (M2 + M3 + M4)) %>%
-  select(l2, l3, l4, t) %>%
-  gather(lane, ll, -t) %>%
-  ggplot() + geom_path(aes(ll, t, colour = lane)) -> p2
-
-gridExtra::grid.arrange(p1, p2, ncol=2)
-
+  ggplot(pos) + geom_path(aes(x, y, group = 1, colour = factor(goal)))
+  
+  
+  L3Y600 %>% 
+    filter(changed == TRUE) %>%
+    .$ID %>%
+    unique() -> changedIDs
+  
+  i = sample(changedIDs, 1)
+  
+  L3Y600 %>% 
+    filter(ID == i) -> carChange
+  carChange %>%
+    ggplot() + geom_path(aes(relX, y)) -> p1
+  ll <- matrix(0, nrow(carChange)-1, 3)
+  for(i in 2:nrow(carChange)){
+    ll[i-1, 1] = dnorm(carChange$delta[i], acos(-carChange$relX[i-1]/(30*carChange$v[i])), sqrt(0.0005))
+    ll[i-1, 2] = dnorm(carChange$delta[i], acos((-10-carChange$relX[i-1])/(30*carChange$v[i])), sqrt(0.0005))
+    ll[i-1, 3] = dnorm(carChange$delta[i], acos((10-carChange$relX[i-1])/(30*carChange$v[i])), sqrt(0.0005))
+  }
+  ll <- as.data.frame(ll)
+  colnames(ll) <- c('M3', 'M2', 'M4')
+  ll$t <- 2:nrow(carChange)
+  ll %>% 
+    mutate(l2 = M2 / (M2 + M3 + M4), l3 = M3 / (M2 + M3 + M4), l4 = M4 / (M2 + M3 + M4)) %>%
+    select(l2, l3, l4, t) %>%
+    gather(lane, ll, -t) %>%
+    ggplot() + geom_path(aes(ll, t, colour = lane)) -> p2
+  
+  gridExtra::grid.arrange(p1, p2, ncol=2)
+  
 }
 
-AR1{
-i <- sample(noChange, 1)
-L3Y600 %>%
-  filter(ID == i[1]) %>%
-  select(v, delta) -> car
+AR{
+lags <- 2
+ID <- sample(noChange, 1)
+data <- sampleCars(L3Y600, ID)$data
+mu <- rep(0, 2 + 2 * lags)
+sd <- rep(0.2, 2 + 2 * lags)
+lambda <- matrix(c(mu, diag(sd)), ncol=1)
+hyper <- c(2, 0.0002, 2, 0.00002, rep(c(0, 1), 2 * lags))
 
-data <- cbind(car$v[2:nrow(car)] - car$v[1:(nrow(car)-1)], car$delta[2:nrow(car)])
-mu <- c(0, 0, 0, 0)
-sd <- c(1, 1, 1, 1)
-lambda <- matrix(c(mu, diag(sd)), nrow=20)
-hyper <- c(2, 0.0002, 2, 0.00002, 1, 1, 1, 1)
+fit <- carsVB(data = data, 
+              lambda = lambda,
+              hyper = hyper,
+              dimTheta = 2 + 2*lags,
+              model = arDeriv,
+              lags = lags)$lambda
 
-fit <- carsVB(data, lambda, hyper=hyper, S=5, maxIter=5000, alpha=0.01, beta1=0.9, beta2=0.99,
-              dimTheta=4, model = ar1Deriv, threshold=0.01)
+transform <- c(rep('exp', 2), rep('identity', 2 * lags))
+names <- c('sigma2V', 'sigma2D')
+for(i in 1:lags){
+  names <- c(names, paste0('phi', i, 'V'), paste0('phi', i, 'D'))
+}
 
-density <- vbDensity(fit, c(rep('exp', 2), rep('stretchedSigmoid', 2)), c('sigma^2[V]', 'sigma^2[D]', 'phi[V]', 'phi[D]'))
+fitList <- list(mean = fit[1:(2+2*lags)], U = fit[(3+2*lags):length(fit)])
+
+density <- vbDensity(fitList, transform, names)
 density %>%
   ggplot() + geom_line(aes(support, density)) +
   facet_wrap(~var, scales='free') + 
@@ -349,109 +357,120 @@ density %>%
 }
 
 heterogeneity{
-
-N <- 20
-idSubset <- sort(sample(noChange, N))
   
-L3Y600 %>%
-  filter(ID %in% idSubset) %>%
-  select(v, delta, ID, class) -> carhetero
+N <- 200
+lags <- 2
+diag <- TRUE
 
-carhetero %>%
-  group_by(ID) %>%
-  mutate(n = seq_along(v)) %>%
-  filter(n == 1) %>%
-  .$class %>%
-  table()
+idSubset <- sample(noChange, N)
+data <- sampleCars(L3Y600, idSubset)
+obsSum <- data$obsSum
+class <- data$class
+data <- data$data
 
-carhetero %>%
-  group_by(ID) %>%
-  mutate(n = seq_along(v)) %>%
-  filter(n > 1) %>%
-  summarise(n =n()) %>%
-  .$n %>%
-  cumsum() -> obsSum
-
-carhetero %>%
-  group_by(ID) %>%
-  mutate(n = seq_along(v),
-         vlag = ifelse(n == 1, 0, lag(v)),
-         vdiff = v - vlag) %>%
-  filter(n > 1) %>%
-  ungroup() %>%
-  select(vdiff, delta) %>%
-  as.matrix() -> data
-
-    
-dim = 6
-dim2 = 0.5 * dim * (dim + 1)
+dim <- 2 + 2 * lags
+dim2 <- 0.5 * dim * (dim + 1)
 varSeq <- 0.1
 for(i in 1:(dim - 1)){
   varSeq <- c(varSeq, rep(0, i), 0.1)
 }
 lambda <- matrix(c(rep(0, dim*(N+1)), rep(varSeq, N+1)), ncol=1)
-hyperMean <- c(-5, 5, rep(0, dim-2))
+hyperMean <- c(-7, 7, rep(0, dim-2))
 hyperVar <- diag(5, dim)
 hyperLinv <- solve(chol(hyperVar))
-Linv <- hyperLinv
+Var <- diag(0.1^2, dim)
+Linv <- solve(chol(Var))
 
 heirFit <- carsVB(data = data,
                   lambda = lambda,
-                  S = 15,
-                  maxIter = 5000,
-                  model = heirAr2Deriv,  ## Remember this line
+                  S = 10,
+                  model = heirArDeriv,
                   dimTheta = dim*(N+1),
                   dimLambda = length(lambda),
                   hyperMean = hyperMean,
                   hyperLinv = hyperLinv,
                   Linv = Linv,
+                  lags = lags,
                   obsSum = obsSum,
-                  threshold = 0.25)
-
-
+                  threshold = 0.25,
+                  diag = diag)$lambda
+  
+  
 heirList <- list(list(mean = heirFit[1:dim], U = heirFit[(N+1)*dim+1:dim2]))
 for(i in 2:(N+1)){
   heirList[[i]] <- list(mean = heirFit[(i-1)*dim + 1:dim], U = heirFit[(N+1)*dim+dim2*(i-1) + 1:dim2]) 
 }
-
+  
+transform <- c(rep('exp', 2), rep('identity', 2 * lags))
+names <- c('sigma2V', 'sigma2D')
+for(i in 1:lags){
+  names <- c(names, paste0('phi', i, 'V'), paste0('phi', i, 'D'))
+}
 
 compareCar <- sample(1:N, 1)
-compareModels(heirList, idSubset, compareCar)
-
+compareModels(heirList, idSubset, compareCar, lags, transform, names, TRUE)
+  
 maps <- data.frame()
 for(i in 1:N){
   dens <- vbDensity(heirList[[i+1]],
-                    c(rep('exp', 2), rep('stretchedSigmoid', 4)),
-                    c('sigma^2[V]', 'sigma^2[D]', 'phi1[V]', 'phi1[D]', 'phi2[V]', 'phi2[D]'))
+                    transform, 
+                    names)
   map <- dens %>% group_by(var) %>% summarise(map = support[which.max(density)])
   df <- data.frame(ID = idSubset[i], map, 
-                   class = carhetero %>%
-                     filter(ID == idSubset[i]) %>%
-                     head(1) %>%
-                     .$class)
+                   class = rep(class[i], dim))
   maps <- rbind(maps, df)
 }
-
+  
 maps %>%
   ggplot() + geom_boxplot(aes(x = class, y = map, fill = class)) + facet_wrap(~var, scales = 'free')
+  
+maps %>%
+  spread(var, map) %>%
+  select(class, sigma2V, phi1V, phi2V, sigma2D, phi1D, phi2D) %>%
+  ggparcoord(columns = 2:7,
+             mapping = aes(colour = factor(class)))
 
 maps %>%
   spread(var, map) %>%
   select(-ID) %>%
-  rename(sigV = `sigma^2[V]`, sigD = `sigma^2[D]`, phiV = `phi1[V]`, phiD = `phi1[D]`, phi2V = `phi2[V]`, phi2D = `phi2[D]`) %>%
-  GGally::ggpairs(aes(colour = class, alpha = 0.8))
+  ggpairs(mapping = aes(colour = class),
+          diag = list(continuous = wrap('densityDiag', alpha = 0.75))) + 
+  theme_bw()
+  
+  
+maps %>%
+  spread(var, map) %>%
+  select(sigma2V, phi1V, phi2V) %>%
+  kmeans(centers = 2) %>%
+  .$cluster -> Vmeans
 
+maps %>%
+  .$ID %>%
+  unique() %>%
+  cbind(Vmeans) %>%
+  as.data.frame() -> Vmeans
+colnames(Vmeans) <- c('ID', 'cluster')
 
+maps %>%
+  spread(var, map) %>%
+  cbind(cluster = factor(Vmeans$cluster)) %>%
+  ggpairs(columns = 3:8,
+          mapping = aes(colour = cluster),
+          diag = list(continuous = wrap('densityDiag', alpha = 0.75))) + 
+  theme_bw()
+      
+L3Y600 %>%
+  filter(ID %in% idSubset) %>%
+  left_join(Vmeans, by = 'ID', copy = TRUE) %>%
+  ggplot() + geom_line(aes(y, v, group = ID, colour = factor(cluster)))
 
-heirDensity <- vbDensity(heirList[[2]], 
-                         c(rep('exp', 2), rep('stretchedSigmoid', 4)),
-                         c('sigma^2[V]', 'sigma^2[D]', 'phi1[V]', 'phi1[D]', 'phi2[V]', 'phi2[D]'))
-
+  
+heirDensity <- vbDensity(heirList[[sample(N, 1)+1]], transform, names)
 heirDensity$method <- 'heirarchical model - one car'
-globalDensity <- vbDensity(heirList[[1]],
-                           c(rep('exp', 2), rep('stretchedSigmoid', 4)),
-                           c('sigma^2[V]', 'sigma^2[D]', 'phi1[V]', 'phi1[D]', 'phi2[V]', 'phi2[D]'))
+
+globalDensity <- vbDensity(heirList[[1]], transform, names)
 globalDensity$method <- 'heirarchical model - global'
+
 heirDensity %>%
   rbind(globalDensity) %>%
   ggplot() + geom_line(aes(support, density)) + 
@@ -459,4 +478,145 @@ heirDensity %>%
   theme_bw() + 
   theme(strip.background = element_blank()) + 
   labs(x = NULL, y = NULL)
+}
+
+arUpdate{
+  
+lags <- 1
+N <- 10
+  
+transform <- c(rep('exp', 2), rep('identity', 2 * lags))
+names <- c('sigma2V', 'sigma2D')
+for(i in 1:lags){
+  names <- c(names, paste0('phi', i, '[V]'), paste0('phi', i, '[D]'))
+}
+  
+idSubset <- sample(noChange, N)
+data <- sampleCars(L3Y600, idSubset)
+obsSum <- data$obsSum
+data <- data$data
+  
+dim <- 2 + 2 * lags
+dim2 <- 0.5 * dim * (dim + 1)
+varSeq <- 0.1
+for(i in 1:(dim - 1)){
+  varSeq <- c(varSeq, rep(0, i), 0.1)
+}
+  
+lambda <- matrix(c(rep(0, dim*(N+1)), rep(varSeq, N+1)), ncol=1)
+hyperMean <- c(-7, 7, rep(0, dim-2))
+hyperVar <- diag(5, dim)
+hyperLinv <- solve(chol(hyperVar))
+Linv <- hyperLinv
+
+heirFit <- carsVB(data = data,
+                  lambda = lambda,
+                  S = 15,
+                  model = heirArDeriv,
+                  dimTheta = dim*(N+1),
+                  dimLambda = length(lambda),
+                  hyperMean = hyperMean,
+                  hyperLinv = hyperLinv,
+                  Linv = Linv,
+                  obsSum = obsSum,
+                  lags = lags,
+                  threshold = 0.25)$lambda
+
+heirGlobal <- list(mean = heirFit[1:dim], U = heirFit[(N+1)*dim+1:dim2])
+
+id <- sample(noChange, 1)
+data <- sampleCars(L3Y600, id)$data
+  
+lambdaUpdate <- heirGlobal$mean
+for(i in 1:dim){
+  lambdaUpdate <- c(lambdaUpdate, heirGlobal$U[sum(0:(i-1)) + 1:i], rep(0, dim-i))
+}
+lambdaUpdate <- matrix(lambdaUpdate, ncol=1)
+fit <- updateVB(data, lambdaUpdate, hyper, stepsize = 10, lags = lags)
+fitUpdate <- list(mean = fit[1:dim], U = fit[(dim+1):length(fit)])
+
+compareModels(fitUpdate, id, 1, lags, transform, names, heir = FALSE, S = 25)
+  
+upDensity <- vbDensity(fitUpdate, transform, names)
+upDensity$method <- 'update'
+
+globalDensity <- vbDensity(heirGlobal, transform, names)
+globalDensity$method <- 'global'
+
+upDensity %>%
+  rbind(globalDensity) %>%
+  ggplot() + geom_line(aes(support, density)) + 
+  facet_wrap(method~var, scales = 'free', ncol =dim) + 
+  theme_bw() + 
+  theme(strip.background = element_blank()) + 
+  labs(x = NULL, y = NULL)
+
+mu <- rep(0, 2 + 2 * lags)
+sd <- rep(0.2, 2 + 2 * lags)
+lambda <- matrix(c(mu, diag(sd)), ncol=1)
+hyper <- c(2, 0.0002, 2, 0.00002, rep(c(0, 1), 2 * lags))
+
+fitSingle <- carsVB(data, lambda, hyper=hyper, S=5, maxIter=5000, alpha=0.01, beta1=0.9, beta2=0.99,
+              dimTheta= 2 + 2*lags, model = arDeriv, lags = lags, threshold=0.01)$lambda
+
+fitSL <- list(mean = fitSingle[1:dim], U = fitSingle[(dim+1):length(fit)])
+sDensity <- vbDensity(fitSL, transform, names)
+sDensity$method <- 'single'
+
+upDensity %>%
+  rbind(sDensity) %>%
+  rbind(globalDensity) %>%
+  ggplot() + geom_line(aes(support, density)) + 
+  facet_wrap(method~var, scales = 'free', ncol =dim) + 
+  theme_bw() + 
+  theme(strip.background = element_blank()) + 
+  labs(x = NULL, y = NULL)
+
+}
+
+ar1Noise{
+  lags <- 1
+  id <- sample(noChange, 1)
+  L3Y600 %>% 
+    filter(ID == id) %>%
+    .$v %>%
+    head(1) -> initV
+  L3Y600 %>%
+    filter(ID == id) %>%
+    select(relX, y) %>%
+    as.matrix() -> data
+  mu <- rep(0, 4 + 2 * lags)
+  sd <- rep(0.2, 4 + 2 * lags)
+  lambda <- matrix(c(mu, diag(sd)), ncol=1)
+  hyper <- c(rep(c(2, 0.0002), 4), rep(c(0, 1), 2 * lags))
+  
+  fit <- carsVB(data = data, 
+                lambda = lambda,
+                hyper = hyper,
+                dimTheta = 4 + 2*lags,
+                model = arPFDeriv,
+                maxIter = 3,
+                S = 10,
+                P = 10,
+                initV = initV,
+                lags = 1)$lambda
+  
+  transform <- c(rep('exp', 2), rep('identity', 2 * lags))
+  names <- c('sigma2V', 'sigma2D')
+  for(i in 1:lags){
+    names <- c(names, paste0('phi', i, 'V'), paste0('phi', i, 'D'))
+  }
+  
+  fitList <- list(mean = fit[1:(2+2*lags)], U = fit[(3+2*lags):length(fit)])
+  
+  density <- vbDensity(fitList, transform, names)
+  density %>%
+    ggplot() + geom_line(aes(support, density)) +
+    facet_wrap(~var, scales='free') + 
+    theme_bw() + 
+    theme(strip.background = element_blank())
+  
+  density %>% 
+    group_by(var) %>%
+    summarise(map = support[which.max(density)])
 }
