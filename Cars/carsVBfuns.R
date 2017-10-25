@@ -29,6 +29,7 @@ carsVB <- function(data, lambda, S = 25, maxIter = 5000, alpha = 0.01, beta1 = 0
     epsilon <- qnorm(unif[101:(100+S), ])
     epsilon[epsilon < -3] = -3
     epsilon[epsilon > 3] = 3
+ 
     for(s in 1:S){
       if(S == 1){
         logpj <- model(data, lambda, epsilon, ...)
@@ -67,7 +68,7 @@ carsVB <- function(data, lambda, S = 25, maxIter = 5000, alpha = 0.01, beta1 = 0
     iter <- iter + 1
   }
   print(paste0('iter: ', iter, ' ELBO: ', meanLB))
-  return(list(lambda=lambda, LB = meanLB))
+  return(list(lambda=lambda, LB = LB[1:iter], iter = iter))
 }
 
 vbDensity <- function(fit, transform, names, supports = NULL){

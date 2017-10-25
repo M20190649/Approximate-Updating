@@ -6,6 +6,7 @@ library(RcppArmadillo)
 library(RcppEigen)
 library(rstan)
 source('carsVBfuns.R')
+sourceCpp('arvdMCMC.cpp')
 L3Y600 <- readr::read_csv('L3Y600.csv')
 L3Y600 %>% 
   group_by(ID) %>%
@@ -321,7 +322,7 @@ laneSwitching{
 }
 
 AR{
-lags <- 2
+lags <- 1
 ID <- sample(noChange, 1)
 data <- sampleCars(L3Y600, ID)$data
 mu <- rep(0, 2 + 2 * lags)
@@ -358,7 +359,7 @@ density %>%
 
 heterogeneity{
   
-N <- 200
+N <- 20
 lags <- 2
 diag <- TRUE
 
@@ -574,8 +575,9 @@ upDensity %>%
 
 }
 
-ar1Noise{
+ar1NoiseVB{
   lags <- 1
+  T <- 200
   id <- sample(noChange, 1)
   L3Y600 %>% 
     filter(ID == id) %>%
@@ -584,30 +586,65 @@ ar1Noise{
   L3Y600 %>%
     filter(ID == id) %>%
     select(relX, y) %>%
-    as.matrix() -> data
-  mu <- rep(0, 4 + 2 * lags)
+    mutate(n = seq_along(y)) %>%
+    filter(n <= T) %>%
+    as.matrix() -> data 
+  mu <- c(-8, -8, -5, 0, 0, 0)
   sd <- rep(0.2, 4 + 2 * lags)
-  lambda <- matrix(c(mu, diag(sd)), ncol=1)
-  hyper <- c(rep(c(2, 0.0002), 4), rep(c(0, 1), 2 * lags))
+  states <- rep(rep(c(0, 0.1), rep(nrow(data), 2)), 2)
+  lambda <- matrix(c(mu, diag(sd), states), ncol=1)
+  hyper <- c(rep(c(2, 0.0002), 3), 1, 1)#, rep(c(0, 1), 2 * lags))
   
   fit <- carsVB(data = data, 
                 lambda = lambda,
                 hyper = hyper,
-                dimTheta = 4 + 2*lags,
-                model = arPFDeriv,
-                maxIter = 3,
-                S = 10,
-                P = 10,
+                dimTheta = 4 + 2*lags + 2 * nrow(data),
+                dimLambda = 42 + 4 * nrow(data),
+                model = SSM,
+                maxIter = 10000,
+                S = 30,
                 initV = initV,
+                threshold = 0.25,
                 lags = 1)$lambda
   
-  transform <- c(rep('exp', 2), rep('identity', 2 * lags))
-  names <- c('sigma2V', 'sigma2D')
+  
+  fitTheta <- fit[1:42]
+  fitA <- fit[43:442]
+  fitD <- fit[443:842]
+  L3Y600 %>%
+    filter(ID == id) %>%
+    mutate(n = seq_along(v)) %>%
+    filter(n <= 200) %>%
+    cbind(fit = fitD[seq(1, 399, 2)],
+          sd = abs(fitD[seq(2, 400, 2)])) %>%
+    mutate(upper = fit + 1.96 * sd,
+          lower = fit - 1.96 * sd) %>%
+    ggplot() + geom_ribbon(aes(x=n, ymin = lower, ymax = upper), fill = 'grey70') +
+    geom_path(aes(n, delta-pi/2)) + geom_path(aes(n, fit), colour = 'red') 
+  
+  L3Y600 %>%
+    filter(ID == id) %>%
+    mutate(n = seq_along(v),
+           vl = ifelse(n==1, 0, lag(v)),
+           a = v - vl) %>%
+    filter(n > 1 & n <= 201) %>%
+    cbind(fit = fitA[seq(1, 399, 2)],
+          sd = abs(fitA[seq(2, 400, 2)])) %>%
+    mutate(upper = fit + 1.96 * sd,
+           lower = fit - 1.96 * sd) %>%
+    ggplot() + geom_ribbon(aes(x=n, ymin = lower, ymax = upper), fill = 'grey70') +
+    geom_path(aes(n, a)) + geom_path(aes(n, fit), colour = 'red')
+    
+  
+  
+  fitList <- list(mean = fitTheta[1:(4+2*lags)], U = fitTheta[(5+2*lags):length(fitTheta)])
+  
+  transform <- c(rep('exp', 4), rep('stretchedSigmoid', 2 * lags))
+  names <- c('sigma2V', 'sigma2D', 'sigma2X', 'sigma2Y')
   for(i in 1:lags){
     names <- c(names, paste0('phi', i, 'V'), paste0('phi', i, 'D'))
   }
-  
-  fitList <- list(mean = fit[1:(2+2*lags)], U = fit[(3+2*lags):length(fit)])
+
   
   density <- vbDensity(fitList, transform, names)
   density %>%
@@ -619,4 +656,109 @@ ar1Noise{
   density %>% 
     group_by(var) %>%
     summarise(map = support[which.max(density)])
+}
+
+individualNIG{
+  
+N <- 200
+lags <- 2
+idSubset <- sample(noChange, N)
+
+names <- c('sigma2V', 'sigma2D')
+for(i in 1:lags){
+  names <- c(names, paste0('phi', i, 'V'))
+}
+for(i in 1:lags){
+  names <- c(names, paste0('phi', i, 'D'))
+}
+  
+reps <- 10000
+MCMCres <- NULL
+hyper <- c(2, 2e-04, 2, 2e-05, rep(c(0, 1), 2*lags))
+for(i in 1:N){
+  data %>%
+    filter(ID == idSubset[i]) %>%
+    select(vd, d) %>%
+    as.matrix() -> tempDat
+  
+  draws <- ARVD_MCMC(tempDat, hyper, reps, 2)
+  maps <- NULL
+  for(k in 1:(2 + 2*lags)){
+    dens <- density(draws[(reps/2+1):reps,k])
+    maps <- c(maps, dens$x[which.max(dens$y)])
+  }
+  
+  MCMCres <- rbind(MCMCres, 
+                   data.frame(ID = idSubset[i], var = names, mean = maps))
+}
+
+MCMCres %>%
+  spread(var, mean) %>%
+  select(-ID) %>%
+  kmeans(centers = 3) %>%
+  .$cluster -> Vmeans
+
+MCMCres %>%
+  .$ID %>%
+  unique() %>%
+  cbind(Vmeans) %>%
+  as.data.frame() -> Vmeans
+colnames(Vmeans) <- c('ID', 'cluster')
+
+MCMCres %>%
+  spread(var, mean) %>%
+  cbind(cluster = factor(Vmeans$cluster)) %>%
+  ggpairs(columns = c(2, 4, 3, 5:8),
+          mapping = aes(colour = cluster),
+          diag = list(continuous = wrap('densityDiag', alpha = 0.75))) + 
+  theme_bw()
+
+
+
+  
+  
+  
+  
+  
+}
+
+ar1NoiseMCMC{
+T <- 200
+idSubset <- sample(noChange, 1)
+
+L3Y600 %>%
+  filter(ID == idSubset) %>%
+  .$v %>%
+  head(1) -> initV
+L3Y600 %>%
+  filter(ID == idSubset) %>%
+  select(relX, y) -> tempDat
+
+xM <- tempDat$relX[1:T]
+yM <- tempDat$y[1:T]
+
+data <- list(T = T,
+             xM = xM,
+             yM = yM,
+             initV = initV)
+
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+
+initf <- function(){
+  list(arD = 0.8, arV = 0.7, sigSqXInv = 100, sigSqYInv = 1, sigSqVInv = 1000, sigSqDInv = 1000)
+}
+initL <- lapply(1:4, function(x) initf())
+
+fit <- stan('singleCar.stan', data = data, init = initL)
+
+hyper <- c(1, 0.01, 1, 0.01, 1, 0.01, 1, 1, 1, 1, 1, 1)
+stepSize <- c(1e-8, 1e-8, 1e-8, 1e-8, 1e-8, 1e-8)
+initial <- c(8.5e-04, 7.6e-05, 1e-3, 10, 0.75, 0.8)
+
+fitPMMH <- PMMH(cbind(xM, yM), 1000, 25, hyper, stepSize, initial, initV)
+
+
+
+
 }

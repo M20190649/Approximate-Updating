@@ -428,7 +428,7 @@ struct arPF {
     using std::log; using std::exp; using std::pow; using std::sqrt; using std::fabs; using std::sin; using std::cos;
     int N = data.n_rows;
     // Create theta as Mu + U %*% Eps
-    int dim = 4 + 2 * lags;
+    int dim = 2 + 2 * lags;
     Matrix<T, Dynamic, 1> theta(dim);
     for(int i = 0; i < dim; ++i){
       theta(i) = lambda(i);
@@ -437,17 +437,19 @@ struct arPF {
       }
     }
     // Constrained Positive
-    T sigSqV = exp(theta(0)), sigSqD = exp(theta(1)), sigSqX = exp(theta(2)), sigSqY = exp(theta(3));
+    T sigSqV = exp(theta(0)), sigSqD = exp(theta(1));// sigSqX = exp(theta(2)), sigSqY = exp(theta(3));
+    // Constrained (-1, 1)
+    T arD = 2.0 / (1 + exp(-theta(2))) - 1, arV = 2.0 / (1 + exp(-theta(3))) - 1;
     // Evaluate log(p(theta))
     T prior =  -(hyperParams(0) + 1) * log(sigSqV)  -  hyperParams(1) / sigSqV  - 
-      (hyperParams(2) + 1) * log(sigSqD)  -  hyperParams(3) / sigSqD -
-      (hyperParams(4) + 1) * log(sigSqV)  -  hyperParams(5) / sigSqV  - 
-      (hyperParams(6) + 1) * log(sigSqD)  -  hyperParams(7) / sigSqD; 
-    for(int i = 0; i < 2 * lags; ++i){
-      prior -= pow(theta(i) - hyperParams(8 + 2 * i), 2) / (2 * hyperParams(9 + 2 * i));
-    }
+      (hyperParams(2) + 1) * log(sigSqD)  -  hyperParams(3) / sigSqD;// -
+      //(hyperParams(4) + 1) * log(sigSqX)  -  hyperParams(5) / sigSqX  - 
+      //(hyperParams(6) + 1) * log(sigSqY)  -  hyperParams(7) / sigSqY; 
+   // for(int i = 0; i < 2 * lags; ++i){
+  //    prior -= pow(theta(i) - hyperParams(4 + 2 * i), 2) / (2 * hyperParams(5 + 2 * i));
+  //  }
     // Evaluate Log Det J
-    T logdetJ = theta(0)  +  theta(1)  +  theta(2)  +  theta(3);
+    T logdetJ = theta(0)  +  theta(1)  -  theta(2)  -  theta(3) + 2 * log(1 + arV) + 2 * log(1 + arD);
     for(int i = 0; i < dim; ++i){
       logdetJ += log(fabs(lambda((dim+1)*i+dim)));
     }
@@ -461,12 +463,18 @@ struct arPF {
     xA.row(0).fill(data(0, 0));
     yA.row(0).fill(data(0, 1));
     v.row(0).fill(initialV);
-    
+
     // Sample initial particles
-    for(int k = 0; k < P; ++k){
-      a(0, k) = sqrt(sigSqV / (1 - pow(theta(4), 2))) * particleNoise(0, k, 0);
-      d(0, k) = sqrt(sigSqD / (1 - pow(theta(5), 2))) * particleNoise(0, k, 1);
-    }  
+    //for(int k = 0; k < P; ++k){
+      int k = 0;
+      Rcpp::Rcout << k << std::endl;
+      Rcpp::Rcout << sqrt(sigSqV) << " " << pow(arV, 2) << " " << sqrt(sigSqD) << " " << pow(arD, 2) <<
+        " " << particleNoise(0, k, 0) << " " << particleNoise(0, k, 1) << std::endl;
+      //a(0, k) = sqrt(sigSqV / (1 - pow(arV, 2))) * particleNoise(0, k, 0);
+      //d(0, k) = sqrt(sigSqD / (1 - pow(arD, 2))) * particleNoise(0, k, 1);
+    //}  
+    if(false){
+
     for(int t = 1; t < N; ++t){
       // Create CDF to use for resampling
       piSum(t, 0) = pi(t - 1, 0);
@@ -485,13 +493,13 @@ struct arPF {
       }
       // Sample next step and calculate weights
       for(int k = 0; k < P; ++k){
-        a(t, k) = theta(4) * a(t-1, rI(t, k)) + sqrt(sigSqV) * particleNoise(t, k, 0);
-        d(t, k) = theta(5) * d(t-1, rI(t, k)) + sqrt(sigSqD) * particleNoise(t, k, 1);
+        a(t, k) = arV * a(t-1, rI(t, k)) + sqrt(sigSqV) * particleNoise(t, k, 0);
+        d(t, k) = arD * d(t-1, rI(t, k)) + sqrt(sigSqD) * particleNoise(t, k, 1);
         v(t, k) = v(t-1, rI(t, k)) + a(t, k);
         xA(t, k) = xA(t-1, rI(t, k)) + v(t, k) * cos(1.570796 + d(t, k));
         yA(t, k) = yA(t-1, rI(t, k)) + v(t, k) * sin(1.570796 + d(t, k));
-        omega(t, k) = -0.5 * log(2*3.14159*sigSqX)  -  pow(xA(t, k) - data(t, 0), 2) / (2 * sigSqX)  - 
-          0.5 * log(2*3.14159*sigSqY)  -  pow(yA(t, k) - data(t, 1), 2) / (2 * sigSqY);
+        omega(t, k) = -0.5 * log(2*3.14159*0.0001)  -  pow(xA(t, k) - data(t, 0), 2) / (2 * 0.0001)  - 
+          0.5 * log(2*3.14159*0.0001)  -  pow(yA(t, k) - data(t, 1), 2) / (2 * 0.0001);
         omegaSum(t) += exp(omega(t, k));
       }
       // Normalise weights
@@ -501,7 +509,7 @@ struct arPF {
       // log(p(x_1:T | theta)) = sum_t log(p(x_t | theta))
       logLik += log(omegaSum(t) / P);
     }
-    Rcpp::Rcout << prior << " " << logdetJ << " " << logLik << std::endl;
+    }
     return prior + logLik + logdetJ;
   }
 };
