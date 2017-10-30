@@ -787,9 +787,9 @@ fitHamPMMH <- hamiltonianPF(data = cbind(xM, yM),
 
 }
 
-stanMixture{
-  N <- 15
-  T <- 200
+Mixture{
+  N <- 100
+  T <- 250
   idSubset <- sample(noChange)
   data <- sampleCars(L3Y600, idSubset)
   i <- 1
@@ -818,7 +818,25 @@ stanMixture{
 
   rstan_options(auto_write = TRUE)
   options(mc.cores = parallel::detectCores() - 1)
-  fit <- stan('mixture.stan', data = data, iter = 100, chains = 1)
+  fit <- stan('mixture.stan', data = data, iter = 300, chains = 1, control = list(adapt_delta = 0.95, max_treedepth = 20))
   
- # N = 10, T = 200: 0.29 s/iter Warmup, 0.13 s/iter Sampling
+  
+  idSubset <- sample(noChange, N)
+  data <- list()
+  for(i in 1:N){
+    L3Y600 %>%
+      filter(ID == idSubset[i]) %>%
+      mutate(n = seq_along(v),
+             vl = ifelse(n == 1, 0, lag(v)),
+             v = v - lag(v),
+             d = delta - pi/2) %>%
+      filter(n > 1) %>% 
+      select(d, v) -> data[[i]]
+  }
+  saveRDS(data, 'rmixdata.RDS')
+  
+  
+  
+ # N = 10, T = 250: 0.79 s/iter 
+ # N = 10, T = 500: 1.4 s/iter
 }
