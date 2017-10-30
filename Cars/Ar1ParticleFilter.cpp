@@ -158,6 +158,7 @@ struct arPF {
     const{
     using std::log; using std::exp; using std::pow; using std::sqrt; using std::fabs; using std::sin; using std::cos;
     int N = data.n_rows;
+    double Pi = 3.141593;
     // Create theta as Mu + U %*% Eps
     int dim = 4 + 2 * lags;
     Matrix<T, Dynamic, 1> theta(dim);
@@ -194,12 +195,9 @@ struct arPF {
       states(0, k) = sqrt(sigSqV / (1 - pow(arV, 2))) * randn<vec>(1)[0];
       states(1, k) = sqrt(sigSqD / (1 - pow(arD, 2))) * randn<vec>(1)[0];
     }  
-    
     states.row(2).fill(initialV);
     states.row(3).fill(data(0, 0));
     states.row(4).fill(data(0, 1));
-  
- 
     for(int t = 1; t < N; ++t){
       // Create CDF to use for resampling
       piSum(0) = pi(0);
@@ -210,7 +208,7 @@ struct arPF {
       for(int k = 0; k < P; ++k){
         double u = randu<vec>(1)[0];
         for(int i = 0; i < P; ++i){
-          if(u < piSum(t, i)){
+          if(u < piSum(i)){
             for(int j = 0; j < 5; ++j){
               resampled(j, k) = states(j, i);
             }
@@ -219,26 +217,27 @@ struct arPF {
         }
       }
       omegaSum = 0;
-      // Sample next step and calculate weights
-      for(int k = 0; k < 2; ++k){
-        states(0, k) = arV * resampled(0, k) + sqrt(sigSqV) * randn<vec>(1)[0];
-        states(1, k) = arD * resampled(1, k) + sqrt(sigSqD) * randn<vec>(1)[0];
-        states(2, k) = resampled(2, k) + states(0, k);
-        states(3, k) = resampled(3, k) + states(2, k) * cos(1.570796 + states(1, k));
-        states(4, k) = resampled(4, k) + states(2, k) * sin(1.570796 + states(1, k));
-        omega(k) = -0.5 * log(2*3.14159*sigSqX)  -  pow(states(3, k) - data(t, 0), 2) / (2 * sigSqX)  - 
-          0.5 * log(2*3.14159*sigSqY)  -  pow(states(4, k) - data(t, 1), 2) / (2 * sigSqY);
-        omegaSum += exp(omega(k));
+      // Sample next set of particles and calculate weights
+      for(int k = 0; k < P; ++k){
+        states(0, k) = arV * resampled(0, k) + sqrt(sigSqV) * randn<vec>(1)[0];           // Accelleration
+        states(1, k) = arD * resampled(1, k) + sqrt(sigSqD) * randn<vec>(1)[0];           // Steering Angle
+        states(2, k) = resampled(2, k) + states(0, k);                                    // Velocity
+        states(3, k) = resampled(3, k) + states(2, k) * cos(Pi/2 + states(1, k));         // Position in Relative X space
+        states(4, k) = resampled(4, k) + states(2, k) * sin(Pi/2 + states(1, k));         // Position in Relative Y space
+        omega(k) = - log(2*Pi)  -  0.5 * (theta(2) + theta(3))  -                         // Log-likelihood
+          pow(states(3, k) - data(t, 0), 2) / (2 * sigSqX)  - 
+          pow(states(4, k) - data(t, 1), 2) / (2 * sigSqY);                             
+        omegaSum += exp(omega(k));                                                        
       }
       // Normalise weights
       for(int k = 0; k < P; ++k){
-        pi(k) = omega(k) / omegaSum;
+        pi(k) = exp(omega(k)) / omegaSum;
       }
       // log(p(x_1:T | theta)) = sum_t log(p(x_t | theta))
       logLik += log(omegaSum / P);
     }
     return prior + logLik + logdetJ;
-  }
+    }
 };
 
 // [[Rcpp::export]]

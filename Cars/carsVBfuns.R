@@ -1,5 +1,4 @@
 library(tidyverse)
-Rcpp::sourceCpp('heirarchical.cpp')
 
 carsVB <- function(data, lambda, S = 25, maxIter = 5000, alpha = 0.01, beta1 = 0.9, beta2 = 0.99, threshold = 0.01, 
                    dimTheta = 4, dimLambda = NULL, model = arimaDeriv, ...){
@@ -29,25 +28,27 @@ carsVB <- function(data, lambda, S = 25, maxIter = 5000, alpha = 0.01, beta1 = 0
     epsilon <- qnorm(unif[101:(100+S), ])
     epsilon[epsilon < -3] = -3
     epsilon[epsilon > 3] = 3
- 
-    for(s in 1:S){
-      if(S == 1){
-        logpj <- model(data, lambda, epsilon, ...)
-        eval <- logpj$val
-        grad <- logpj$grad
-        logpj <- model(data, lambda, epsilon, ...)     
-        q <- sum(dnorm(epsilon[s,], log=TRUE))
-      } else {
+    if(S == 1){
+      logpj <- model(data, lambda, epsilon, ...)
+      eval <- logpj$val
+      grad <- logpj$grad
+      logpj <- model(data, lambda, epsilon, ...)     
+      q <- sum(dnorm(epsilon, log=TRUE))
+      gradient <- grad
+      gradientSq <- grad^2
+      LB[iter] <- eval - q
+    } else {
+      for(s in 1:S){
         logpj <- model(data, lambda, epsilon[s,], ...)    
         eval[s] <- logpj$val
         grad[,s] <- logpj$grad
         q[s] <- sum(dnorm(epsilon[s,], log=TRUE))
       }
-      
+      eval[eval == -Inf] = NA
+      gradient <- rowMeans(grad, na.rm = TRUE)
+      gradientSq <- rowMeans(grad^2, na.rm=TRUE)
+      LB[iter] <- mean(eval - q, na.rm=TRUE) 
     }
-    gradient <- rowMeans(grad, na.rm = TRUE)
-    gradientSq <- rowMeans(grad^2, na.rm=TRUE)
-    LB[iter] <- mean(eval - q, na.rm=TRUE) 
     M <- beta1 * M + (1 - beta1) * gradient
     V <- beta2 * V + (1 - beta2) * gradientSq
     Mst <- M / (1 - beta1^iter)
@@ -67,8 +68,8 @@ carsVB <- function(data, lambda, S = 25, maxIter = 5000, alpha = 0.01, beta1 = 0
     }
     iter <- iter + 1
   }
-  print(paste0('iter: ', iter, ' ELBO: ', meanLB))
-  return(list(lambda=lambda, LB = LB[1:iter], iter = iter))
+  print(paste0('iter: ', min(iter-1, maxIter), ' ELBO: ', LB[min(iter-1, maxIter)]))
+  return(list(lambda=lambda, LB = LB[1:min(iter-1, maxIter)], iter = min(maxIter, iter-1)))
 }
 
 vbDensity <- function(fit, transform, names, supports = NULL){

@@ -5,8 +5,21 @@ library(Rcpp)
 library(RcppArmadillo)
 library(RcppEigen)
 library(rstan)
-source('carsVBfuns.R')
-sourceCpp('arvdMCMC.cpp')
+source('carsVBfuns.R') # Functions to assist VB 
+#source(greta.R) # Contains Hamiltonian MCMC for an AR(1) with the full states / theta 
+sourceCpp('heirarchical.cpp') # AR(p) and Heir-AR(p) VB models
+#sourceCpp('arvdMCMC.cpp') #AR(p) MCMC
+#sourceCpp('hamiltonianPF.cpp') # Hamiltonian MCMC with Particle Filter
+#sourceCpp('AR1PMMH.cpp) # Random Walk PMMH for AR1
+#sourceCpp('Ar1ParticleFilter.cpp) # AR1 VB with a Particle Filter, and with full states
+
+
+## Check clusters based on car order
+## Add two states to heirarchical prior p(theta | k = 1) ~ N(mu_1, sig_1), p(k=1) ~ pi, p(pi) ~ U(0, 1)
+## Gibbs One at a time MCMC is easier to deal with things even if inefficient
+## Paper from Tas
+## Blei VB Consistency
+
 L3Y600 <- readr::read_csv('L3Y600.csv')
 L3Y600 %>% 
   group_by(ID) %>%
@@ -359,7 +372,7 @@ density %>%
 
 heterogeneity{
   
-N <- 20
+N <- 200
 lags <- 2
 diag <- TRUE
 
@@ -393,7 +406,7 @@ heirFit <- carsVB(data = data,
                   Linv = Linv,
                   lags = lags,
                   obsSum = obsSum,
-                  threshold = 0.25,
+                  threshold = 1,
                   diag = diag)$lambda
   
   
@@ -455,6 +468,7 @@ colnames(Vmeans) <- c('ID', 'cluster')
 maps %>%
   spread(var, map) %>%
   cbind(cluster = factor(Vmeans$cluster)) %>%
+  ggplot() + geom_path(aes(sigma2V, phi1V, group = 1, colour = factor(cluster)))
   ggpairs(columns = 3:8,
           mapping = aes(colour = cluster),
           diag = list(continuous = wrap('densityDiag', alpha = 0.75))) + 
@@ -588,29 +602,31 @@ ar1NoiseVB{
     select(relX, y) %>%
     mutate(n = seq_along(y)) %>%
     filter(n <= T) %>%
+    select(relX, y) %>%
     as.matrix() -> data 
   mu <- c(-8, -8, -5, 0, 0, 0)
   sd <- rep(0.2, 4 + 2 * lags)
-  states <- rep(rep(c(0, 0.1), rep(nrow(data), 2)), 2)
-  lambda <- matrix(c(mu, diag(sd), states), ncol=1)
+  #states <- rep(rep(c(0, 0.1), rep(nrow(data), 2)), 2)
+  lambda <- matrix(c(mu, diag(sd)), ncol=1)# states), ncol=1)
   hyper <- c(rep(c(2, 0.0002), 3), 1, 1)#, rep(c(0, 1), 2 * lags))
   
   fit <- carsVB(data = data, 
                 lambda = lambda,
                 hyper = hyper,
-                dimTheta = 4 + 2*lags + 2 * nrow(data),
-                dimLambda = 42 + 4 * nrow(data),
-                model = SSM,
-                maxIter = 10000,
-                S = 30,
+                dimTheta = 6,#4 + 2*lags + 2 * nrow(data),
+                dimLambda = 42,# + 4 * nrow(data),
+                model = arPFDeriv,
+                maxIter = 5000,
+                S = 100,
+                P = 100,
                 initV = initV,
                 threshold = 0.25,
-                lags = 1)$lambda
+                lags = 1)
+  qplot(1:fit$iter, fit$LB, geom = 'line')
   
-  
-  fitTheta <- fit[1:42]
-  fitA <- fit[43:442]
-  fitD <- fit[443:842]
+  #fitTheta <- fit[1:42]
+  #fitA <- fit[43:442]
+  #fitD <- fit[443:842]
   L3Y600 %>%
     filter(ID == id) %>%
     mutate(n = seq_along(v)) %>%
@@ -637,7 +653,7 @@ ar1NoiseVB{
     
   
   
-  fitList <- list(mean = fitTheta[1:(4+2*lags)], U = fitTheta[(5+2*lags):length(fitTheta)])
+  fitList <- list(mean = fit$lambda[1:(4+2*lags)], U = fit$lambda[(5+2*lags):length(fit$lambda)])
   
   transform <- c(rep('exp', 4), rep('stretchedSigmoid', 2 * lags))
   names <- c('sigma2V', 'sigma2D', 'sigma2X', 'sigma2Y')
@@ -753,12 +769,56 @@ initL <- lapply(1:4, function(x) initf())
 fit <- stan('singleCar.stan', data = data, init = initL)
 
 hyper <- c(1, 0.01, 1, 0.01, 1, 0.01, 1, 1, 1, 1, 1, 1)
-stepSize <- c(1e-8, 1e-8, 1e-8, 1e-8, 1e-8, 1e-8)
-initial <- c(8.5e-04, 7.6e-05, 1e-3, 10, 0.75, 0.8)
+stepSize <- c(1e-6, 1e-7, 1e-6, 1e-3, 1e-3, 1e-3)
+initial <- c(8.5e-04, 7.6e-05, 1e-3, 1, 0.75, 0.8)
 
-fitPMMH <- PMMH(cbind(xM, yM), 1000, 25, hyper, stepSize, initial, initV)
+fitPMMH <- PMMH(cbind(xM, yM), 100, 2000, hyper, stepSize, initial, initV)
+
+fitHamPMMH <- hamiltonianPF(data = cbind(xM, yM),
+                            hyper = hyper,
+                            initV = initV,
+                            P = 50,
+                            reps = 1, 
+                            initTheta = matrix(initial, ncol=1),
+                            M = rep(1, 6),
+                            L = 20,
+                            epsilon = 0.01)
 
 
+}
 
+stanMixture{
+  N <- 15
+  T <- 200
+  idSubset <- sample(noChange)
+  data <- sampleCars(L3Y600, idSubset)
+  i <- 1
+  try <- 1
+  d <- matrix(0, T, N)
+  v <- matrix(0, T, N)
+  while(i <= N){
+    L3Y600 %>%
+      filter(ID == idSubset[try]) %>%
+      mutate(n = seq_along(v),
+             vl = ifelse(n == 1, 0, lag(v)),
+             vdiff = v - lag(v)) %>%
+             filter(n > 1) %>% 
+             select(delta, vdiff) -> tempData
+    if(nrow(tempData) >= T){
+      d[,i] <- tempData$delta[1:T]
+      v[,i] <- tempData$vdiff[1:T]
+      i <- i + 1
+    }
+    try <- try + 1
+  }
+  data <- list(N = N,
+               T = T,
+               v = v,
+               d = d)
 
+  rstan_options(auto_write = TRUE)
+  options(mc.cores = parallel::detectCores() - 1)
+  fit <- stan('mixture.stan', data = data, iter = 100, chains = 1)
+  
+ # N = 10, T = 200: 0.29 s/iter Warmup, 0.13 s/iter Sampling
 }

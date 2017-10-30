@@ -10,7 +10,7 @@ using namespace arma;
 using namespace std;
 
 // [[Rcpp::export]]
-mat particleFilter (mat pos, rowvec theta, int N, int T, double initV){
+mat particleFilter (mat data, rowvec theta, int N, int T, double initV){
   // Particles and indices are arranged into T+1 * N matrix
   // Each column is a particle, and each row is a time
   mat a (T, N), d (T, N), v (T, N), x (T, N), y (T, N);
@@ -42,11 +42,12 @@ mat particleFilter (mat pos, rowvec theta, int N, int T, double initV){
   a.row(0) = sqrt(sigSqV / (1 - pow(arV, 2))) * randn<rowvec>(N);
   d.row(0) = sqrt(sigSqD / (1 - pow(arD, 2))) * randn<rowvec>(N);
   v.row(0).fill(initV);
-  x.row(0).fill(pos(0, 0));
-  y.row(0).fill(pos(0, 1));
+  x.row(0).fill(data(0, 0));
+  y.row(0).fill(data(0, 1));
   
   // Particle Filter loop
   for(int t = 1; t < T; ++t){
+    
     // Create CDF to use for resampling
     piSum(0) = pi(0);
     for(int k = 1; k < N; ++k){
@@ -71,8 +72,8 @@ mat particleFilter (mat pos, rowvec theta, int N, int T, double initV){
       double vAhead = v(t-1, B(t, k))  +  aAhead;
       double xAhead = x(t-1, B(t, k))  +  vAhead * cos(dAhead + Pi/2);
       double yAhead = y(t-1, B(t, k))  +  vAhead * sin(dAhead + Pi/2);
-      lWeights(k) = -0.5 * log(2 * Pi * sigSqX)  -  pow(pos(t, 0) - xAhead, 2) / (2*sigSqX)  -
-        0.5 * log(2 * Pi * sigSqY)  -  pow(pos(t, 1) - yAhead, 2) / (2*sigSqY);
+      lWeights(k) = -0.5 * log(2 * Pi * sigSqX)  -  pow(data(t, 0) - xAhead, 2) / (2*sigSqX)  -
+        0.5 * log(2 * Pi * sigSqY)  -  pow(data(t, 1) - yAhead, 2) / (2*sigSqY);
       if(k == 0){
         lSum(k) = exp(lWeights(k));
       } else {
@@ -102,8 +103,8 @@ mat particleFilter (mat pos, rowvec theta, int N, int T, double initV){
       x(t, k) = x(t-1, B(t, kDraws(k)))  +  v(t, k) * cos(d(t, k) + Pi/2);
       y(t, k) = y(t-1, B(t, kDraws(k)))  +  v(t, k) * sin(d(t, k) + Pi/2);
       // Measurement density
-      omega(k) =  - 0.5 * log(2 * Pi * sigSqX)  -  pow(pos(t, 0) - x(t, k), 2) / (2*sigSqX)  -
-        0.5 * log(2 * Pi * sigSqY)  -  pow(pos(t, 1) - y(t, k), 2) / (2*sigSqY);
+      omega(k) =  - 0.5 * log(2 * Pi * sigSqX)  -  pow(data(t, 0) - x(t, k), 2) / (2*sigSqX)  -
+        0.5 * log(2 * Pi * sigSqY)  -  pow(data(t, 1) - y(t, k), 2) / (2*sigSqY);
       omega(k) -=  lWeights(kDraws(k));
       // sum of weights for normalisation
       omegaSum += exp(omega(k));
@@ -150,13 +151,13 @@ double priorDensity (rowvec theta, vec hyperParams){
 }
 
 // [[Rcpp::export]]
-Rcpp::List PMMH(mat pos, int reps, int N, vec hyperParams, rowvec stepSize, rowvec initial, double initV){
-  int T = pos.n_rows;
+Rcpp::List PMMH(mat data, int reps, int N, vec hyperParams, rowvec stepSize, rowvec initial, double initV){
+  int T = data.n_rows;
   mat theta(reps, 6);
   mat a(reps, T), d(reps, T);
   theta.row(0) = initial;
   double prevPrior = priorDensity(initial, hyperParams);
-  mat prevPF = particleFilter(pos, initial, N, T, initV);
+  mat prevPF = particleFilter(data, initial, N, T, initV);
   double prevLoglik = prevPF(0, 0);
   a.row(0) = prevPF.col(0).tail(T).t();
   d.row(0) = prevPF.col(1).tail(T).t();
@@ -164,7 +165,7 @@ Rcpp::List PMMH(mat pos, int reps, int N, vec hyperParams, rowvec stepSize, rowv
   for(int iter = 1; iter < reps; ++iter){
     rowvec canTheta = theta.row(iter-1) + stepSize % randn<rowvec>(6);
     double canPrior = priorDensity(canTheta, hyperParams);
-    mat canPF = particleFilter(pos, canTheta, N, T, initV);
+    mat canPF = particleFilter(data, canTheta, N, T, initV);
     double canLoglik = canPF(0, 0);
     double ratio = exp(canPrior + canLoglik - prevPrior - prevLoglik);
     double u = randu<vec>(1)[0];
