@@ -834,10 +834,53 @@ Mixture{
       select(v , d) %>%
       as.matrix() -> data[[i]]
   }
-  saveRDS(data, 'rmixdata.RDS')
+  #saveRDS(data, 'rmixdata.RDS')
+  source('mixtureMCMC.R')
+  reps <- 10000
+  mixDraws <- mixtureMCMC(data, reps)
   
+  thetai <- NULL
+  for(i in 1:N){
+    temp <- mixDraws[[i+1]]
+    df <- data.frame(cbind(temp$theta, temp$k), ID = i, draw = 1:reps)
+    thetai <- rbind(thetai, df)
+  }
+  colnames(thetai)[1:7] <-  c('log_sigSq_eps', 'log_sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2', 'k')
   
+  mixDraws[[1]]$mean1 %>% as.data.frame() -> mean1
+  mixDraws[[1]]$mean2 %>% as.data.frame() -> mean2
   
+  colnames(mean1) <- c('log_sigSq_eps', 'log_sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2')
+  colnames(mean2) <- c('log_sigSq_eps', 'log_sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2')
+  
+  thetai %>%
+    group_by(ID) %>%
+    filter(draw > 5000) %>%
+    summarise(mapGroup = round(mean(k), 0)) %>%
+    ggplot() + geom_bar(aes(mapGroup)) + theme_bw()
+  
+  mean1 %>%
+    cbind(draw = 1:reps) %>%
+    filter(draw > 5000) %>%
+    select(-draw) %>%
+    GGally::ggpairs() + 
+    theme_bw() + labs(title = 'mu_1')
+  
+  mean2 %>%
+    cbind(draw = 1:reps) %>%
+    filter(draw > 5000) %>%
+    select(-draw) %>%
+    GGally::ggpairs() + 
+    theme_bw() + labs(title = 'mu_2')
+  
+  mean1 %>%
+    cbind(iter = 1:reps) %>%
+    rbind(cbind(mean2, iter = 1:reps)) %>%
+    cbind(method = rep(c('mu1', 'mu2'), rep(nrow(mean1), 2))) %>%
+    gather(var, draw, -iter, -method) %>%
+    filter(iter > 3500) %>%
+    ggplot() + geom_line(aes(iter, draw)) + 
+    facet_grid(var ~ method, scales = 'free') + theme_bw()
  # N = 10, T = 250: 0.79 s/iter 
  # N = 10, T = 500: 1.4 s/iter
 }

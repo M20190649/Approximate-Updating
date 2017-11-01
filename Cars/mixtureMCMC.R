@@ -96,7 +96,6 @@ mixtureMCMC <- function(data, reps){
         stepsize[j] <- stepsize[j] - c * 0.234 / (28 + i)
       }
     }
-    0.5 * log(det(varInv)) - 0.5 * t(theta - thetaHat) %*% varInv %*% (theta - thetaHat)
     # k_i
     for(j in 1:N){
       p1 <- 0.5 * log(det(draws[[1]]$var1Inv[,,i])) - 0.5 * (draws[[j+1]]$theta[i,] - draws[[1]]$mean1[i,]) %*% draws[[1]]$var1Inv[,,i] %*% (draws[[j+1]]$theta[i,] - draws[[1]]$mean1[i,])
