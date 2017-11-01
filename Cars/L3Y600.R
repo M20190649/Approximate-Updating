@@ -5,17 +5,15 @@ library(Rcpp)
 library(RcppArmadillo)
 library(RcppEigen)
 library(rstan)
-source('carsVBfuns.R') # Functions to assist VB 
+source('mixtureMCMC.R') # Hierarchical Mixture Model with MCMC- no noise
+#source('carsVBfuns.R') # Functions to assist VB 
 #source(greta.R) # Contains Hamiltonian MCMC for an AR(1) with the full states / theta 
-sourceCpp('heirarchical.cpp') # AR(p) and Heir-AR(p) VB models
+#sourceCpp('heirarchical.cpp') # AR(p) and Heir-AR(p) VB models
 #sourceCpp('arvdMCMC.cpp') #AR(p) MCMC
 #sourceCpp('hamiltonianPF.cpp') # Hamiltonian MCMC with Particle Filter
 #sourceCpp('AR1PMMH.cpp) # Random Walk PMMH for AR1
 #sourceCpp('Ar1ParticleFilter.cpp) # AR1 VB with a Particle Filter, and with full states
 
-
-## Check clusters based on car order
-## Add two states to heirarchical prior p(theta | k = 1) ~ N(mu_1, sig_1), p(k=1) ~ pi, p(pi) ~ U(0, 1)
 ## Gibbs One at a time MCMC is easier to deal with things even if inefficient
 ## Paper from Tas
 ## Blei VB Consistency
@@ -788,7 +786,7 @@ fitHamPMMH <- hamiltonianPF(data = cbind(xM, yM),
 }
 
 Mixture{
-  N <- 100
+  N <- 125
   T <- 250
   idSubset <- sample(noChange)
   data <- sampleCars(L3Y600, idSubset)
@@ -820,10 +818,10 @@ Mixture{
   options(mc.cores = parallel::detectCores() - 1)
   fit <- stan('mixture.stan', data = data, iter = 300, chains = 1, control = list(adapt_delta = 0.95, max_treedepth = 20))
   
-  
-  idSubset <- sample(noChange, N)
+  M <- 500
+  idSubset <- sample(noChange, M)
   data <- list()
-  for(i in 1:N){
+  for(i in 1:M){
     L3Y600 %>%
       filter(ID == idSubset[i]) %>%
       mutate(n = seq_along(v),
@@ -835,52 +833,48 @@ Mixture{
       as.matrix() -> data[[i]]
   }
   #saveRDS(data, 'rmixdata.RDS')
-  source('mixtureMCMC.R')
-  reps <- 10000
-  mixDraws <- mixtureMCMC(data, reps)
-  
-  thetai <- NULL
+  N <- 75
+  dataSub <- list()
   for(i in 1:N){
-    temp <- mixDraws[[i+1]]
-    df <- data.frame(cbind(temp$theta, temp$k), ID = i, draw = 1:reps)
-    thetai <- rbind(thetai, df)
+    dataSub[[i]] <- data[[i]]
   }
-  colnames(thetai)[1:7] <-  c('log_sigSq_eps', 'log_sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2', 'k')
+  reps <- 20000
+  mixDraws <- mixtureMCMC(dataSub, reps)
+
+  mapGroup <- NULL
+  for(i in 1:N){
+    kDraws <- mixDraws[[i+1]]$k[(reps/2+1):reps]
+    mapGroup <- rbind(mapGroup, data.frame(group = mean(kDraws), ID = idSubset[i]))
+  }
+  ggplot(mapGroup) + geom_histogram(aes(group)) + theme_bw()
   
-  mixDraws[[1]]$mean1 %>% as.data.frame() -> mean1
-  mixDraws[[1]]$mean2 %>% as.data.frame() -> mean2
+  mixDraws[[1]]$mean1 %>% 
+    cbind(iter = 1:reps) %>%
+    as.data.frame() -> mean1
+  mixDraws[[1]]$mean2 %>%
+    cbind(iter = 1:reps) %>%
+    as.data.frame()  -> mean2
   
-  colnames(mean1) <- c('log_sigSq_eps', 'log_sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2')
-  colnames(mean2) <- c('log_sigSq_eps', 'log_sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2')
-  
-  thetai %>%
-    group_by(ID) %>%
-    filter(draw > 5000) %>%
-    summarise(mapGroup = round(mean(k), 0)) %>%
-    ggplot() + geom_bar(aes(mapGroup)) + theme_bw()
+  colnames(mean1) <- c('log_sigSq_eps', 'log_sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2', 'iter')
+  colnames(mean2) <- c('log_sigSq_eps', 'log_sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2', 'iter')
   
   mean1 %>%
-    cbind(draw = 1:reps) %>%
-    filter(draw > 5000) %>%
-    select(-draw) %>%
+    rbind(mean2) %>%
+    cbind(method = rep(c('mu1', 'mu2'), rep(reps, 2))) %>%
+    gather(var, draw, -iter, -method) %>%
+    filter(iter > 5000) %>%
+    ggplot() + geom_line(aes(iter, draw)) + 
+    facet_grid(var ~ method, scales = 'free') + theme_bw()
+  
+  mean1 %>%
+    filter(iter > 5000) %>%
+    select(-iter) %>%
     GGally::ggpairs() + 
     theme_bw() + labs(title = 'mu_1')
   
   mean2 %>%
-    cbind(draw = 1:reps) %>%
-    filter(draw > 5000) %>%
-    select(-draw) %>%
+    filter(iter > 5000) %>%
+    select(-iter) %>%
     GGally::ggpairs() + 
     theme_bw() + labs(title = 'mu_2')
-  
-  mean1 %>%
-    cbind(iter = 1:reps) %>%
-    rbind(cbind(mean2, iter = 1:reps)) %>%
-    cbind(method = rep(c('mu1', 'mu2'), rep(nrow(mean1), 2))) %>%
-    gather(var, draw, -iter, -method) %>%
-    filter(iter > 3500) %>%
-    ggplot() + geom_line(aes(iter, draw)) + 
-    facet_grid(var ~ method, scales = 'free') + theme_bw()
- # N = 10, T = 250: 0.79 s/iter 
- # N = 10, T = 500: 1.4 s/iter
 }

@@ -1,0 +1,188 @@
+\documentclass[12pt,a4paper]{article}\usepackage[]{graphicx}\usepackage[]{color}
+%% maxwidth is the original width if it is less than linewidth
+%% otherwise use linewidth (to make sure the graphics do not exceed the margin)
+\makeatletter
+\def\maxwidth{ %
+  \ifdim\Gin@nat@width>\linewidth
+    \linewidth
+  \else
+    \Gin@nat@width
+  \fi
+}
+\makeatother
+
+\definecolor{fgcolor}{rgb}{0.345, 0.345, 0.345}
+\newcommand{\hlnum}[1]{\textcolor[rgb]{0.686,0.059,0.569}{#1}}%
+\newcommand{\hlstr}[1]{\textcolor[rgb]{0.192,0.494,0.8}{#1}}%
+\newcommand{\hlcom}[1]{\textcolor[rgb]{0.678,0.584,0.686}{\textit{#1}}}%
+\newcommand{\hlopt}[1]{\textcolor[rgb]{0,0,0}{#1}}%
+\newcommand{\hlstd}[1]{\textcolor[rgb]{0.345,0.345,0.345}{#1}}%
+\newcommand{\hlkwa}[1]{\textcolor[rgb]{0.161,0.373,0.58}{\textbf{#1}}}%
+\newcommand{\hlkwb}[1]{\textcolor[rgb]{0.69,0.353,0.396}{#1}}%
+\newcommand{\hlkwc}[1]{\textcolor[rgb]{0.333,0.667,0.333}{#1}}%
+\newcommand{\hlkwd}[1]{\textcolor[rgb]{0.737,0.353,0.396}{\textbf{#1}}}%
+\let\hlipl\hlkwb
+
+\usepackage{framed}
+\makeatletter
+\newenvironment{kframe}{%
+ \def\at@end@of@kframe{}%
+ \ifinner\ifhmode%
+  \def\at@end@of@kframe{\end{minipage}}%
+  \begin{minipage}{\columnwidth}%
+ \fi\fi%
+ \def\FrameCommand##1{\hskip\@totalleftmargin \hskip-\fboxsep
+ \colorbox{shadecolor}{##1}\hskip-\fboxsep
+     % There is no \\@totalrightmargin, so:
+     \hskip-\linewidth \hskip-\@totalleftmargin \hskip\columnwidth}%
+ \MakeFramed {\advance\hsize-\width
+   \@totalleftmargin\z@ \linewidth\hsize
+   \@setminipage}}%
+ {\par\unskip\endMakeFramed%
+ \at@end@of@kframe}
+\makeatother
+
+\definecolor{shadecolor}{rgb}{.97, .97, .97}
+\definecolor{messagecolor}{rgb}{0, 0, 0}
+\definecolor{warningcolor}{rgb}{1, 0, 1}
+\definecolor{errorcolor}{rgb}{1, 0, 0}
+\newenvironment{knitrout}{}{} % an empty environment to be redefined in TeX
+
+\usepackage{alltt}\usepackage[]{graphicx}\usepackage[]{color}
+%% maxwidth is the original width if it is less than linewidth
+%% otherwise use linewidth (to make sure the graphics do not exceed the margin)
+\makeatletter
+\def\maxwidth{ %
+  \ifdim\Gin@nat@width>\linewidth
+    \linewidth
+  \else
+    \Gin@nat@width
+  \fi
+}
+\makeatother
+
+\usepackage{alltt}%
+\usepackage[]{graphicx}\usepackage[]{color}
+%% maxwidth is the original width if it is less than linewidth
+%% otherwise use linewidth (to make sure the graphics do not exceed the margin)
+
+%2multibyte Version: 5.50.0.2960 CodePage: 1252
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage[centertags]{amsmath}
+\usepackage{graphicx}%
+\usepackage{natbib}
+\usepackage{color}
+\usepackage[dvipsnames,svgnames*]{xcolor}
+\usepackage{array}
+\usepackage[hidelinks]{hyperref}
+\usepackage[font=small,skip=5pt]{caption}
+\usepackage[aboveskip=2pt]{subcaption}
+\usepackage{amsmath}
+\usepackage{amsthm}
+%\usepackage{tikz}
+%\usetikzlibrary{bayesnet}
+\usepackage{url}
+\usepackage{ulem}
+\usepackage{afterpage}
+\setcounter{MaxMatrixCols}{30}
+
+\setlength{\topmargin}{0in}
+\setlength{\oddsidemargin}{0.1in}
+\setlength{\evensidemargin}{0.1in}
+\setlength{\textwidth}{6.5in}
+\setlength{\textheight}{8.25in}
+\setlength\parindent{0pt}
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\begin{document}
+
+\section{Introduction}
+
+\begin{itemize}
+\item Self driving cars becoming more common
+\item Cars are easy capable of driving by themselves if there is no traffic around them
+\item Cars need to be able to predict movement of other cars
+\item Drivers display differing behaviour, able to group drivers into different categories
+\item Heteogeneity between and within groups
+\item Need to deal with new cars as they are observed
+\end{itemize}
+
+\section{Data processing}
+
+\begin{itemize}
+\item Modern cars are able to track lane marking and can calculate distance to other cars in relative co-ordinates (Thuy and Leon 2010)
+\item Data from NGSIM is in coordinates relative to start of road - no impact of the curvature of the lane
+\item Fit curve to car data to estimate lane midpoints (Woo et. al. 2016) 
+\begin{enumerate}
+\item At each point in time $t$ calculate the total distance each car has travelled along the road using $d_{i, t} = \sum_{s=1}^t v_{i, s}$, where $v_{i, s}$ is the velocity of car $i$ at time $s$. 
+\item Estimate polynomial functions of the form $x_{i, t} = f(d_{i, t})$ and $y_{i, t} = g(d_{i, t})$, where $x_{i, t}$ and $y_{i, t}$ are the car coordinates relative to the start of the road.
+\item Use polynomials to get $\hat{x}_{i, t}$ and $\hat{y}_{i, t}$ as estimates of the midpoint of the lane after travelling a distance $d_{i, t}$.
+\item Define new coordinates 
+\begin{align}
+x^*_{i, t} &= \sqrt{(x_{i, t}-\hat{x}_{i, t})^2 + (y_{i, t} - \hat{y}_{i, t})^2)} \label{xRel} \\
+y^*_{i, t} &= d_{i, t} \label{yRel}
+\end{align}
+\end{enumerate}
+\item Note: This should be calculated separately for each lane.
+\end{itemize}
+
+\section{Hierarchical Motion Model}
+
+The position of car $i$ at time $t$ can be fully determined by its inital position, $\{x^*_{i, 0}, y^*_{i, 0}\}$ and the history of the driver's inputs: the cars velocity $v_{i, t}$ and steering angle, $\delta_{i, t}$ by
+\begin{align}
+x^*_{t} &= x^*_{t-1} + v_{t} \cos(\delta_{t}) \label{xEq} \\
+y^*_{t} &= y^*_{t-1} + v_{t} \sin(\delta_{t}). \label{yEq},
+\end{align}
+where $\delta_{t} = \pi/2$ denotes that the car has no lateral movement and $x^*_{t} = x^*_{t-1}$.
+From this relationship, the key inputs can be extracted by
+\begin{align}
+\delta_{t} &= \tan^{-1}\left(\frac{(y^*_{t} - y^*_{t-1})}{(x^*_{t} - x^*_{t-1})} \right) \label{dEq} \\
+v_{t} &= \sqrt{(x^*_{t} - x^*_{t-1})^2 + (y^*_{t} - y^*_{t-1})^2} \label{vEq} \\
+a_{t} &= v_{t} - v_{t-1}. \label{aEq}
+\end{align}
+where $a_{t}$ denotes the acceleration at time $t$.
+
+Auto-regressive processes of orders $p$ and $q$ for $a_i$ and  $\delta_i$ are used to model the level of persistance and variation of driver actions, with
+\begin{align}
+a_{t} &= \sum_{j = 1}^p \phi_{j} a_{t-j} + \epsilon_{t} \label{aAR} \\
+\delta_{t} &= \pi/2 + \sum_{j = 1}^q \gamma_{j} (\delta_{t-j} - \pi/2) + \eta_{t} \label{dAR}
+\end{align}
+assuming that $\epsilon_{t}$ are independently and identically distributed according to a Student's t distribution with variance $\sigma^{2}_{\epsilon}$ and degrees of freedom $\nu_{\epsilon}$, and $\eta_{t}$ similarly has a Student't t distribution with variance $\sigma^{2}_{\eta}$ and degrees of freedom $\nu_{\eta}$. The parameter vector to be estimated is collected as $\theta = \{\phi_{1}, \dots, \phi_{p}, \gamma_{1}, \dots, \gamma_{q}, \log(\sigma^{2}_{\epsilon}), \log(\nu_{\epsilon}), \log(\sigma^{2}_{\eta}), \log(\nu_{\eta}) \} \in \mathbb{R}^{p + q + 4}$.
+
+Multiple groups of differing driver behaviour can be allowed while still retaining heterogeneity with each group by jointly estimating each vehicle driver's individual parameter vector, $\theta_i$, as part of a heirarchical model, independently drawing $\theta_i$ from a $K$ component mixture of multivariate normal distributions, augmenting each $\theta_i$ with a mixture component $k_i = 1, \dots, K$ such that 
+\begin{equation}
+\theta_i | k_i = j \sim N(\mu_j, \Sigma_j).
+\end{equation}
+For each $j = 1, \dots, K$, multivariate normal priors are chosen for $\mu_j$ with mean $\bar{\mu}_j$ and variance matrix $\Omega_j$, Inverse Wishart priors are chosen for $\Sigma_j$ with degrees of freedom $\tau_j$ and scale matrix $\Psi_j$, and finally $k_{i, j}$ has a Dirichlet prior with parameters $\alpha_{i, j} = \alpha_i$. This can be estimated with MCMC methods.
+
+\section{Online Classification}
+
+Notation:
+\begin{itemize}
+\item $y_{i, 1:T} = \{\delta_{i, s}, a_{i, s} | s = 1, 2, \dots, T\}$ 
+\item $y_{1:N} = \{y_{i, 1:T} | i = 1, 2, \dots N\}$
+\item $q(\theta_i | y_{i, 1:T}) \approx p(\theta_i | y_{i, 1:T}, y_{1:N})$, $\lambda$ parameters and dependence on other cars suppressed - more important to be clear about which observations from the new vehicle are used to construct the approximation.
+\item $\beta = \{\mu_i, \Sigma_i, i, = 1, 2, \dots, K)$.
+\end{itemize}
+
+Modelling process:
+\begin{itemize}
+\item Fit heirarchical model from section 3 for cars $i = 1, \dots N$ before car starts driving - eg. During manufacturing process so unlimited time available.
+\item Observe a new car, say car $N + 1$.
+\item Want to learn about parameters $\theta_{N+1}$ and which group $k_{N+1}$ the driver belongs to
+\item $p(\theta_{N+1}, k_{N+1} | y_{1:N+1}) \propto p(y_{N+1, 1:T} | \theta_{N+1}) p(\theta_{N+1} | k_{N+1} \beta)p(k_{N+1}) p(\beta | y_{1:N})$
+\item Essentially using mixture distribution posterior fit for cars 1 to N as prior for $\theta_{N+1}$.
+\item However we want to be able to do this as we observe $y_{N+1}$, eg: Fit distribution to $p(\theta_{N+1}, k_{N+1} | y_{N+1, 1:10}, y_{1:N})$, then to $p(\theta_{N+1}, k_{N+1} | y_{N+1, 1:11}, y_{1:N})$ etc.
+\item To do this in VB we need to make two further approximations:
+\begin{enumerate}
+\item Fit a parametric distribution to the MCMC posterior
+\item Replace each  $p(\theta_{N+1} | y_{i, 1:S}, y_{1:N})$ used to fit $q(\theta_{N+1} | y_{N+1, 1:S+1})$ with the VB fit from the last step, $q(\theta_{N+1} | y_{N+1, 1:S})$.
+\end{enumerate}
+\end{itemize}
+
+\section{Empirical}
+
+\section{Conclusion}
+
+\end{document}

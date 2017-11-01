@@ -96,3 +96,5 @@ Y600 %>%
   summarise(class = head(class, 1)) %>%
   .$class %>%
   table()
+
+
