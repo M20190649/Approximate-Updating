@@ -96,11 +96,11 @@ mixtureMCMC <- function(data, reps){
         stepsize[j] <- stepsize[j] - c * 0.234 / (28 + i)
       }
     }
-    
+    0.5 * log(det(varInv)) - 0.5 * t(theta - thetaHat) %*% varInv %*% (theta - thetaHat)
     # k_i
     for(j in 1:N){
-      p1 <- dmvnorm(draws[[j+1]]$theta[i,], draws[[1]]$mean1[i,], draws[[1]]$var1[,,i], log = TRUE)
-      p2 <- dmvnorm(draws[[j+1]]$theta[i,], draws[[1]]$mean2[i,], draws[[1]]$var2[,,i], log = TRUE)
+      p1 <- 0.5 * log(det(draws[[1]]$var1Inv[,,i])) - 0.5 * (draws[[j+1]]$theta[i,] - draws[[1]]$mean1[i,]) %*% draws[[1]]$var1Inv[,,i] %*% (draws[[j+1]]$theta[i,] - draws[[1]]$mean1[i,])
+      p2 <- 0.5 * log(det(draws[[1]]$var2Inv[,,i])) - 0.5 * (draws[[j+1]]$theta[i,] - draws[[1]]$mean2[i,]) %*% draws[[1]]$var2Inv[,,i] %*% (draws[[j+1]]$theta[i,] - draws[[1]]$mean2[i,])
       if(p1 > (p2 + 100)){
         draws[[j+1]]$k[i] <- 1
       } else if(p2 > (p1 + 100)){
