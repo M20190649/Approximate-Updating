@@ -831,7 +831,8 @@ Mixture{
              v = v - lag(v),
              d = delta - pi/2) %>%
       filter(n > 1) %>% 
-      select(d, v) -> data[[i]]
+      select(v , d) %>%
+      as.matrix() -> data[[i]]
   }
   saveRDS(data, 'rmixdata.RDS')
   
