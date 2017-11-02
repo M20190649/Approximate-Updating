@@ -11,7 +11,7 @@ cars %>%
   group_by(ID) %>%
   filter(min(v) > 0.1) %>%
   .$ID %>%
-  unique() -> noChange
+  unique() -> noStop
 
 
 cars %>% 
@@ -23,8 +23,8 @@ cars %>%
   ggplot() + geom_path(aes(n, v + ID, group = ID))
 
 
-N <- 250
-idSubset <- sample(noChange, N)
+N <- 750
+idSubset <- sample(noStop, N)
 data <- list()
 for(i in 1:N){
   cars %>%
@@ -37,8 +37,9 @@ for(i in 1:N){
     select(v , d) %>%
     as.matrix() -> data[[i]]
 }
+saveRDS(data, 'mixmod.RDS')
 
-reps <- 20000
+reps <- 100000
 K <- 2
 
 mixDraws <- mixtureMCMC(data, reps, K, 'gaussian')
@@ -66,7 +67,7 @@ for(i in 1:K){
 muK %>%
   gather(var, draw, -iter, -group) %>%
   mutate(var = factor(var, levels = c('log_sigSq_eps', 'phi1', 'phi2', 'log_sigSq_eta', 'gamma1', 'gamma2'))) %>%
-  filter(iter > 10000) %>%
+  filter(iter > 10000 & iter %% 50 == 0) %>%
   ggplot() + geom_line(aes(iter, draw)) + 
   facet_grid(var ~ group, scales = 'free') + theme_bw()
 

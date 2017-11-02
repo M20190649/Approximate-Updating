@@ -39,6 +39,13 @@ mixtureMCMC <- function(data, reps, K = 2, error = 'gaussian'){
   
   for(i in 2:reps){
     # theta_i
+    if(i == 2){
+      startTime <- Sys.time()
+    }
+    if(i == 102){
+      timePerIter <- (Sys.time() - startTime)/100
+      class(timePerIter) <- 'numeric'
+    }
     for(j in 1:N){
       candidate <- draws[[j+1]]$theta[i-1, ] +  stepsize[j] * rnorm(dim)
       group <- draws[[j+1]]$k[i-1]
@@ -105,7 +112,7 @@ mixtureMCMC <- function(data, reps, K = 2, error = 'gaussian'){
     }
     
     if(i %% 500 == 0){
-      print(i)
+      print(paste0('Iteration: ', i, '. Est. Time Remaining: ', round((reps - i) * timePerIter[1] / 60, 2), ' minutes.'))
     }
   }
   print(accept / reps)
