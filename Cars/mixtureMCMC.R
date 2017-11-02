@@ -9,14 +9,18 @@ mixtureMCMC <- function(data, reps, K = 2, error = 'gaussian'){
   accept <- rep(0, N)
 
   if(error == 'gaussian'){
-    hyper <- list(list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(5, 6)),  v = 6, scale = diag(0.5, 6)),
-                  list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(5, 6)),  v = 6, scale = diag(0.5, 6)))
-    draws <- list(list(list(mean = matrix(c(-6, -5, 0.2, 0.1, 0.2, 0.1), reps, 6, byrow = TRUE), varInv = array(0, dim = c(6, 6, reps))),
-                       list(mean = matrix(c(-4, -2, -0.5, -0.5, 0, 0), reps, 6, byrow = TRUE), varInv = array(0, dim = c(6, 6, reps)))))
-    diag(draws[[1]][[1]]$varInv[,,1]) = 10
+    draws <- list(list(list(mean = matrix(c(-6, -6, 0.5, 0, 0.3, 0.1), reps, 6, byrow = TRUE), varInv = array(0, dim = c(6, 6, reps))),
+                       list(mean = matrix(c(-4, -4, -0.5, -0.2, 0, 0), reps, 6, byrow = TRUE), varInv = array(0, dim = c(6, 6, reps)))))
+    hyper <- list()
+    for(k in 1:K){
+      diag(draws[[1]][[k]]$varInv[,,1]) = 10
+      hyper[[k]] <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(5, 6)),  v = 6, scale = diag(0.5, 6))
+    }
+    
     diag(draws[[1]][[2]]$varInv[,,1]) = 10
+    diag(draws[[1]][[3]]$varInv[,,1]) = 10
     for(i in 1:N){
-      draws[[i+1]] <- list(theta = matrix(c(-5, -3.5, 0.15, -0.2, 0.1, 0.05), reps, 6, byrow = TRUE), k = sample(1:2, reps, replace=TRUE))
+      draws[[i+1]] <- list(theta = matrix(c(-5, -5, 0, -0.1, 0.15, 0.05), reps, 6, byrow = TRUE), k = sample(1:K, reps, replace=TRUE))
     }
     likelihood <- nlogDensity
     dim <- 6
@@ -24,12 +28,12 @@ mixtureMCMC <- function(data, reps, K = 2, error = 'gaussian'){
     hyper <- list(list(mean = c(-8, -8, rep(0, 6)), varInv = solve(diag(5, 8)),  v = 8, scale = diag(0.5, 8)),
                   list(mean = c(-8, -8, rep(0, 6)), varInv = solve(diag(5, 8)),  v = 8, scale = diag(0.5, 8)))
     
-    draws <- list(list(list(mean = matrix(c(-6.7, -8.5, 1.15, -0.5, 1.05, -0.35, 1, 1), reps, 8, byrow = TRUE), varInv = array(0, dim = c(8, 8, reps))),
-                       list(mean = matrix(c(-7.3, -10, 1.2, -0.65, 1, -0.3, 1, 1), reps, 8, byrow = TRUE), varInv = array(0, dim = c(8, 8, reps)))))
+    draws <- list(list(list(mean = matrix(c(-6, -5, 0.2, 0.1, 0.2, 0.1, 2, 2), reps, 8, byrow = TRUE), varInv = array(0, dim = c(8, 8, reps))),
+                       list(mean = matrix(c(-4, -2, -0.5, -0.5, 0, 0, 2, 2), reps, 8, byrow = TRUE), varInv = array(0, dim = c(8, 8, reps)))))
     diag(draws[[1]][[1]]$varInv[,,1]) = 10
     diag(draws[[1]][[2]]$varInv[,,1]) = 10
     for(i in 1:N){
-      draws[[i+1]] <- list(theta = matrix(c(-7, -9.25, 1.175, -0.575, 1.025, -0.325, 1, 1), reps, 8, byrow = TRUE), k = sample(1:2, reps, replace=TRUE))
+      draws[[i+1]] <- list(theta = matrix(c(-5, -3.5, 0.15, -0.2, 0.1, 0.05, 2, 2), reps, 8, byrow = TRUE), k = sample(1:2, reps, replace=TRUE))
     }
     likelihood <- tlogDensity
     dim <- 8
@@ -41,8 +45,7 @@ mixtureMCMC <- function(data, reps, K = 2, error = 'gaussian'){
     # theta_i
     if(i == 2){
       startTime <- Sys.time()
-    }
-    if(i == 102){
+    } else if(i == 102){
       timePerIter <- (Sys.time() - startTime)/100
       class(timePerIter) <- 'numeric'
     }
@@ -111,7 +114,7 @@ mixtureMCMC <- function(data, reps, K = 2, error = 'gaussian'){
       
     }
     
-    if(i %% 500 == 0){
+    if(i %% 1000 == 0){
       print(paste0('Iteration: ', i, '. Est. Time Remaining: ', round((reps - i) * timePerIter[1] / 60, 2), ' minutes.'))
     }
   }

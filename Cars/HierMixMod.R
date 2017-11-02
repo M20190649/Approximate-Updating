@@ -23,7 +23,7 @@ cars %>%
   ggplot() + geom_path(aes(n, v + ID, group = ID))
 
 
-N <- 750
+N <- 50
 idSubset <- sample(noStop, N)
 data <- list()
 for(i in 1:N){
@@ -39,23 +39,23 @@ for(i in 1:N){
 }
 saveRDS(data, 'mixmod.RDS')
 
-reps <- 100000
+reps <- 50000
 K <- 2
 
-mixDraws <- mixtureMCMC(data, reps, K, 'gaussian')
+mixDraws2 <- mixtureMCMC(data, reps, K, 'gaussian')
 
 
 mapGroup <- NULL
 for(i in 1:N){
-  kDraws <- mixDraws[[i+1]]$k[(reps/2+1):reps]
-  mode <- which.max(table(kDraws))
-  mapGroup <- rbind(mapGroup, data.frame(group = mean(kDraws), ID = idSubset[i]))
+  kDraws <- mixDraws2[[i+1]]$k[(reps/2+1):reps]
+  mode <- which.max(table(c(1:K, kDraws)))
+  mapGroup <- rbind(mapGroup, data.frame(group = mode, ID = idSubset[i]))
 }
 ggplot(mapGroup) + geom_histogram(aes(group)) + theme_bw()
 
 muK <- NULL
 for(i in 1:K){
-  mixDraws[[1]][[i]]$mean %>%
+  mixDraws2[[1]][[i]]$mean %>%
     cbind(iter = 1:reps) %>%
     as.data.frame() %>%
     mutate(group = i)  -> temp
@@ -67,7 +67,7 @@ for(i in 1:K){
 muK %>%
   gather(var, draw, -iter, -group) %>%
   mutate(var = factor(var, levels = c('log_sigSq_eps', 'phi1', 'phi2', 'log_sigSq_eta', 'gamma1', 'gamma2'))) %>%
-  filter(iter > 10000 & iter %% 50 == 0) %>%
+  filter(iter > 2000 & iter %% 50 == 0 ) %>%
   ggplot() + geom_line(aes(iter, draw)) + 
   facet_grid(var ~ group, scales = 'free') + theme_bw()
 
