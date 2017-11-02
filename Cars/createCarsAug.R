@@ -24,6 +24,8 @@ colnames(cars) = c('ID', 'frame', 'totalFrames', 'time', 'x', 'y',
 
 #Operations on data
 cars %>%
+  mutate(time = time - min(time)) -> cars
+cars %>%
   group_by(ID) %>%
   summarise(medLane = median(lane),
             changed = any(lane != medLane),
@@ -31,63 +33,66 @@ cars %>%
   ungroup() %>%
   right_join(cars, by = "ID") -> cars
 
+
 cars %>%
   group_by(ID) %>%
-  filter(y > 500 & y < 1700 & changed == FALSE & lane < 6) %>%
+  filter(changed == FALSE & lane < 6) %>% #& y > 500 & y < 1700) %>%
   mutate(n = seq_along(frame), 
          xlag = ifelse(n == 1, 0, lag(x)), 
          ylag = ifelse(n == 1, 0, lag(y)),
          v = sqrt((x-xlag)^2 + (y-ylag)^2),
-         dist = cumsum(v)) -> Y500
-degree <- 10
+         delta = atan2(y - ylag, x - xlag),
+         dist = cumsum(v)) -> carsAug
+
+carsAug %>%
+  filter(ID < 2000) %>%
+  ggplot() + geom_path(aes(x, dist, group = ID, colour = delta > pi/2))
+
+
+degree <- 50
 
 pred <- NULL
 for(i in 1:5){
   cars %>%
     group_by(ID) %>%
-    filter(lane == i & changed == FALSE & y > 500 & y < 1700) %>%
-    filter(ID %in% head(unique(.$ID), 200)) %>%
+    filter(lane == i) %>%# & y > 500 & y < 1700) %>%
+    filter(ID %in% head(unique(.$ID), 300)) %>%
     mutate(n = seq_along(frame), 
            xlag = ifelse(n == 1, 0, lag(x)), 
            ylag = ifelse(n == 1, 0, lag(y)),
            v = sqrt((x-xlag)^2 + (y-ylag)^2),
            dist = cumsum(v)) %>%
     ungroup() -> carSubset
-  modX <- lm(x ~ poly(dist, degree, raw = TRUE), data=carSubset)
-  modY <- lm(y ~ poly(dist, degree, raw = TRUE), data=carSubset)
-  Y500 %>%
+  modX <- smooth.spline(carSubset$dist, carSubset$x, df = degree)
+  modY <- smooth.spline(carSubset$dist, carSubset$y, df = degree)
+  carsAug %>%
     filter(lane == i) -> ys
-  df <- data.frame(xfit = predict(modX, ys),
-                   yfit = predict(modY, ys),
+  df <- data.frame(xfit = predict(modX, ys$dist)$y,
+                   yfit = predict(modY, ys$dist)$y,
                    ID = ys$ID,
                    time = ys$time)
   pred <- rbind(pred, df)
 }
 
-Y500 %>% 
+carsAug %>% 
   left_join(pred) %>%
+  group_by(ID) %>%
   mutate(relX = sign(x - xfit) * sqrt((x-xfit)^2 + (y-yfit)^2),
+         n = seq_along(time),
          lagRelX = ifelse(n == 1, 0, lag(relX)),
          lagDist = ifelse(n == 1, 0, lag(dist)),
-         v = sqrt((relX - lagRelX)^2 + (dist - lagDist)^2),
-         delta = atan2(dist - lagDist, relX - lagRelX),
+         relv = sqrt((relX - lagRelX)^2 + (dist - lagDist)^2),
+         reldelta = atan2(dist - lagDist, relX - lagRelX),
          class = factor(class, levels = 1:3, labels = c('bike', 'car', 'truck'))) %>%
-  filter(n > 1 & y > 600 & y < 1600) %>%
-  select(ID, changed, enterExit, frame, x, y, relX, dist, lane, delta, v, proceeding, time, class) -> Y600
+  filter(n > 1) %>%# & y > 600 & y < 1600) %>%
+  select(ID, changed, enterExit, frame, x, y, relX, dist, lane, delta, v, relv, reldelta, proceeding, time, class) -> carsAug
 
-Y600 %>%
-  filter(ID != 10874) -> Y600
-
-write.csv(Y600, 'Y600.csv', row.names = FALSE)
-
-Y600 %>%
-  filter(ID %in% head(unique(.$ID), 50)) %>%
-  ggplot() + geom_path(aes(relX, dist, group = ID, colour = class))
-
-Y600 %>%
+carsAug %>%
   group_by(ID) %>%
-  summarise(class = head(class, 1)) %>%
-  .$class %>%
-  table()
+  summarise(outlier = max(abs(relX)) > 4) %>%
+  right_join(carsAug) %>%
+  filter(outlier == FALSE) -> carsAug
+
+write.csv(carsAug, 'carsAug.csv', row.names = FALSE)
 
 
