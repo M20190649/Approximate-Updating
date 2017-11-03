@@ -2,32 +2,25 @@ library(tidyverse)
 library(Rcpp)
 library(RcppArmadillo)
 source('mixtureMCMC.R')
+splinesID <- readRDS('splinesID.RDS')
 
 read.csv('carsAug.csv') %>%
-  select(ID, relX, dist, relv, reldelta)  -> cars
-colnames(cars) <- c('ID', 'x', 'y', 'v', 'delta')
+  select(ID, relX, dist, relv, reldelta) %>%
+  ungroup() -> carsAug
+colnames(carsAug) <- c('ID', 'x', 'y', 'v', 'delta')
 
-cars %>% 
+carsAug %>% 
   group_by(ID) %>%
-  filter(min(v) > 0.1) %>%
+  filter(min(v) != 0 & !ID %in% splinesID) %>%
   .$ID %>%
   unique() -> noStop
 
-
-cars %>% 
-  filter(ID < 40) %>%
-  group_by(ID) %>% 
-  mutate(n = seq_along(v),
-         vl = ifelse(n == 1, 0, lag(v)),
-         vd = v - vl) %>% filter(n > 1) %>% 
-  ggplot() + geom_path(aes(n, v + ID, group = ID))
-
-
-N <- 50
+set.seed(1)
+N <- 2500
 idSubset <- sample(noStop, N)
 data <- list()
 for(i in 1:N){
-  cars %>%
+  carsAug %>%
     filter(ID == idSubset[i]) %>%
     mutate(n = seq_along(v),
            vl = ifelse(n == 1, 0, lag(v)),
@@ -39,23 +32,34 @@ for(i in 1:N){
 }
 saveRDS(data, 'mixmod.RDS')
 
-reps <- 50000
+reps <- 1000
 K <- 2
 
-mixDraws2 <- mixtureMCMC(data, reps, K, 'gaussian')
+
+draws <- list(list(list(mean = c(-6, -6, 0.5, 0, 0.3, 0.1), varInv = diag(10, 6)),
+                   list(mean = c(-4, -4, -0.5, -0.2, 0, 0), varInv = diag(10, 6))))
+hyper <- list()
+for(k in 1:K){
+  hyper[[k]] <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(5, 6)),  v = 6, scale = diag(0.5, 6))
+}
+for(i in 1:N){
+  draws[[i+1]] <- list(theta = c(-5, -5, 0, -0.1, 0.15, 0.05), k = sample(1:2, 1))
+}
+
+
+mixDraws <- mixtureMCMC(data, reps, draws, hyper, 10, K, 'gaussian')
 
 
 mapGroup <- NULL
 for(i in 1:N){
-  kDraws <- mixDraws2[[i+1]]$k[(reps/2+1):reps]
-  mode <- which.max(table(c(1:K, kDraws)))
-  mapGroup <- rbind(mapGroup, data.frame(group = mode, ID = idSubset[i]))
+  kDraws <- mixDraws[[i+1]]$k[(reps/2+1):reps]
+  mapGroup <- rbind(mapGroup, data.frame(group = mean(kDraws), ID = idSubset[i]))
 }
 ggplot(mapGroup) + geom_histogram(aes(group)) + theme_bw()
 
 muK <- NULL
 for(i in 1:K){
-  mixDraws2[[1]][[i]]$mean %>%
+  mixDraws[[1]][[i]]$mean %>%
     cbind(iter = 1:reps) %>%
     as.data.frame() %>%
     mutate(group = i)  -> temp
