@@ -90,13 +90,13 @@ mixtureMCMC <- function(data, reps, draw, hyper, thin = 1, K = 2, error = 'gauss
           mean <- mean + var %*% draw[[1]][[k]]$varInv %*% draw[[j+1]]$theta
         }
       }
-      draw[[1]][[k]]$mean <- rmvnorm(1, mean, var)
+      draw[[1]][[k]]$mean <- c(rmvnorm(1, mean, var))
       vardf <- hyper[[k]]$v 
       scaleMat <- hyper[[k]]$scale
       for(j in 1:N){
         if(draw[[j+1]]$k == k){
           vardf <- vardf + 1
-          scaleMat <- scaleMat + t(draw[[j+1]]$theta - draw[[1]][[k]]$mean) %*% (draw[[j+1]]$theta - draw[[1]][[k]]$mean)
+          scaleMat <- scaleMat + outer(draw[[j+1]]$theta - draw[[1]][[k]]$mean, draw[[j+1]]$theta - draw[[1]][[k]]$mean)
         }
       }
       draw[[1]][[k]]$varInv <- rWishart(1, vardf, scaleMat)[,,1]

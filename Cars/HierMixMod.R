@@ -32,7 +32,7 @@ for(i in 1:N){
 }
 saveRDS(data, 'mixmod.RDS')
 
-reps <- 1000
+reps <- 1100
 K <- 2
 
 
