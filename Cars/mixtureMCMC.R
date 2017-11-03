@@ -36,9 +36,12 @@ mixtureMCMC <- function(data, reps, draw, hyper, thin = 1, K = 2, error = 'gauss
     # timing
     if(i == 2){
       startTime <- Sys.time()
-    } else if(i == 102){
-      timePerIter <- (Sys.time() - startTime)/100
+    } else if(i < 5000 & i %% 100 == 2){
+      timePerIter <- (Sys.time() - startTime)/(i - 2)
       class(timePerIter) <- 'numeric'
+      if(attr(timePerIter, 'units') == 'mins'){
+        timePerIter <- timePerIter * 60
+      }
     }
     # theta_i
     for(j in 1:N){
@@ -114,7 +117,12 @@ mixtureMCMC <- function(data, reps, draw, hyper, thin = 1, K = 2, error = 'gauss
     }
     # print progress
     if(i %% 1000 == 0){
-      print(paste0('Iteration: ', i, '. Est. Time Remaining: ', round((reps - i) * timePerIter[1] / 60, 2), ' minutes.'))
+      mins <-  (reps - i) * timePerIter[1] / 60
+      if(mins > 180){
+        print(paste0('Iteration: ', i, '. Est. Time Remaining: ', round(mins / 60, 2), ' hours.'))
+      } else {
+        print(paste0('Iteration: ', i, '. Est. Time Remaining: ', round(mins, 2), ' minutes.'))
+      }
     }
   }
   saveDraws
