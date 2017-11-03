@@ -7,8 +7,7 @@ mixtureMCMC <- function(data, reps, draw, hyper, thin = 1, K = 2, error = 'gauss
   N <- length(data)
   stepsize <- rep(0.01, N)
   accept <- rep(0, N)
-  alpha <- - qnorm(0.234/2)
-  stepsizeCons <- (1 - 1/dim) * sqrt(2*pi) * exp(alpha^2/2) / (2 * alpha)  +  1 / (dim * 0.234 * (1 - 0.234))
+ 
   
   #set up likelihood function and theta dimension
   if(error == 'gaussian'){
@@ -29,6 +28,9 @@ mixtureMCMC <- function(data, reps, draw, hyper, thin = 1, K = 2, error = 'gauss
   for(i in 1:N){
     saveDraws[[i+1]] <- list(theta = matrix(0, nSave, dim), k = rep(0, nSave))
   }
+  # changing MH acceptance rate
+  alpha <- - qnorm(0.234/2)
+  stepsizeCons <- (1 - 1/dim) * sqrt(2*pi) * exp(alpha^2/2) / (2 * alpha)  +  1 / (dim * 0.234 * (1 - 0.234))
   
   for(i in 2:reps){
     # timing

@@ -1,8 +1,9 @@
 library(tensorflow)
 library(greta)
+install_tensorflow()
+install_tensorflow(version="gpu")
 
 load('standata.rds')
-
 
 ar1_cov <- function (sigSq, phi, times1, times2 = times1) {
   time_diff <- abs(outer(times1, times2,`-`))
@@ -72,5 +73,5 @@ distribution(y1) <- normal(yA, sqrt(sigSq[4]))
 
 gretaMod <- model(sigSq, phiV, phiD, a, d, v, xA, yA)
 #plot(gretaMod)
-draws <- mcmc(gretaMod, n_samples = 10000, warmup = 5000)
+draws <- mcmc(gretaMod, n_samples = 100000, warmup = 25000)
 
