@@ -116,7 +116,7 @@
 \item Fit curve to car data to estimate lane midpoints (Woo et. al. 2016) 
 \begin{enumerate}
 \item At each point in time $t$ calculate the total distance each car has travelled along the road using $d_{i, t} = \sum_{s=1}^t v_{i, s}$, where $v_{i, s}$ is the velocity of car $i$ at time $s$. 
-\item Estimate polynomial functions of the form $x_{i, t} = f(d_{i, t})$ and $y_{i, t} = g(d_{i, t})$, where $x_{i, t}$ and $y_{i, t}$ are the car coordinates relative to the start of the road.
+\item Estimate smoothing splines of the form $x_{i, t} = f(d_{i, t})$ and $y_{i, t} = g(d_{i, t})$, where $x_{i, t}$ and $y_{i, t}$ are the car coordinates relative to the start of the road.
 \item Use polynomials to get $\hat{x}_{i, t}$ and $\hat{y}_{i, t}$ as estimates of the midpoint of the lane after travelling a distance $d_{i, t}$.
 \item Define new coordinates 
 \begin{align}
@@ -124,7 +124,7 @@ x^*_{i, t} &= \sqrt{(x_{i, t}-\hat{x}_{i, t})^2 + (y_{i, t} - \hat{y}_{i, t})^2)
 y^*_{i, t} &= d_{i, t} \label{yRel}
 \end{align}
 \end{enumerate}
-\item Note: This should be calculated separately for each lane.
+\item Note: This should be calculated separately for each lane, cars used to estimate splines are excluded from further modelling
 \end{itemize}
 
 \section{Hierarchical Motion Model}
