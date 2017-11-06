@@ -102,7 +102,7 @@ mixtureMCMC <- function(data, reps, draw, hyper, thin = 1, K = 2, error = 'gauss
           scaleMat <- scaleMat + outer(draw[[j+1]]$theta - draw[[1]][[k]]$mean, draw[[j+1]]$theta - draw[[1]][[k]]$mean)
         }
       }
-      draw[[1]][[k]]$varInv <- rWishart(1, vardf, scaleMat)[,,1]
+      draw[[1]][[k]]$varInv <- rWishart(1, vardf, solve(scaleMat))[,,1]
     }
     # save draws
     if(i %% thin == 0){
@@ -125,5 +125,5 @@ mixtureMCMC <- function(data, reps, draw, hyper, thin = 1, K = 2, error = 'gauss
       }
     }
   }
-  saveDraws
+  list(draws = saveDraws, accept = accept, steps = stepsize)
 }
