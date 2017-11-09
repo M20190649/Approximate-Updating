@@ -1,10 +1,8 @@
 library(tidyverse)
 
 carsVB <- function(data, lambda, S = 25, maxIter = 5000, alpha = 0.01, beta1 = 0.9, beta2 = 0.99, threshold = 0.01, 
-                   dimTheta = 4, dimLambda = NULL, model = arimaDeriv, ...){
-  if(is.null(dimLambda)){
-    dimLambda = dimTheta * (dimTheta + 1)
-  }
+                   dimTheta = 4, model = arimaDeriv, ...){
+  dimLambda <- length(lambda)
   sobol <- sobol_points(100+S, dimTheta)
   diff <- threshold + 1
   iter <- 1
@@ -32,7 +30,6 @@ carsVB <- function(data, lambda, S = 25, maxIter = 5000, alpha = 0.01, beta1 = 0
       logpj <- model(data, lambda, epsilon, ...)
       eval <- logpj$val
       grad <- logpj$grad
-      logpj <- model(data, lambda, epsilon, ...)     
       q <- sum(dnorm(epsilon, log=TRUE))
       gradient <- grad
       gradientSq <- grad^2

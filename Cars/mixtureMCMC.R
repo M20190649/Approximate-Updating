@@ -3,9 +3,9 @@ library(Rcpp)
 library(RcppArmadillo)
 sourceCpp('mixtureMCMCMetHast.cpp')
 
-mixtureMCMC <- function(data, reps, draw, hyper, thin = 1, K = 2, error = 'gaussian'){
+mixtureMCMC <- function(data, reps, draw, hyper, thin = 1, K = 2, error = 'gaussian', stepsize = 0.01){
   N <- length(data)
-  stepsize <- rep(0.01, N)
+  stepsize <- rep(stepsize, N)
   accept <- rep(0, N)
  
   
@@ -26,7 +26,7 @@ mixtureMCMC <- function(data, reps, draw, hyper, thin = 1, K = 2, error = 'gauss
     saveDraws[[1]][[i]] <- list(mean = matrix(0, nSave, dim), varInv = array(0, dim = c(dim, dim, nSave)))
   }
   for(i in 1:N){
-    saveDraws[[i+1]] <- list(theta = matrix(0, nSave, dim), k = rep(0, nSave))
+    saveDraws[[i+1]] <- list(theta = matrix(0, nSave, dim), k = rep(0, nSave), pi = matrix(0, nSave, K))
   }
   # changing MH acceptance rate
   alpha <- - qnorm(0.234/2)
@@ -36,7 +36,7 @@ mixtureMCMC <- function(data, reps, draw, hyper, thin = 1, K = 2, error = 'gauss
     # timing
     if(i == 2){
       startTime <- Sys.time()
-    } else if(i < 5000 & i %% 100 == 2){
+    } else if(i < 5000 & i %% 1000 == 0){
       timePerIter <- (Sys.time() - startTime)/(i - 2)
       class(timePerIter) <- 'numeric'
       if(attr(timePerIter, 'units') == 'mins'){
@@ -65,10 +65,10 @@ mixtureMCMC <- function(data, reps, draw, hyper, thin = 1, K = 2, error = 'gauss
     for(j in 1:N){
       p <- numeric(K)
       for(k in 1:K){
-        p[k] <-  0.5 * log(det(draw[[1]][[k]]$varInv)) - 0.5 * (draw[[j+1]]$theta - draw[[1]][[k]]$mean) %*% 
-          draw[[1]][[k]]$varInv %*% (draw[[j+1]]$theta - draw[[1]][[k]]$mean)
+        p[k] <-  log(draw[[j+1]]$pi[k])  +  0.5 * log(det(draw[[1]][[k]]$varInv)) -
+          0.5 * (draw[[j+1]]$theta - draw[[1]][[k]]$mean) %*% draw[[1]][[k]]$varInv %*%
+          (draw[[j+1]]$theta - draw[[1]][[k]]$mean)
       }
-      
       if(sum(exp(p)) == 0){
         draw[[j+1]]$k <- which.max(p)
       } else {
@@ -76,23 +76,24 @@ mixtureMCMC <- function(data, reps, draw, hyper, thin = 1, K = 2, error = 'gauss
         draw[[j+1]]$k <- base::sample(1:K, 1, prob=prob)
       }
     }
+    #pi_i
+    for(j in 1:N){
+      group <- rep(0, K)
+      group[draw[[j+1]]$k] <- 1
+      draw[[j+1]]$pi <- c(MCMCpack::rdirichlet(1, hyper$alpha + group))
+    }
     # thetaHat_k
+    sumK <- rep(0, K)
+    sumTheta <- matrix(0, dim, K)
+    for(j in 1:N){
+      sumK[draw[[j+1]]$k] <- sumK[draw[[j+1]]$k] + 1
+      sumTheta[,draw[[j+1]]$k] <-  sumTheta[,draw[[j+1]]$k] + draw[[j+1]]$theta
+    }
     for(k in 1:K){
-      ki <- 0
-      for(j in 1:N){
-        if(draw[[j+1]]$k == k){
-          ki <- ki + 1
-        }
-      }
-      var <- hyper[[k]]$varInv + ki * draw[[1]][[k]]$varInv
+      var <- hyper[[k]]$varInv + sumK[k] * draw[[1]][[k]]$varInv
       var <- solve(var)
-      mean <- var %*% hyper[[k]]$varInv %*% hyper[[k]]$mean
-      
-      for(j in 1:N){
-        if(draw[[j+1]]$k == k){
-          mean <- mean + var %*% draw[[1]][[k]]$varInv %*% draw[[j+1]]$theta
-        }
-      }
+      mean <- var %*% hyper[[k]]$varInv %*% hyper[[k]]$mean  +  var %*% draw[[1]][[k]]$varInv %*%  sumTheta[,k]
+    
       draw[[1]][[k]]$mean <- c(rmvnorm(1, mean, var))
       vardf <- hyper[[k]]$v 
       scaleMat <- hyper[[k]]$scale
@@ -113,6 +114,7 @@ mixtureMCMC <- function(data, reps, draw, hyper, thin = 1, K = 2, error = 'gauss
       for(j in 1:N){
         saveDraws[[j+1]]$theta[i/thin, ] <- draw[[j+1]]$theta
         saveDraws[[j+1]]$k[i/thin] <- draw[[j+1]]$k
+        saveDraws[[j+1]]$pi[i/thin, ] <- draw[[j+1]]$pi
       }
     }
     # print progress
