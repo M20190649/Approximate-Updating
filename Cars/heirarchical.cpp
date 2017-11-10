@@ -440,10 +440,11 @@ struct arUpdateMix {
     for(int i = 0; i < dim; ++i){
       theta2(i) = lambda(dim + i);
       for(int j = 0; j <= i; ++j){
-        theta2(i) += lambda(dim*(dim + 2 + i) + j) * epsilon(dim + j);
+        theta2(i) += lambda(dim*(dim + 2 + i) + j) * epsilon(j);
       }
     }
-    T w = 1.0 / (1 - exp(-lambda(2*dim*(dim+1))));
+    T w = 1.0 / (1 + exp(-lambda(2*dim*(dim+1))));
+  
     Matrix<T, Dynamic, 1> theta = w * theta1  +  (1-w) * theta2;  
     // Constrained Positive
     T sigSqV = exp(theta(0)), sigSqD = exp(theta(1));
@@ -465,8 +466,8 @@ struct arUpdateMix {
     
     
     // Evaluate Log Det J
-    T logdetJ = theta(0)  +  theta(1)  +  log(w*lambda(dim) + (1-w)*lambda(dim*(dim+2)))  +
-      log(w*lambda(2*dim+1) + (1-w)*lambda(dim*(dim+3)+1)) +  (2*lags) * (log(w) + log(1-w));
+    T logdetJ = theta(0)  +  theta(1)  +  log(fabs(w*lambda(dim) + (1-w)*lambda(dim*(dim+2))))  +
+      log(fabs(w*lambda(2*dim+1) + (1-w)*lambda(dim*(dim+3)+1))) +  (2*lags) * (log(w) + log(1-w));
     for(int i = 2; i < dim; ++i){
       logdetJ += log(fabs(lambda(dim*(i+2) + i)))  +  log(fabs(lambda(dim*(dim + 2 + i) + i)));
     }

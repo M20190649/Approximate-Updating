@@ -1,7 +1,22 @@
+########## TO DO #############
+# Finalise N and K for mixture model and run eg. 2000 / 6
+# Replace K with a Direchlet Process & Slice Sampler in the MCMC
+# Use same cars to fit a one component prior model for comparision
+# Have three levels of prior informaiton: None, One Component, Complex Mixture
+# Write VB algorithm with Graves' mixture derivatives
+# Fit distributions to new cars and compare forecast results
+# Experiement with sample size of new cars
+# Try VB online method - add new data every 100ms or batches slightly more often 
+# Swap fit till converge, add more data, to add new data, switch prior asap.
+# Investigate parallelisation for above
+# Write more things.
+
+
 library(tidyverse)
 library(Rcpp)
 library(RcppArmadillo)
 source('mixtureMCMC.R')
+sourceCpp('arvdMCMC.cpp')
 id <- readRDS('carsID.RDS')
 
 read.csv('carsAug.csv') %>%
@@ -16,8 +31,9 @@ carsAug %>%
   unique() -> noStop
 
 set.seed(1)
-N <- 750
+N <- 1550
 idSubset <- sample(noStop, N)
+HierMixMod{
 data <- list()
 for(i in 1:N){
   carsAug %>%
@@ -26,15 +42,16 @@ for(i in 1:N){
            vl = ifelse(n == 1, 0, lag(v)),
            a = v - lag(v),
            d = delta - pi/2) %>%
-    filter(n > 1 & n < 501) %>% 
+    filter(n > 1 & n <= 501) %>% 
     select(a , d) %>%
     as.matrix() -> data[[i]]
 }
 saveRDS(data, 'mixmod.RDS')
 
-reps <- 15000
-K <- 2
-thin <- 1
+reps <- 75000
+K <- 6
+thin <- 10
+burn <- 0.9
 
 draws <- list(list())
 hyper <- list()
@@ -48,19 +65,23 @@ for(i in 1:N){
 }
 
 
+
 mixDraws <- mixtureMCMC(data, reps, draws, hyper, thin, K, 'gaussian', 0.01)
 saveRDS(mixDraws, 'mixMCMC_2500.RDS')
 
 mapGroup <- NULL
 for(i in 1:N){
-  kDraws <- mixDraws$draws[[i+1]]$k[(reps/(2*thin)+1):(reps/thin)]
-  mapGroup <- rbind(mapGroup, data.frame(group = mean(kDraws), ID =  idSubset[i]))
+  kDraws <- mixDraws$draws[[i+1]]$k[(burn*reps/thin+1):(reps/thin)]
+  mode <- which.max(table(c(1:K, kDraws)))
+  mapGroup <- rbind(mapGroup, data.frame(group = c(mean(kDraws), mode), 
+                                         method = c('mean', 'mode'),
+                                         ID =  idSubset[i]))
 }
-ggplot(mapGroup) + geom_histogram(aes(group)) + theme_bw()
+ggplot(mapGroup) + geom_histogram(aes(group), binwidth = 0.1) + theme_bw() + facet_wrap(~method)
 
 muK <- NULL
 for(i in 1:K){
-  mixDraws$draws[[1]][[i]]$mean[2:reps,] %>%
+  mixDraws$draws[[1]][[i]]$mean[2:(reps/thin),] %>%
     cbind(iter = seq(2*thin, reps, thin)) %>%
     as.data.frame() %>%
     mutate(group = i)  -> temp
@@ -73,12 +94,12 @@ muK %>%
   mutate(var = factor(var, levels = c('log_sigSq_eps', 'phi1', 'phi2', 'log_sigSq_eta', 'gamma1', 'gamma2'))) %>%
   filter(iter > 2000 & iter %% 20 == 0 ) %>%
   ggplot() + geom_line(aes(iter, draw)) + 
-  facet_grid(var ~ group, scales = 'free') + theme_bw() -> p1
+  facet_grid(var ~ group, scales = 'free') + theme_bw() + labs(title = 'mean') -> p1
 
 
 sdK <- NULL
 for(i in 1:K){
-  mixDraws$draws[[1]][[i]]$varInv[,,2:reps] %>%
+  mixDraws$draws[[1]][[i]]$varInv[,,2:(reps/thin)] %>%
     apply(3, function(x) sqrt(diag(solve(x)))) %>%
     t() %>%
     as.data.frame() %>%
@@ -93,7 +114,7 @@ sdK %>%
   mutate(var = factor(var, levels = c('log_sigSq_eps', 'phi1', 'phi2', 'log_sigSq_eta', 'gamma1', 'gamma2'))) %>%
   filter(iter > 2000 & iter %% 20 == 0 ) %>%
   ggplot() + geom_line(aes(iter, draw)) + 
-  facet_grid(var ~ group, scales = 'free') + theme_bw() -> p2
+  facet_grid(var ~ group, scales = 'free') + theme_bw() + labs(title = 'standard deviation') -> p2
 
 gridExtra::grid.arrange(p1, p2, ncol = 2)
 
@@ -104,31 +125,35 @@ for(i in 1:K){
     colMeans() %>%
     matrix(6) -> mat
   colnames(mat) <- c('log_sigSq_eps', 'log_sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2')
+  rownames(mat) <- c('log_sigSq_eps', 'log_sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2') 
   corrplot::corrplot(mat) 
 }
 
 
 
 densities <- NULL
-support <- data.frame(seq(-10, -3, length.out = 1000),
-                      seq(-12, -4, length.out = 1000),
+support <- data.frame(seq(exp(-10), exp(-3), length.out = 1000),
+                      seq(exp(-12), exp(-4), length.out = 1000),
                       seq(-0.5, 2, length.out = 1000),
                       seq(-1, 0.8, length.out = 1000),
                       seq(0, 2, length.out = 1000),
                       seq(-1, 0.5, length.out = 1000))
-vars <- c('log_sigSq_eps', 'log_sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2')
+vars <- c('sigSq_eps', 'sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2')
 for(k in 1:K){
   mat <- matrix(0, 1000, 6)
-  for(i in (reps/(2*thin)+1):(reps/thin)){
+  for(i in (burn*reps/thin+1):(reps/thin)){
     meanvec <- mixDraws$draws[[1]][[k]]$mean[i,]
     sdvec <- sqrt(diag(solve(mixDraws$draws[[1]][[k]]$varInv[,,i])))
     w <- 0
     for(j in 1:N){
       w <- w + mixDraws$draws[[j+1]]$pi[i, k] / N
     }
-    for(j in 1:6){
+    for(j in 1:2){
+      mat[,j] <- mat[,j] + w * dlnorm(support[,j], meanvec[j], sdvec[j]) / (reps / (2 * thin)) 
+    } 
+    for(j in 3:6){
       mat[,j] <- mat[,j] + w * dnorm(support[,j], meanvec[j], sdvec[j]) / (reps / (2 * thin)) 
-    }  
+    }
   }
   densities <- rbind(densities,
                      data.frame(dens = c(mat),
@@ -138,49 +163,46 @@ for(k in 1:K){
 }
 
 
-densities %>%
-  mutate(var = factor(var, levels = c('log_sigSq_eps',
-                                      'phi1',
-                                      'phi2',
-                                      'log_sigSq_eta',
-                                      'gamma1',
-                                      'gamma2'))) -> densities
+
 
 densities %>%
+  mutate(var = factor(var, levels = c('sigSq_eps', 'phi1', 'phi2',
+                                      'sigSq_eta', 'gamma1', 'gamma2'))) %>%
   group_by(var, support) %>%
   summarise(dens = sum(dens)) %>%
   ggplot() + geom_line(aes(support, dens)) +
   geom_line(data=densities, aes(support, dens, colour = factor(group))) +
   facet_wrap(~var, scales = 'free')
+}
 
-
-## VB
-
+VB{
+  
 lags <- 2
 dim <- 2 + 2 * lags
 stepsize <- 10
 
 n <- stepsize + lags
-idUpdate <- noStop[!noStop %in% idSubset]
-id <- sample(idUpdate, 1)
+idUpdate <- id$fullID[!id$fullID %in% id$idSubset]
+idU <- sample(idUpdate, 1)
 
 carsAug %>%
-  filter(ID == idSubset[i]) %>%
+  filter(ID == idU) %>%
   mutate(n = seq_along(v),
          vl = ifelse(n == 1, 0, lag(v)),
-         v = v - lag(v),
+         a = v - lag(v),
          d = delta - pi/2) %>%
-  filter(n > 1 & n < 501) %>% 
-  select(v , d) %>%
+  filter(n > 1 & n <= 501) %>% 
+  select(a , d) %>%
   as.matrix() -> dataUpdate
 
 starting <- seq(1, nrow(dataUpdate), stepsize)
+starting <- starting[-length(starting)]
 
 # Fit distribution to MCMC - MVN Mixutre
 mean1 <- rep(0, 6)
 cov1 <- matrix(0, 6, 6)
-mean1 <- rep(0, 6)
-cov1 <- matrix(0, 6, 6)
+mean2 <- rep(0, 6)
+cov2 <- matrix(0, 6, 6)
 w <- 0
 for(i in (reps/(2*thin)+1):(reps/thin)){
   mean1 <- mean1 + mixDraws$draws[[1]][[1]]$mean[i,] / (reps / (2*thin))
@@ -191,9 +213,9 @@ for(i in (reps/(2*thin)+1):(reps/thin)){
     w <- w + mixDraws$draws[[j+1]]$pi[i, 1] / (N * reps / (2 * thin))
   }
 }
-linv1 <- solve(chol(cov1))
-linv2 <- solve(chol(cov2))
-lambda <- c(mean1, mean2, linv1, linv2, w)
+uinv1 <- solve(chol(cov1))
+uinv2 <- solve(chol(cov2))
+lambda <- matrix(c(mean1, mean2, uinv1, uinv2, log(w/(1-w))), ncol = 1)
 
 ### Check if it should be Linv or Uinv ###
 
@@ -201,14 +223,14 @@ for(t in seq_along(starting)){
   mean <- lambda[1:(2*dim)]
   u1 <- matrix(lambda[(2*dim+1):(2*dim + dim^2)], dim)
   linv1 <- solve(t(u1))
-  u2 <- matrix(lambda[(dim*(2+dim)+1):(length(lambda)-1)])
+  u2 <- matrix(lambda[(dim*(2+dim)+1):(length(lambda)-1)], dim)
   linv2 <- solve(t(u2))
   linv <- rbind(linv1, linv2)
-  w <- tail(lambda, 1)
-  det1 <- det((2*pi)^(-0.5) * linv1)
-  det2 <- det((2*pi)^(-0.5) * linv2)
+  w <- 1 / (1 + exp(-tail(lambda, 1)))
+  det1 <- abs((2*pi)^(-3) * prod(diag(linv1)))
+  det2 <- abs((2*pi)^(-3) * prod(diag(linv2)))
   priorComp <- c(w, det1, det2)
-  dat <- data[starting[t]:min(nrow(data), starting[t]+n-1),]
+  dat <- dataUpdate[starting[t]:min(nrow(data), starting[t]+n-1),]
   if(is.matrix(dat)){
     if(nrow(dat) > lags){
       lambda <- carsVB(dat, lambda, dimTheta = 2*dim, model = arUpdaterMix,
@@ -218,14 +240,63 @@ for(t in seq_along(starting)){
 }
 
 
+support <- data.frame(seq(-7, -1, length.out = 1000),
+                      seq(-11, -6, length.out = 1000),
+                      seq(-2, 2, length.out = 1000),
+                      seq(-2, 2, length.out = 1000),
+                      seq(-2, 2, length.out = 1000),
+                      seq(-2, 2, length.out = 1000))
+mean1 <- lambda[1:6]
+mean2 <- lambda[7:12]
+u1 <- matrix(lambda[13:48], 6)
+u2 <- matrix(lambda[49:84], 6)
+sd1 <- abs(diag(u1))
+sd2 <- abs(diag(u2))
+w <- 1 / (1 + exp(-lambda[85]))
 
+denVB <- data.frame()
+for(i in 1:6){
+  den1 <- dnorm(support[, i], mean1[i], sd1[i])
+  den2 <- dnorm(support[, i], mean2[i], sd2[i])
+  denVB <- rbind(denVB, data.frame(
+    support = support[,i],
+    dens = w * den1 + (1-w) * den2,
+    var = vars[i]))
+}
+ggplot(denVB) + geom_line(aes(support, dens)) + facet_wrap(~var, scales = 'free')
+}
 
+IndepMCMC{
+  
+posMeans <- NULL
+vars <- c('sigSq_eps', 'sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2') 
+for(i in 1:N){
+  carsAug %>%
+    filter(ID == idSubset[i]) %>%
+    mutate(n = seq_along(v),
+           vl = ifelse(n == 1, 0, lag(v)),
+           a = v - lag(v),
+           d = delta - pi/2) %>%
+    filter(n > 1 & n <= 501) %>% 
+    select(a , d) %>%
+    as.matrix() -> data
+  
+  hyper <- c(2, 0.002, 2, 0.002, 0, 5, 0, 5, 0, 5, 0, 5)
+  
+  MCMC <- ARVD_MCMC(data, hyper, 10000, 2)
+  mean <- colMeans(MCMC[5001:10000,])
+  posMeans <- rbind(posMeans, data.frame(mean = mean, var = vars, ID = idSubset[i]))
+  if(i %% 50 == 0){
+    print(i)
+  }
+}
 
-
-
-
-
-
-
+posMeans %>%
+  mutate(var = as.character(var),
+         var = ifelse(var == 'log_sigSq_eps', 'sigSq_eps', 
+                      ifelse(var == 'log_sigSq_eta', 'sigSq_eta', var)),
+         var = factor(var, levels = c('sigSq_eps', 'phi1', 'phi2', 'sigSq_eta', 'gamma1', 'gamma2'))) %>%
+  ggplot() + geom_density(aes(mean)) + facet_wrap(~var, scales = 'free')
+}
 
 
