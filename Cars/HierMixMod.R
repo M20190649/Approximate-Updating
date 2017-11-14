@@ -1,5 +1,4 @@
 ########## TO DO #############
-# Finalise N and K for mixture model and run eg. 2000 / 6
 # Replace K with a Direchlet Process & Slice Sampler in the MCMC
 # Use same cars to fit a one component prior model for comparision
 # Have three levels of prior informaiton: None, One Component, Complex Mixture
@@ -30,10 +29,11 @@ carsAug %>%
   .$ID %>%
   unique() -> noStop
 
-set.seed(1)
-N <- 1550
-idSubset <- sample(noStop, N)
 HierMixMod{
+
+set.seed(1)
+N <- 2000
+idSubset <- sample(noStop, N)
 data <- list()
 for(i in 1:N){
   carsAug %>%
@@ -48,7 +48,7 @@ for(i in 1:N){
 }
 saveRDS(data, 'mixmod.RDS')
 
-reps <- 75000
+reps <- 80000
 K <- 6
 thin <- 10
 burn <- 0.9
@@ -67,7 +67,8 @@ for(i in 1:N){
 
 
 mixDraws <- mixtureMCMC(data, reps, draws, hyper, thin, K, 'gaussian', 0.01)
-saveRDS(mixDraws, 'mixMCMC_2500.RDS')
+
+saveRDS(mixDraws, 'mixN2000K6.RDS')
 
 mapGroup <- NULL
 for(i in 1:N){
@@ -132,8 +133,8 @@ for(i in 1:K){
 
 
 densities <- NULL
-support <- data.frame(seq(exp(-10), exp(-3), length.out = 1000),
-                      seq(exp(-12), exp(-4), length.out = 1000),
+support <- data.frame(seq(exp(-13), exp(-4.5), length.out = 1000),
+                      seq(exp(-15), exp(-7.6), length.out = 1000),
                       seq(-0.5, 2, length.out = 1000),
                       seq(-1, 0.8, length.out = 1000),
                       seq(0, 2, length.out = 1000),
@@ -172,7 +173,9 @@ densities %>%
   summarise(dens = sum(dens)) %>%
   ggplot() + geom_line(aes(support, dens)) +
   geom_line(data=densities, aes(support, dens, colour = factor(group))) +
-  facet_wrap(~var, scales = 'free')
+  facet_wrap(~var, scales = 'free', ncol = 1) + 
+  labs(title = 'Hierarchical Model') + 
+  theme(legend.position = 'none')
 }
 
 VB{
@@ -296,7 +299,41 @@ posMeans %>%
          var = ifelse(var == 'log_sigSq_eps', 'sigSq_eps', 
                       ifelse(var == 'log_sigSq_eta', 'sigSq_eta', var)),
          var = factor(var, levels = c('sigSq_eps', 'phi1', 'phi2', 'sigSq_eta', 'gamma1', 'gamma2'))) %>%
-  ggplot() + geom_density(aes(mean)) + facet_wrap(~var, scales = 'free')
+  ggplot() + geom_density(aes(mean)) + 
+  facet_wrap(~var, scales = 'free', ncol = 1) +
+  labs(title = 'Single Model Means (Kernel Density Estimate)')
 }
 
-
+sliceSampler{
+  set.seed(1)
+  N <- 200
+  idSubset <- sample(noStop, N)
+  data <- list()
+  for(i in 1:N){
+    carsAug %>%
+      filter(ID == idSubset[i]) %>%
+      mutate(n = seq_along(v),
+             vl = ifelse(n == 1, 0, lag(v)),
+             a = v - lag(v),
+             d = delta - pi/2) %>%
+      filter(n > 1 & n <= 501) %>% 
+      select(a , d) %>%
+      as.matrix() -> data[[i]]
+  }
+  reps <- 10000
+  K <- 10
+  thin <- 1
+  draws <- list(list())
+  hyper <- list()
+  for(k in 1:K){
+    hyper[[k]] <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(10, 6)), v = 6, scale = diag(1, 6))
+    draws[[1]][[k]] <- list(mean = c(-5, -5, 0, 0, 0, 0), varInv = diag(10, 6))
+  }
+  draws[[1]]$pi <- rep(1/K, K)
+  draws[[1]]$alpha <- 5
+  for(i in 1:N){
+    draws[[i+1]] <- list(theta = c(-5, -5, 0, -0.1, 0.15, 0.05), k = sample(1:K, 1))
+  }
+    
+  sliceDraws <- sliceSampler(data, reps, draws, hyper, thin, K, 'gaussian', 0.01)
+}

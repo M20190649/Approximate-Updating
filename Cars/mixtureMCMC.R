@@ -69,12 +69,9 @@ mixtureMCMC <- function(data, reps, draw, hyper, thin = 1, K = 2, error = 'gauss
           0.5 * (draw[[j+1]]$theta - draw[[1]][[k]]$mean) %*% draw[[1]][[k]]$varInv %*%
           (draw[[j+1]]$theta - draw[[1]][[k]]$mean)
       }
-      if(sum(exp(p)) == 0){
-        draw[[j+1]]$k <- which.max(p)
-      } else {
-        prob <- exp(p) / sum(exp(p))
-        draw[[j+1]]$k <- base::sample(1:K, 1, prob=prob)
-      }
+      p <- p - max(p) 
+      p <- exp(p) / sum(exp(p))
+      draw[[j+1]]$k <- base::sample(1:K, 1, prob=p)
     }
     #pi_i
     for(j in 1:N){
@@ -116,6 +113,145 @@ mixtureMCMC <- function(data, reps, draw, hyper, thin = 1, K = 2, error = 'gauss
         saveDraws[[j+1]]$k[i/thin] <- draw[[j+1]]$k
         saveDraws[[j+1]]$pi[i/thin, ] <- draw[[j+1]]$pi
       }
+    }
+    # print progress
+    if(i %% 1000 == 0){
+      mins <-  (reps - i) * timePerIter[1] / 60
+      if(mins > 180){
+        print(paste0('Iteration: ', i, '. Est. Time Remaining: ', round(mins / 60, 2), ' hours.'))
+      } else {
+        print(paste0('Iteration: ', i, '. Est. Time Remaining: ', round(mins, 2), ' minutes.'))
+      }
+    }
+  }
+  list(draws = saveDraws, accept = accept, steps = stepsize)
+}
+
+sliceSampler <- function(data, reps, draw, hyper, thin = 1, K = 10, error = 'gaussian', stepsize = 0.01){
+  N <- length(data)
+  stepsize <- rep(stepsize, N)
+  accept <- rep(0, N)
+  aalpha <- 1
+  balpha <- 1
+  
+  
+  #set up likelihood function and theta dimension
+  if(error == 'gaussian'){
+    likelihood <- nlogDensity
+    dim <- 6
+  } else if(error == 't') {
+    likelihood <- tlogDensity
+    dim <- 8
+  } else {
+    stop('error must be gaussian or t')
+  }
+  #set up storage for saved draws
+  nSave <- floor(reps / thin)
+  saveDraws <- list(list())
+  for(i in 1:K){
+    saveDraws[[1]][[i]] <- list(mean = matrix(0, nSave, dim), varInv = array(0, dim = c(dim, dim, nSave)))
+  }
+  saveDraws[[1]]$pi <- matrix(0, nSave, K)
+  saveDraws[[1]]$alpha <- rep(0, nSave)
+  for(i in 1:N){
+    saveDraws[[i+1]] <- list(theta = matrix(0, nSave, dim), k = rep(0, nSave))
+  }
+  # changing MH acceptance rate
+  alpha <- - qnorm(0.234/2)
+  stepsizeCons <- (1 - 1/dim) * sqrt(2*pi) * exp(alpha^2/2) / (2 * alpha)  +  1 / (dim * 0.234 * (1 - 0.234))
+  sumK <- rep(N/K, K)
+  for(i in 2:reps){
+    # timing
+    if(i == 2){
+      startTime <- Sys.time()
+    } else if(i < 5000 & i %% 1000 == 0){
+      timePerIter <- (Sys.time() - startTime)/(i - 2)
+      class(timePerIter) <- 'numeric'
+      if(attr(timePerIter, 'units') == 'mins'){
+        timePerIter <- timePerIter * 60
+      }
+    }
+    # theta_i
+    for(j in 1:N){
+      candidate <- draw[[j+1]]$theta +  stepsize[j] * rnorm(dim)
+      group <- draw[[j+1]]$k
+      canDens <- likelihood(data[[j]], candidate, draw[[1]][[group]]$mean, draw[[1]][[group]]$varInv)
+      oldDens <- likelihood(data[[j]], draw[[j+1]]$theta, draw[[1]][[group]]$mean, draw[[1]][[group]]$varInv)
+      
+      ratio <- exp(canDens - oldDens)
+      
+      c <- stepsize[j] * stepsizeCons
+      if(runif(1) < ratio){
+        accept[j] <- accept[j] + 1
+        draw[[j+1]]$theta <- candidate
+        stepsize[j] <- stepsize[j] + c * (1 - 0.234) / (28 + i)
+      } else {
+        stepsize[j] <- stepsize[j] - c * 0.234 / (28 + i)
+      }
+    }
+    # alpha
+    xx <- rbeta(1,  draw[[1]]$alpha +1, N)
+    phii <- (aalpha+sum(sumK>0)-1)/(N*(balpha-log(xx))+aalpha+sum(sumK>0)-1)
+    if(runif(1) < phii) {
+      draw[[1]]$alpha <- rgamma(1, aalpha + sum(sumK>0), 1/(balpha-sum(log(xx))))
+    } else {
+      draw[[1]]$alpha <- rgamma(1, aalpha + sum(sumK>0) -1, 1/(balpha-sum(log(xx))))
+    }
+    # v
+    v <- rep(0, K)
+    for(k in 1:(K-1)){
+      v[k] <- rbeta(1, 1 + sumK[k],  draw[[1]]$alpha  + sum(sumK[(k+1):K]))
+    }
+    v[K] <- 1
+    # pi
+    draw[[1]]$pi <- v * cumprod(c(1, 1-v[1:(K-1)]))
+    # k_i
+    for(j in 1:N){
+      p <- numeric(K)
+      for(k in 1:K){
+        p[k] <-  log(draw[[1]]$pi[k])  +  0.5 * log(det(draw[[1]][[k]]$varInv)) -
+          0.5 * (draw[[j+1]]$theta - draw[[1]][[k]]$mean) %*% draw[[1]][[k]]$varInv %*%
+          (draw[[j+1]]$theta - draw[[1]][[k]]$mean)
+      }
+      p <- p - max(p) 
+      p <- exp(p) / sum(exp(p))
+      draw[[j+1]]$k <- base::sample(1:K, 1, prob=p)
+    }
+    # thetaHat_k
+    sumK <- rep(0, K)
+    sumTheta <- matrix(0, dim, K)
+    for(j in 1:N){
+      sumK[draw[[j+1]]$k] <- sumK[draw[[j+1]]$k] + 1
+      sumTheta[,draw[[j+1]]$k] <-  sumTheta[,draw[[j+1]]$k] + draw[[j+1]]$theta
+    }
+    for(k in 1:K){
+      var <- hyper[[k]]$varInv + sumK[k] * draw[[1]][[k]]$varInv
+      var <- solve(var)
+      mean <- var %*% hyper[[k]]$varInv %*% hyper[[k]]$mean  +  var %*% draw[[1]][[k]]$varInv %*%  sumTheta[,k]
+      
+      draw[[1]][[k]]$mean <- c(rmvnorm(1, mean, var))
+      vardf <- hyper[[k]]$v 
+      scaleMat <- hyper[[k]]$scale
+      for(j in 1:N){
+        if(draw[[j+1]]$k == k){
+          vardf <- vardf + 1
+          scaleMat <- scaleMat + outer(draw[[j+1]]$theta - draw[[1]][[k]]$mean, draw[[j+1]]$theta - draw[[1]][[k]]$mean)
+        }
+      }
+      draw[[1]][[k]]$varInv <- rWishart(1, vardf, solve(scaleMat))[,,1]
+    }
+    # save draws
+    if(i %% thin == 0){
+      for(k in 1:K){
+        saveDraws[[1]][[k]]$mean[i/thin,] <- draw[[1]][[k]]$mean
+        saveDraws[[1]][[k]]$varInv[,,i/thin] <- draw[[1]][[k]]$varInv
+      }
+      for(j in 1:N){
+        saveDraws[[j+1]]$theta[i/thin, ] <- draw[[j+1]]$theta
+        saveDraws[[j+1]]$k[i/thin] <- draw[[j+1]]$k
+      }
+      saveDraws[[1]]$pi[i/thin,] <- draw[[1]]$pi
+      saveDraws[[1]]$alpha <- draw[[1]]$alpha
     }
     # print progress
     if(i %% 1000 == 0){
