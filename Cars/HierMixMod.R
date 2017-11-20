@@ -1,13 +1,16 @@
 ########## TO DO #############
 # Replace K with a Direchlet Process & Slice Sampler in the MCMC
-# Use same cars to fit a one component prior model for comparision
-# Have three levels of prior informaiton: None, One Component, Complex Mixture
-# Write VB algorithm with Graves' mixture derivatives
-# Fit distributions to new cars and compare forecast results
-# Experiement with sample size of new cars
-# Try VB online method - add new data every 100ms or batches slightly more often 
+# Use same cars to fit a one component prior model for comparision and a no heirarchy model
+# Have four levels of prior informaiton: None, No Heirarchy, One Component, Complex Mixture
+# Write VB algorithm with Graves' mixture derivatives - implement in arUpdaterMix
+# Fit parametric dists to the various models
+# Slurmify the forecast code and run
+
+# Consider new online implementations: 
+# add new data every 100ms or batches slightly more often 
 # Swap fit till converge, add more data, to add new data, switch prior asap.
-# Investigate parallelisation for above
+
+# For the supervisors:
 # Write more things.
 
 
@@ -337,3 +340,125 @@ sliceSampler{
     
   sliceDraws <- sliceSampler(data, reps, draws, hyper, thin, K, 'gaussian', 0.01)
 }
+
+forecasts{
+  # This should be parallelised and put onto slurm.
+  increment <- FALSE
+  S <- 10
+  maxT <- 200
+  K <- 6
+  sSeq <- seq(S, maxT, S)
+  idFc <- id$fullID[!id$fullID %in% id$idSubset]
+  results <- data.frame()
+  methods <- c('None', 'No Hier', 'Single', 'Mixture')
+  vars <- c('sigSq_eps', 'sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2') 
+  prior <- list()
+  starting <- c(-5, -5, rep(0, 4), c(chol(diag(0.5, 6))))
+  prior[[1]] <- c(-5, -5, rep(0, 4), c(chol(diag(100, 6))))
+  fit <- prior
+  for(i in seq_along(idFc)){
+    
+    # Extract Data
+    carsAug %>%
+      filter(ID == idFc[i]) %>%
+      mutate(n = seq_along(v),
+             vl = ifelse(n == 1, 0, lag(v)),
+             a = v - lag(v),
+             d = delta - pi/2) %>%
+      filter(n > 1 & n <= 501) %>% 
+      select(a , d) %>%
+      as.matrix() -> data
+    
+    # Set forcast supports
+    asup <- seq(0.8*min(data[,1], 1.25*max(data[,1], length.out=1000)))
+    dsup <- seq(0.8*min(data[,2], 1.25*max(data[,2], length.out=1000)))
+      
+    # Incrementally add data to VB fits
+    for(s in seq_along(sSeq)){
+      if(sSeq[s] > nrow(data)){
+        break
+      }
+      if(s == 1 | increment){
+        dat <- data[1:sSeq[s],]
+      } else {
+        dat <- data[(sSeq[s-1]+1):sSeq[s],]
+      }
+      # Update posterior approximations - Or re-estimate new ones from scratch
+      if(increment){
+        fit <- fitCarMods(dat, fit, increment, NULL)
+      } else {
+        fit <- fitCarMods(dat, prior, increment, starting)
+      }
+
+      # Extract Variance Matrices
+      sigma <- list()
+      for(k in 1:3){
+        u <- matrix(fit[[k]][7:42], 6)
+        sigma[[k]] <- t(u) %*% u
+      }
+      sigma[[4]] <- list()
+      for(k in 1:K){
+        u <- matrix(fit[[4]][1:36 + 6*K + 36*(k-1)], 6)
+        sigma[[4]][[k]] <- t(u) %*% u
+      }
+      weights <- fit[[4]][42*K+1:K]
+      # Set up forcast densities
+      density <- list(matrix(0, 1000*S, 2),
+                      matrix(0, 1000*S, 2),
+                      matrix(0, 1000*S, 2),
+                      matrix(0, 1000*S, 2))
+      # Average forecasts over 1000 draws from posterior
+      for(l in 1:1000){
+        # Draw sample for each method
+        draws <- matrix(0, 6, 4)
+        draws[,1] <- mvtnorm::rmvnorm(1, fit[[1]][1:6], sigma[[1]])
+        draws[,2] <- mvtnorm::rmvnorm(1, fit[[2]][1:6], sigma[[2]])
+        draws[,3] <- mvtnorm::rmvnorm(1, fit[[3]][1:6], sigma[[3]])
+        u <- runif(1)
+        group <- min(which(cumsum(weights) > u))
+        draws[,4] <- mvtnorm::rmvnorm(1, fit[[4]][[group]][1:6], sigma[[4]][[group]])
+        
+        # Forecast densities for each approach
+        for(k in 1:4){
+          afc1 <- data[sSeq[s], 1]
+          afc2 <- data[sSeq[s]-1, 1]
+          dfc1 <- data[sSeq[s], 2]
+          dfc2 <- data[sSeq[s]-1, 2]
+          # Forecast from h = 1, ..., S steps ahead
+          for(h in 1:S){
+            afc <- afc1 * draws[3, k] + afc2 * draws[4, k]
+            density[[k]][1:1000 + (h-1)*1000, 1] <- density[[k]][1:1000 + (h-1)*1000, 1] + dnorm(asup, afc, sqrt(exp(draws[1, k]))) / 1000
+            dfc <- dfc1 * draws[5, k] + dfc2 * draws[6, k]
+            density[[k]][1:1000 + (h-1)*1000, 2] <- density[[k]][1:1000 + (h-1)*1000, 2] + dnorm(dsup, dfc, sqrt(exp(draws[2, k]))) / 1000
+            afc2 <- afc1
+            afc1 <- afc
+            dfc2 <- dfc1
+            dfc1 <- dfc
+          }
+        }
+      }
+      # Grab logscores for each method, h, and variable.
+      for(k in 1:4){
+        for(h in 1:S){
+          aindex <- min(which(asup > data[sSeq[s]+h,1]))
+          alogscore <- log(density[[k]][(h-1)*1000 + aindex, 1])
+          dindex <- min(which(dsup > data[sSeq[s]+h,2]))
+          dlogscore <- log(density[[k]][(h-1)*1000 + dindex, 2])
+          # Attach results
+          results <- rbind(results, 
+                           data.frame(logscore = c(alogscore, dlogscore),
+                                      variable = c('a', 'd'),
+                                      method = methods[k],
+                                      S = sSeq[s],
+                                      h = h,
+                                      id = idFc[i]))
+        }
+      }
+    }
+    print(i)
+  }
+  
+  
+}
+
+

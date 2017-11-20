@@ -419,9 +419,10 @@ struct arUpdateMix {
   const vec mean;
   const mat Linv;
   const int lags;
-  const vec priorComp;
-  arUpdateMix(const mat& dataIn, const vec& epsIn, const vec& meanIn, const mat& LinvIn, const int& lagsIn, const vec& priorCompIn) :
-    data(dataIn), epsilon(epsIn), mean(meanIn), Linv(LinvIn), lags(lagsIn), priorComp(priorCompIn)  {}
+  const vec logdets;
+  const vec weights;
+  arUpdateMix(const mat& dataIn, const vec& epsIn, const vec& meanIn, const mat& LinvIn, const int& lagsIn, const vec& logdetsIn, const vec& weightsIn) :
+    data(dataIn), epsilon(epsIn), mean(meanIn), Linv(LinvIn), lags(lagsIn), logdets(logdetsIn), weights(weightsIn) {}
   template <typename T> //
   T operator ()(const Matrix<T, Dynamic, 1>& lambda)
     const{
@@ -461,8 +462,8 @@ struct arUpdateMix {
       exponent2 += pow(kernel(i, 1), 2);
     }
     // Put it together with weights and precalculated det(2*pi*Sig)^(-0.5) as priorComp
-    T prior = log(priorComp(0) * priorComp(1) * exp(-0.5 * exponent1)  +
-      (1 - priorComp(0)) * priorComp(2) * exp(-0.5 * exponent2));
+    T prior = log(weights(0)* logdets(0) * exp(-0.5 * exponent1)  +
+      weights(1) * logdets(1) * exp(-0.5 * exponent2));
     
     
     // Evaluate Log Det J
@@ -490,12 +491,12 @@ struct arUpdateMix {
 };
 
 // [[Rcpp::export]]
-Rcpp::List arUpdaterMix(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec mean, mat Linv, int lags, vec priorComp){
+Rcpp::List arUpdaterMix(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec mean, mat Linv, int lags, vec logdets, vec weights){
   Map<MatrixXd> lambda(Rcpp::as<Map<MatrixXd> >(lambdaIn));
   double eval;
   Matrix<double, Dynamic, 1>  grad(13 + 20 * lags + 8 * lags * lags);
   // Autodiff
-  arUpdateMix p(data, epsilon, mean, Linv, lags, priorComp);
+  arUpdateMix p(data, epsilon, mean, Linv, lags, logdets, weights);
   stan::math::set_zero_all_adjoints();
   stan::math::gradient(p, lambda, eval, grad);
   return Rcpp::List::create(Rcpp::Named("grad") = grad,

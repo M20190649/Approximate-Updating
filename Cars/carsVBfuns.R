@@ -201,7 +201,7 @@ drawTheta <- function(thetaHat, var){
   draw
 }
 
-updateVB <- function(data, lambda, hyper, stepsize = 1, lags = 1, ...){
+updateVB <- function(data, lambda, stepsize = 1, lags = 1, model = arUpdater,  ...){
   dim <- 2 + 2 * lags
   n <- stepsize + lags
   starting <- seq(1, nrow(data), stepsize)
@@ -212,7 +212,31 @@ updateVB <- function(data, lambda, hyper, stepsize = 1, lags = 1, ...){
     dat <- data[starting[t]:min(nrow(data), starting[t]+n-1),]
     if(is.matrix(dat)){
       if(nrow(dat) > lags){
-        lambda <- carsVB(dat, lambda, dimTheta = dim, model = arUpdater, mean = mean, Linv = linv, lags = lags, ...)$lambda
+        lambda <- carsVB(dat, lambda, dimTheta = dim, model = model, mean = mean, Linv = linv, lags = lags, ...)$lambda
+      }
+    } 
+  }
+  lambda
+}
+
+updateVBMix <- function(data, lambda, stepsize = 1, lags = 1, K = 6, model = arUpdaterMix,  ...){
+  dim <- 2 + 2 * lags
+  n <- stepsize + lags
+  starting <- seq(1, nrow(data), stepsize)
+  for(t in seq_along(starting)){
+    mean <- prevFit[[4]][1:(dim*K)]
+    linv <- NULL
+    logdets <- NULL
+    for(k in 1:K){
+      u <- matrix(lambda[dim*K + 1:dim^2 + (k-1)*dim^2], dim)
+      linv <- rbind(linv, solve(t(u)))
+      logdets <- c(logdets, -log(det(u)))
+    }
+    weights <- lambda[K * dim * (dim+1) + 1:K]
+    dat <- data[starting[t]:min(nrow(data), starting[t]+n-1),]
+    if(is.matrix(dat)){
+      if(nrow(dat) > lags){
+        lambda <- carsVB(dat, lambda, dimTheta = dim, model = model, mean = mean, Linv = linv, lags = lags, logdets = logdets, weights = weights...)$lambda
       }
     } 
   }
@@ -248,4 +272,38 @@ sampleCars <- function(cars, IDvector){
     summarise(class = head(class, 1)) %>%
     .$class -> class
   return(list(data=data, obsSum=obsSum, class = class))
+}
+
+fitCarMods <- function(data, prevFit, increment, starting){
+  S <- nrow(data)
+  results <- list()
+  if(increment){
+    for(k in 1:3){
+      results[[k]] <- updateVB(data, prevFit[[k]], stepsize = S, lags = 2, model = arUpdater)
+    }
+    results[[4]] <- updateVBMix(data, prevFit[[4]], stepsize = S, lags = 2, model = arUpdateMix)
+  } else {
+    for(k in 1:3){
+      mean <- prevFit[[k]][1:6]
+      u <- matrix(prevFit[[k]][7:42], k)
+      linv(solve(t(u)))
+      
+      if(k == 1){
+        results[[k]] <- carsVB(data, starting, lags = 2, model = arUpdater, mean = mean, Linv = linv)
+      } else {
+        results[[k]] <- carsVB(data, prevFit[[k]], lags = 2, model = arUpdater, mean = mean, Linv = linv)
+      }
+    }
+    mean <- prevFit[[4]][1:(6*6)]
+    linv <- NULL
+    logdets <- NULL
+    for(k in 1:6){
+      u <- matrix(prevFit[[4]][36 + 1:36 + (k-1)*36], 6)
+      linv <- rbind(linv, solve(t(u)))
+      logdets <- c(logdets, -log(det(u)))
+    }
+    weights <- prevFit[[4]][36*7 + 1:6]
+    results[[4]] <- carsVB(data, prevFit[[4]], lags = 2, model = arUpdateMix, mean = mean, Linv = linv, logdets = logdets, weights = weights)
+  }
+  results
 }

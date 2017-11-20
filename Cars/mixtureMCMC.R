@@ -265,3 +265,169 @@ sliceSampler <- function(data, reps, draw, hyper, thin = 1, K = 10, error = 'gau
   }
   list(draws = saveDraws, accept = accept, steps = stepsize)
 }
+
+heirNoMixMCMC <-function(data, reps, draw, hyper, thin = 1, error = 'gaussian', stepsize = 0.01){
+  N <- length(data)
+  stepsize <- rep(stepsize, N)
+  accept <- rep(0, N)
+  
+  #set up likelihood function and theta dimension
+  if(error == 'gaussian'){
+    likelihood <- nlogDensity
+    dim <- 6
+  } else if(error == 't') {
+    likelihood <- tlogDensity
+    dim <- 8
+  } else {
+    stop('error must be gaussian or t')
+  }
+  #set up storage for saved draws
+  nSave <- floor(reps / thin)
+  saveDraws <- list()
+  saveDraws[[1]] <- list(mean = matrix(0, nSave, dim), varInv = array(0, dim = c(dim, dim, nSave)))
+  for(i in 1:N){
+    saveDraws[[i+1]] <- matrix(0, nSave, dim)
+  }
+  # changing MH acceptance rate
+  alpha <- - qnorm(0.234/2)
+  stepsizeCons <- (1 - 1/dim) * sqrt(2*pi) * exp(alpha^2/2) / (2 * alpha)  +  1 / (dim * 0.234 * (1 - 0.234))
+  
+  for(i in 2:reps){
+    # timing
+    if(i == 2){
+      startTime <- Sys.time()
+    } else if(i < 5000 & i %% 1000 == 0){
+      timePerIter <- (Sys.time() - startTime)/(i - 2)
+      class(timePerIter) <- 'numeric'
+      if(attr(timePerIter, 'units') == 'mins'){
+        timePerIter <- timePerIter * 60
+      }
+    }
+    # theta_i
+    for(j in 1:N){
+      candidate <- draw[[j+1]]  +  stepsize[j] * rnorm(dim)
+      canDens <- likelihood(data[[j]], candidate, draw[[1]]$mean, draw[[1]]$varInv)
+      oldDens <- likelihood(data[[j]], draw[[j+1]], draw[[1]]$mean, draw[[1]]$varInv)
+      
+      ratio <- exp(canDens - oldDens)
+      
+      c <- stepsize[j] * stepsizeCons
+      if(runif(1) < ratio){
+        accept[j] <- accept[j] + 1
+        draw[[j+1]] <- candidate
+        stepsize[j] <- stepsize[j] + c * (1 - 0.234) / (28 + i)
+      } else {
+        stepsize[j] <- stepsize[j] - c * 0.234 / (28 + i)
+      }
+    }
+
+    sumTheta <- rep(0, dim)
+    for(j in 1:N){
+      sumTheta <-  sumTheta + draw[[j+1]]
+    }
+    var <- hyper$varInv + N * draw[[1]]$varInv
+    var <- solve(var)
+    mean <- var %*% hyper$varInv %*% hyper$mean  +  var %*% draw[[1]]$varInv %*%  sumTheta
+      
+    draw[[1]]$mean <- c(rmvnorm(1, mean, var))
+    vardf <- hyper$v 
+    scaleMat <- hyper$scale
+    for(j in 1:N){
+      vardf <- vardf + 1
+      scaleMat <- scaleMat + outer(draw[[j+1]] - draw[[1]]$mean, draw[[j+1]] - draw[[1]]$mean)
+    }
+    draw[[1]]$varInv <- rWishart(1, vardf, solve(scaleMat))[,,1]
+    
+    # save draws
+    if(i %% thin == 0){
+      saveDraws[[1]]$mean[i/thin,] <- draw[[1]]$mean
+      saveDraws[[1]]$varInv[,,i/thin] <- draw[[1]]$varInv
+      for(j in 1:N){
+        saveDraws[[j+1]][i/thin, ] <- draw[[j+1]]
+      }
+    }
+    # print progress
+    if(i %% 1000 == 0){
+      mins <-  (reps - i) * timePerIter[1] / 60
+      if(mins > 180){
+        print(paste0('Iteration: ', i, '. Est. Time Remaining: ', round(mins / 60, 2), ' hours.'))
+      } else {
+        print(paste0('Iteration: ', i, '. Est. Time Remaining: ', round(mins, 2), ' minutes.'))
+      }
+    }
+  }
+  list(draws = saveDraws, accept = accept, steps = stepsize)
+}
+  
+noHeirMCMC <- -function(data, reps, draw, hyper, thin = 1, error = 'gaussian', stepsize = 0.01){
+  N <- length(data)
+  #set up likelihood function and theta dimension
+  if(error == 'gaussian'){
+    likelihood <- nlogDensity
+    dim <- 6
+  } else if(error == 't') {
+    likelihood <- tlogDensity
+    dim <- 8
+  } else {
+    stop('error must be gaussian or t')
+  }
+  if(length(stepsize) == 1){
+    stepsize <- rep(stepsize, dim)
+  } 
+  accept <- rep(0, dim)
+  #set up storage for saved draws
+  nSave <- floor(reps / thin)
+  saveDraws <- matrix(0, nSave, dim)
+  # changing MH acceptance rate
+  stepsizeCons <- 0.44 * (1 - 0.44)
+  
+  for(i in 2:reps){
+    # timing
+    if(i == 50){
+      startTime <- Sys.time()
+    } else if(i == 150){
+      timePerIter <- (Sys.time() - startTime) / 100
+      class(timePerIter) <- 'numeric'
+      print(paste0('Estimated Finishing Time: ', Sys.time() + timePerIter * (reps - 150)))
+      if(attr(timePerIter, 'units') == 'mins'){
+        attr(timePerIter, 'units') = 'secs'
+        timePerIter <- timePerIter * 60
+      }
+    }
+    # theta
+    for(k in 1:dim){
+      candidate <- draw
+      candidate[k] <- candidate[k] + stepsize[k] * rnorm(1)
+      canDens <- 0
+      oldDens <- 0
+      for(j in 1:N){
+        canDens <- canDens + likelihood(data[[j]], candidate, hyper$mean, hyper$varInv)
+        oldDens <- oldDens + likelihood(data[[j]], draw, hyper$mean, hyper$varInv)
+      }
+      ratio <- exp(canDens - oldDens)
+      c <- stepsize[j] / stepsizeCons
+      if(runif(1) < ratio){
+        accept[k] <- accept[k] + 1
+        draw[k] <- candidate
+        stepsize[k] <- stepsize[k] + c * (1 - 0.44) / (18 + i)
+      } else {
+        stepsize[k] <- stepsize[k] - c * 0.44 / (18 + i)
+      }
+    }
+
+    # save draws
+    if(i %% thin == 0){
+      saveDraws[i/thin,] <- draw
+    }
+    # print progress
+    if(i %% 1000 == 0){
+      mins <-  (reps - i) * timePerIter[1] / 60
+      if(mins > 180){
+        print(paste0('Iteration: ', i, '. Est. Time Remaining: ', round(mins / 60, 2), ' hours.'))
+      } else {
+        print(paste0('Iteration: ', i, '. Est. Time Remaining: ', round(mins, 2), ' minutes.'))
+      }
+    }
+  }
+  list(draws = saveDraws, accept = accept, steps = stepsize)
+}
