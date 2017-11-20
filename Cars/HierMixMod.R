@@ -1,7 +1,7 @@
 ########## TO DO #############
 # Replace K with a Direchlet Process & Slice Sampler in the MCMC
 # Use same cars to fit a one component prior model for comparision and a no heirarchy model
-# Have four levels of prior informaiton: None, No Heirarchy, One Component, Complex Mixture
+# Have four levels of prior informaiton: None, No Hierarchy, One Component, Complex Mixture
 # Write VB algorithm with Graves' mixture derivatives - implement in arUpdaterMix
 # Fit parametric dists to the various models
 # Slurmify the forecast code and run
@@ -185,7 +185,22 @@ densities %>%
 OtherMods{
   data <- readRDS('MCMCData.RDS')
   reps <- 50000
-  noMixDraws <- hier
+  
+  draws <- list()
+  hyper <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(10, 6)), v = 6, scale = diag(1, 6))
+  draws[[1]] <- list(mean = c(-5, -5, 0, 0, 0, 0), varInv = diag(10, 6))
+  for(i in 1:N){
+    draws[[i+1]] <- c(-5, -5, 0, -0.1, 0.15, 0.05)
+  }
+  
+  noMixDraws <- hierNoMixMCMC(data, reps, draws, hyper, thin = 10)
+  saveRDS(noMixDraws, 'noMixN2000.RDS')
+  
+  draws <- c(-5, -5, 0, 0, 0, 0)
+  hyper <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(10, 6)))
+  noHierDraws <- noHierMCMC(data, reps, draws, hyper, thin = 10, stepsize = c(0.01, 0.01, 0.1, 0.1, 0.1, 0.1))
+  saveRDS(noHierDraws, 'noHierN2000.RDS')
+  
 }
 
 
