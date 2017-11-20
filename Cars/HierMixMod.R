@@ -298,6 +298,7 @@ ggplot(denVB) + geom_line(aes(support, dens)) + facet_wrap(~var, scales = 'free'
 
 IndepMCMC{
   
+N <- 2000
 posMeans <- NULL
 posAC <- NULL
 vars <- c('sigSq_eps', 'sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2') 
@@ -326,7 +327,7 @@ for(i in 1:N){
     ac[1] <- ac[1] + MCMC[l, 3] / (1 - MCMC[l, 4])
     ac[2] <- ac[2] + (MCMC[l, 3]^2 / (1 - MCMC[l, 4]) + MCMC[l, 4])
     ac[3] <- ac[3] + MCMC[l, 5] / (1 - MCMC[l, 6])
-    ac[4] <- ac[4] + (MCMC[l, 5]^2 / (1 - MCMC[l, 6]) + MCMC[l, 6]) / 5000
+    ac[4] <- ac[4] + (MCMC[l, 5]^2 / (1 - MCMC[l, 6]) + MCMC[l, 6])
     ac[5] <- ac[5] + sqrt((1-MCMC[l, 4]) * MCMC[l, 1] / ((1+MCMC[l, 4])*(1-MCMC[l, 3]-MCMC[l, 4])*(1+MCMC[l, 3]-MCMC[l, 4])))
     ac[6] <- ac[6] + sqrt((1-MCMC[l, 6]) * MCMC[l, 2] / ((1+MCMC[l, 6])*(1-MCMC[l, 5]-MCMC[l, 6])*(1+MCMC[l, 5]-MCMC[l, 6])))
   }
@@ -341,28 +342,16 @@ for(i in 1:N){
 }
 
 posAC %>%
-  spread(var, ac) -> autocorrels
+  spread(var, ac) %>%
+  mutate(pac2a = (ac2a - ac1a^2) / (1 - ac1a^2),
+         pac2d = (ac2d - ac1d^2) / (1 - ac1d^2)) %>%
+  select(ID, ac1a, pac2a, ac1d, pac2d, siga, sigd) %>%
+  rename(pac1a = ac1a, pac1d = ac1d) -> autocorrels
 
 autocorrels %>%
-  filter(ac1a > 0 &
-         ac2a > -1 &
-         siga < 0.5 &
-         sigd < 0.2) -> autocFilter
+  filter(siga < 0.5) %>%
+  ggpairs(columns = c(6, 2, 3, 7, 4, 5))
 
-autocFilter %>%
-  select(-ID) %>%
-  kmeans(centers = 3) %>%
-  .$cluster %>%
-  cbind(autocFilter$ID) %>%
-  as.data.frame() -> clusters
-colnames(clusters) <- c('cluster', 'ID')
-
-autocFilter %>%
-  right_join(clusters) %>%
-  mutate(cluster = factor(cluster)) %>%
-  ggpairs(columns = c(6, 2, 4, 7, 3, 5),
-          mapping = aes(colour = cluster),
-          diag = list(continuous = wrap('densityDiag', alpha = 0.75))) +  theme_bw()
 
 
 posMeans %>%
