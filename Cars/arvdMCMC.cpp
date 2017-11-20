@@ -79,12 +79,13 @@ mat ARVD_MCMC(mat data, vec hyper, int reps, int lags){
           while(nonStat){
             draw = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
             counter += 1;
-            if(counter > 20){
+            if(counter > 10){
               if(draw + theta(iter-1, 3) > 1){
                 draw = 0.99 - theta(iter-1, 3);
               } else if(theta(iter-1, 3) - draw < 1){
                 draw = theta(iter-1, 3) - 0.99;
               }
+              nonStat = false;
             }
             if(draw + theta(iter-1, 3) < 1 & theta(iter-1, 3) - draw < 1){
               nonStat = false;
@@ -96,7 +97,7 @@ mat ARVD_MCMC(mat data, vec hyper, int reps, int lags){
           while(nonStat){
             draw = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
             counter += 1;
-            if(counter > 20){
+            if(counter > 10){
               if(draw + theta(iter, 2) > 1){
                 draw = 0.99 - theta(iter, 2);
               } else if(theta(iter, 2) - draw < 1){
@@ -107,6 +108,7 @@ mat ARVD_MCMC(mat data, vec hyper, int reps, int lags){
               } else if(draw < -1){
                 draw = -0.99;
               }
+              nonStat = false;
             }
             if(draw + theta(iter, 2) < 1 & draw - theta(iter, 2) < 1 & draw < 1 & draw > -1){
               nonStat = false;
@@ -150,12 +152,13 @@ mat ARVD_MCMC(mat data, vec hyper, int reps, int lags){
           while(nonStat){
             draw = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
             counter += 1;
-            if(counter > 20){
+            if(counter > 10){
               if(draw + theta(iter-1, lags + 3) > 1){
                 draw = 0.99 - theta(iter-1, lags + 3);
               } else if(theta(iter-1, lags + 3) - draw < 1){
                 draw = theta(iter-1, lags + 3) - 0.99;
               }
+              nonStat = false;
             }
             if(draw + theta(iter-1, lags+3) < 1 & theta(iter-1, lags+3) - draw < 1){
               nonStat = false;
@@ -167,7 +170,7 @@ mat ARVD_MCMC(mat data, vec hyper, int reps, int lags){
           while(nonStat){
             draw = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
             counter += 1;
-            if(counter > 20){
+            if(counter > 10){
               if(draw + theta(iter, lags + 2) > 1){
                 draw = 0.99 - theta(iter, lags + 2);
               } else if(theta(iter, lags + 2) - draw < 1){
@@ -178,6 +181,7 @@ mat ARVD_MCMC(mat data, vec hyper, int reps, int lags){
               } else if(draw < -1){
                 draw = -0.99;
               }
+              nonStat = false;
             }
             if(draw + theta(iter, lags+2) < 1 & draw - theta(iter, lags+2) < 1 & draw < 1 & draw > -1){
               nonStat = false;

@@ -22,6 +22,7 @@ source('mixtureMCMC.R')
 sourceCpp('arvdMCMC.cpp')
 sourceCpp('hierarchical.cpp')
 id <- readRDS('carsID.RDS')
+data <- readRDS('MCMCData.RDS')
 
 read.csv('carsAug.csv') %>%
   select(ID, relX, dist, relv, reldelta) %>%
@@ -301,7 +302,7 @@ posMeans <- NULL
 posAC <- NULL
 vars <- c('sigSq_eps', 'sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2') 
 measures <- c('ac1a', 'ac2a', 'ac1d', 'ac2d', 'siga', 'sigd')
-for(i in 1:11){
+for(i in 1:N){
   carsAug %>%
     filter(ID == id$idSubset[i]) %>%
     mutate(n = seq_along(v),
@@ -333,7 +334,7 @@ for(i in 1:11){
     print(paste('NA', i))
   }
   posMeans <- rbind(posMeans, data.frame(mean = mean, var = vars, ID = id$idSubset[i]))
-  posAC <- rbind(posAC, data.frame(ac = ac, var = measures, ID = id$idSubset[i]))
+  posAC <- rbind(posAC, data.frame(ac = ac/5000, var = measures, ID = id$idSubset[i]))
   if(i %% 50 == 0){
     print(i)
   }
