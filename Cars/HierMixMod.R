@@ -19,6 +19,7 @@ library(Rcpp)
 library(RcppArmadillo)
 source('mixtureMCMC.R')
 sourceCpp('arvdMCMC.cpp')
+sourceCpp('hierarchical.cpp')
 id <- readRDS('carsID.RDS')
 
 read.csv('carsAug.csv') %>%
@@ -49,7 +50,7 @@ for(i in 1:N){
     select(a , d) %>%
     as.matrix() -> data[[i]]
 }
-saveRDS(data, 'mixmod.RDS')
+saveRDS(data, 'MCMCData.RDS')
 
 reps <- 80000
 K <- 6
@@ -180,6 +181,15 @@ densities %>%
   labs(title = 'Hierarchical Model') + 
   theme(legend.position = 'none')
 }
+
+OtherMods{
+  data <- readRDS('MCMCData.RDS')
+  reps <- 50000
+  noMixDraws <- hier
+}
+
+
+
 
 VB{
   

@@ -209,7 +209,7 @@ Rcpp::List arDeriv(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec hype
                             Rcpp::Named("val") = eval);
 }
 
-struct heirAr {
+struct hierAr {
   const mat data;
   const vec epsilon;
   const vec hyperMean;
@@ -218,7 +218,7 @@ struct heirAr {
   const vec obsSum;
   const int lags;
   const bool diag;
-  heirAr(const mat& dataIn, const vec& epsIn, const vec& hypMIn, const mat& hypLiIn, const mat& LinvIn, const vec& obsIn, const int& lagsIn, const bool& diagIn) :
+  hierAr(const mat& dataIn, const vec& epsIn, const vec& hypMIn, const mat& hypLiIn, const mat& LinvIn, const vec& obsIn, const int& lagsIn, const bool& diagIn) :
     data(dataIn), epsilon(epsIn), hyperMean(hypMIn), hyperLinv(hypLiIn), Linv(LinvIn), obsSum(obsIn), lags(lagsIn), diag(diagIn) {}
   template <typename T> //
   T operator ()(const Matrix<T, Dynamic, 1>& lambda)
@@ -323,7 +323,7 @@ struct heirAr {
 };
 
 // [[Rcpp::export]]
-Rcpp::List heirArDeriv(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec hyperMean, mat hyperLinv, mat Linv, vec obsSum, int lags, bool diag = false){
+Rcpp::List hierArDeriv(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec hyperMean, mat hyperLinv, mat Linv, vec obsSum, int lags, bool diag = false){
   Map<MatrixXd> lambda(Rcpp::as<Map<MatrixXd> >(lambdaIn));
   double eval;
   int N = obsSum.n_elem;
@@ -334,7 +334,7 @@ Rcpp::List heirArDeriv(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec 
   }
   Matrix<double, Dynamic, 1> grad((dimT + dimU) * (N + 1));
   // Autodiff
-  heirAr p(data, epsilon, hyperMean, hyperLinv, Linv, obsSum, lags, diag);
+  hierAr p(data, epsilon, hyperMean, hyperLinv, Linv, obsSum, lags, diag);
   stan::math::set_zero_all_adjoints();
   stan::math::gradient(p, lambda, eval, grad);
   return Rcpp::List::create(Rcpp::Named("grad") = grad,
