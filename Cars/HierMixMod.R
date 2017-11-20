@@ -17,6 +17,7 @@
 library(tidyverse)
 library(Rcpp)
 library(RcppArmadillo)
+library(GGally)
 source('mixtureMCMC.R')
 sourceCpp('arvdMCMC.cpp')
 sourceCpp('hierarchical.cpp')
@@ -60,7 +61,7 @@ burn <- 0.9
 draws <- list(list())
 hyper <- list()
 for(k in 1:K){
-  hyper[[k]] <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(10, 6)), v = 6, scale = diag(1, 6))
+  hyper[[k]] <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(c(5, 5, 10, 10, 10, 10))), v = 6, scale = diag(1, 6))
   draws[[1]][[k]] <- list(mean = c(-5, -5, 0, 0, 0, 0), varInv = diag(10, 6))
 }
 hyper$alpha <- rep(1, K)
@@ -203,7 +204,6 @@ OtherMods{
   
 }
 
-
 VB{
   
 lags <- 2
@@ -298,10 +298,12 @@ ggplot(denVB) + geom_line(aes(support, dens)) + facet_wrap(~var, scales = 'free'
 IndepMCMC{
   
 posMeans <- NULL
+posAC <- NULL
 vars <- c('sigSq_eps', 'sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2') 
-for(i in 1:N){
+measures <- c('ac1a', 'ac2a', 'ac1d', 'ac2d', 'siga', 'sigd')
+for(i in 1:11){
   carsAug %>%
-    filter(ID == idSubset[i]) %>%
+    filter(ID == id$idSubset[i]) %>%
     mutate(n = seq_along(v),
            vl = ifelse(n == 1, 0, lag(v)),
            a = v - lag(v),
@@ -310,15 +312,57 @@ for(i in 1:N){
     select(a , d) %>%
     as.matrix() -> data
   
-  hyper <- c(2, 0.002, 2, 0.002, 0, 5, 0, 5, 0, 5, 0, 5)
+  x <- rlnorm(1000000, -5, sqrt(5))
+  a <- mean(x)^2 / var(x) + 2
+  b <- mean(x) * (mean(x)^2 / var(x) + 1)
+  hyper <- c(a, b, a, b, 0, 10, 0, 10, 0, 10, 0, 10)
+
   
   MCMC <- ARVD_MCMC(data, hyper, 10000, 2)
   mean <- colMeans(MCMC[5001:10000,])
-  posMeans <- rbind(posMeans, data.frame(mean = mean, var = vars, ID = idSubset[i]))
+  ac <- rep(0, 6)
+  for(l in 5001:10000){
+    ac[1] <- ac[1] + MCMC[l, 3] / (1 - MCMC[l, 4])
+    ac[2] <- ac[2] + (MCMC[l, 3]^2 / (1 - MCMC[l, 4]) + MCMC[l, 4])
+    ac[3] <- ac[3] + MCMC[l, 5] / (1 - MCMC[l, 6])
+    ac[4] <- ac[4] + (MCMC[l, 5]^2 / (1 - MCMC[l, 6]) + MCMC[l, 6]) / 5000
+    ac[5] <- ac[5] + sqrt((1-MCMC[l, 4]) * MCMC[l, 1] / ((1+MCMC[l, 4])*(1-MCMC[l, 3]-MCMC[l, 4])*(1+MCMC[l, 3]-MCMC[l, 4])))
+    ac[6] <- ac[6] + sqrt((1-MCMC[l, 6]) * MCMC[l, 2] / ((1+MCMC[l, 6])*(1-MCMC[l, 5]-MCMC[l, 6])*(1+MCMC[l, 5]-MCMC[l, 6])))
+  }
+  if(any(is.na(ac))){
+    print(paste('NA', i))
+  }
+  posMeans <- rbind(posMeans, data.frame(mean = mean, var = vars, ID = id$idSubset[i]))
+  posAC <- rbind(posAC, data.frame(ac = ac, var = measures, ID = id$idSubset[i]))
   if(i %% 50 == 0){
     print(i)
   }
 }
+
+posAC %>%
+  spread(var, ac) -> autocorrels
+
+autocorrels %>%
+  filter(ac1a > 0 &
+         ac2a > -1 &
+         siga < 0.5 &
+         sigd < 0.2) -> autocFilter
+
+autocFilter %>%
+  select(-ID) %>%
+  kmeans(centers = 3) %>%
+  .$cluster %>%
+  cbind(autocFilter$ID) %>%
+  as.data.frame() -> clusters
+colnames(clusters) <- c('cluster', 'ID')
+
+autocFilter %>%
+  right_join(clusters) %>%
+  mutate(cluster = factor(cluster)) %>%
+  ggpairs(columns = c(6, 2, 4, 7, 3, 5),
+          mapping = aes(colour = cluster),
+          diag = list(continuous = wrap('densityDiag', alpha = 0.75))) +  theme_bw()
+
 
 posMeans %>%
   mutate(var = as.character(var),
@@ -371,19 +415,18 @@ forecasts{
   maxT <- 200
   K <- 6
   sSeq <- seq(S, maxT, S)
-  idFc <- id$fullID[!id$fullID %in% id$idSubset]
   results <- data.frame()
   methods <- c('None', 'No Hier', 'Single', 'Mixture')
   vars <- c('sigSq_eps', 'sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2') 
   prior <- list()
   starting <- c(-5, -5, rep(0, 4), c(chol(diag(0.5, 6))))
-  prior[[1]] <- c(-5, -5, rep(0, 4), c(chol(diag(100, 6))))
+  prior[[1]] <- c(-5, -5, rep(0, 4), c(chol(diag(c(5, 5, 10, 10, 10, 10)))))
   fit <- prior
-  for(i in seq_along(idFc)){
+  for(i in seq_along(id$idfc)){
     
     # Extract Data
     carsAug %>%
-      filter(ID == idFc[i]) %>%
+      filter(ID == id$idfc[i]) %>%
       mutate(n = seq_along(v),
              vl = ifelse(n == 1, 0, lag(v)),
              a = v - lag(v),
@@ -393,15 +436,15 @@ forecasts{
       as.matrix() -> data
     
     # Set forcast supports
-    asup <- seq(0.8*min(data[,1], 1.25*max(data[,1], length.out=1000)))
-    dsup <- seq(0.8*min(data[,2], 1.25*max(data[,2], length.out=1000)))
+    asup <- seq(0.8*min(data[,1]), 1.25*max(data[,1]), length.out=1000)
+    dsup <- seq(0.8*min(data[,2]), 1.25*max(data[,2]), length.out=1000)
       
     # Incrementally add data to VB fits
     for(s in seq_along(sSeq)){
       if(sSeq[s] > nrow(data)){
         break
       }
-      if(s == 1 | increment){
+      if(s == 1 | !increment){
         dat <- data[1:sSeq[s],]
       } else {
         dat <- data[(sSeq[s-1]+1):sSeq[s],]
@@ -474,7 +517,7 @@ forecasts{
                                       method = methods[k],
                                       S = sSeq[s],
                                       h = h,
-                                      id = idFc[i]))
+                                      id = id$idfc[i]))
         }
       }
     }

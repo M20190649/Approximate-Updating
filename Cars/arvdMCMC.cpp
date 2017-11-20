@@ -60,10 +60,40 @@ mat ARVD_MCMC(mat data, vec hyper, int reps, int lags){
           }
         }
       }
- 
-
       double var = theta(iter, 0) * hyper(3 + 2*i) / meanDenom;
-      theta(iter, 1 + i)  = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
+      // Stationary conditions for AR1, AR2
+      double draw;
+      bool nonStat;
+      if(lags == 1){
+        nonStat = true;
+        while(nonStat){
+          draw = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
+          if(draw < 1 & draw > -1){
+            nonStat = false;
+          }
+        }
+      } else if(lags == 2){
+        if(i == 1){
+          nonStat = true;
+          while(nonStat){
+            draw = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
+            if(draw + theta(iter-1, 3) < 1 & theta(iter-1, 3) - draw < 1){
+              nonStat = false;
+            }
+          }
+        } else {
+          nonStat = true;
+          while(nonStat){
+            draw = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
+            if(draw + theta(iter, 2) < 1 & draw - theta(iter, 2) < 1 & draw < 1 & draw > -1){
+              nonStat = false;
+            }
+          }
+        }
+      } else {
+        draw = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
+      }
+      theta(iter, 1 + i) = draw;
       // D
       meanNumer = theta(iter, 1) * hyper(2 + 2*lags + 2*i);
       meanDenom = theta(iter, 1);
@@ -81,7 +111,37 @@ mat ARVD_MCMC(mat data, vec hyper, int reps, int lags){
         }
       }
       var = theta(iter, 1) * hyper(3 + 2*lags + 2*i) / meanDenom;
-      theta(iter, lags + 1 + i)  = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
+      // Stationary conditions for AR1, AR2
+      if(lags == 1){
+        nonStat = true;
+        while(nonStat){
+          draw = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
+          if(draw < 1 & draw > -1){
+            nonStat = false;
+          }
+        }
+      } else if(lags == 2){
+        if(i == 1){
+          nonStat = true;
+          while(nonStat){
+            draw = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
+            if(draw + theta(iter-1, lags+3) < 1 & theta(iter-1, lags+3) - draw < 1){
+              nonStat = false;
+            }
+          }
+        } else {
+          nonStat = true;
+          while(nonStat){
+            draw = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
+            if(draw + theta(iter, lags+2) < 1 & draw - theta(iter, lags+2) < 1 & draw < 1 & draw > -1){
+              nonStat = false;
+            }
+          }
+        }
+      } else {
+        draw = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
+      }
+      theta(iter, lags + 1 + i)  = draw;
     }
   }
   return theta;
