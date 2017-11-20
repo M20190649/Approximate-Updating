@@ -266,7 +266,7 @@ sliceSampler <- function(data, reps, draw, hyper, thin = 1, K = 10, error = 'gau
   list(draws = saveDraws, accept = accept, steps = stepsize)
 }
 
-heirNoMixMCMC <-function(data, reps, draw, hyper, thin = 1, error = 'gaussian', stepsize = 0.01){
+hierNoMixMCMC <-function(data, reps, draw, hyper, thin = 1, error = 'gaussian', stepsize = 0.01){
   N <- length(data)
   stepsize <- rep(stepsize, N)
   accept <- rep(0, N)
@@ -359,7 +359,7 @@ heirNoMixMCMC <-function(data, reps, draw, hyper, thin = 1, error = 'gaussian', 
   list(draws = saveDraws, accept = accept, steps = stepsize)
 }
   
-noHeirMCMC <- -function(data, reps, draw, hyper, thin = 1, error = 'gaussian', stepsize = 0.01){
+noHierMCMC <- -function(data, reps, draw, hyper, thin = 1, error = 'gaussian', stepsize = 0.01){
   N <- length(data)
   #set up likelihood function and theta dimension
   if(error == 'gaussian'){
