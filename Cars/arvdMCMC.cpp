@@ -28,7 +28,7 @@ mat ARVD_MCMC(mat data, vec hyper, int reps, int lags){
       vScale += pow(temp, 2) / 2;
     }
     theta(iter, 0) = 1.0 / randg<vec>(1, distr_param(vShape, 1.0 / vScale))[0];
-
+    
     // sigSqD
     double dScale = hyper(3);
     for(int t = lags; t < T; ++t){
@@ -39,7 +39,7 @@ mat ARVD_MCMC(mat data, vec hyper, int reps, int lags){
       dScale += pow(temp, 2) / 2;
     }
     theta(iter, 1) = 1.0 / randg<vec>(1, distr_param(dShape, 1.0 / dScale))[0];
-
+    
     // phi terms
     for(int i = 1; i <= lags; ++i){
       // V
@@ -48,7 +48,7 @@ mat ARVD_MCMC(mat data, vec hyper, int reps, int lags){
       for(int t = lags; t < T; ++t){
         meanNumer += hyper(3 + 2*i) * data(t, 0) * data(t-i, 0);
         meanDenom += hyper(3 + 2*i) * pow(data(t-i, 0), 2);
-
+        
         for(int k = 1; k <= lags; ++k){
           if(k != i){
             if(k < i){
@@ -74,17 +74,40 @@ mat ARVD_MCMC(mat data, vec hyper, int reps, int lags){
         }
       } else if(lags == 2){
         if(i == 1){
+          int counter = 0;
           nonStat = true;
           while(nonStat){
             draw = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
+            counter += 1;
+            if(counter > 20){
+              if(draw + theta(iter-1, 3) > 1){
+                draw = 0.99 - theta(iter-1, 3);
+              } else if(theta(iter-1, 3) - draw < 1){
+                draw = theta(iter-1, 3) - 0.99;
+              }
+            }
             if(draw + theta(iter-1, 3) < 1 & theta(iter-1, 3) - draw < 1){
               nonStat = false;
             }
           }
         } else {
+          int counter = 0;
           nonStat = true;
           while(nonStat){
             draw = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
+            counter += 1;
+            if(counter > 20){
+              if(draw + theta(iter, 2) > 1){
+                draw = 0.99 - theta(iter, 2);
+              } else if(theta(iter, 2) - draw < 1){
+                draw = theta(iter, 2) - 0.99;
+              }
+              if(draw > 1){
+                draw = 0.99;
+              } else if(draw < -1){
+                draw = -0.99;
+              }
+            }
             if(draw + theta(iter, 2) < 1 & draw - theta(iter, 2) < 1 & draw < 1 & draw > -1){
               nonStat = false;
             }
@@ -122,17 +145,40 @@ mat ARVD_MCMC(mat data, vec hyper, int reps, int lags){
         }
       } else if(lags == 2){
         if(i == 1){
+          int counter = 0;
           nonStat = true;
           while(nonStat){
             draw = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
+            counter += 1;
+            if(counter > 20){
+              if(draw + theta(iter-1, lags + 3) > 1){
+                draw = 0.99 - theta(iter-1, lags + 3);
+              } else if(theta(iter-1, lags + 3) - draw < 1){
+                draw = theta(iter-1, lags + 3) - 0.99;
+              }
+            }
             if(draw + theta(iter-1, lags+3) < 1 & theta(iter-1, lags+3) - draw < 1){
               nonStat = false;
             }
           }
         } else {
           nonStat = true;
+          int counter = 0;
           while(nonStat){
             draw = meanNumer / meanDenom  +  pow(var, 0.5) * randn<vec>(1)[0];
+            counter += 1;
+            if(counter > 20){
+              if(draw + theta(iter, lags + 2) > 1){
+                draw = 0.99 - theta(iter, lags + 2);
+              } else if(theta(iter, lags + 2) - draw < 1){
+                draw = theta(iter, lags + 2) - 0.99;
+              }
+              if(draw > 1){
+                draw = 0.99;
+              } else if(draw < -1){
+                draw = -0.99;
+              }
+            }
             if(draw + theta(iter, lags+2) < 1 & draw - theta(iter, lags+2) < 1 & draw < 1 & draw > -1){
               nonStat = false;
             }
