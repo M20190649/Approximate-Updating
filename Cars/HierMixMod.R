@@ -1,10 +1,7 @@
 ########## TO DO #############
 # Replace K with a Direchlet Process & Slice Sampler in the MCMC
-# Use same cars to fit a one component prior model for comparision and a no heirarchy model
-# Have four levels of prior informaiton: None, No Hierarchy, One Component, Complex Mixture
 # Write VB algorithm with Graves' mixture derivatives - implement in arUpdaterMix
-# Fit parametric dists to the various models
-# Slurmify the forecast code and run
+# Run Slurm code
 
 # Consider new online implementations: 
 # add new data every 100ms or batches slightly more often 
@@ -210,11 +207,34 @@ OtherMods{
   
   noMixMean <- rep(0, 6)
   noMixVar <- matrix(0, 6, 6)
+  
+  support <- data.frame(seq(exp(-13), exp(-4.5), length.out = 1000),
+                        seq(exp(-15), exp(-7.6), length.out = 1000),
+                        seq(-0.5, 2, length.out = 1000),
+                        seq(-1, 0.8, length.out = 1000),
+                        seq(0, 2, length.out = 1000),
+                        seq(-1, 0.5, length.out = 1000))
+  
+  densities <- matrix(0, 1000, 6)
   for(i in (reps/(2*thin)+1):(reps/thin)){
     noMixMean <- noMixMean + noMixDraws$draws[[1]]$mean[i,] / (reps / (2 * thin))
     noMixVar <- noMixVar + solve(noMixDraws$draws[[1]]$varInv[,,i]) / (reps / (2 * thin))
+    for(k in 1:2){
+      densities[,k] <- densities[,k] + dlnorm(support[,k], noMixDraws$draws[[1]]$mean[i, k], sqrt(solve(noMixDraws$draws[[1]]$varInv[,,i])[k,k])) / (reps / (2 * thin))
+    }
+    for(k in 3:6){
+      densities[,k] <- densities[,k] + dnorm(support[,k], noMixDraws$draws[[1]]$mean[i, k], sqrt(solve(noMixDraws$draws[[1]]$varInv[,,i])[k,k])) / (reps / (2 * thin))
+    }
   }
   noMixLam <- c(noMixMean, chol(noMixVar))
+  densities <- as.data.frame(densities)
+  colnames(densities) <- vars
+  densities %>% 
+    gather(var, dens) %>%
+    cbind(support = c(support)) %>%
+    mutate(var = factor(var, levels = c('sigSq_eps', 'phi1', 'phi2', 'sigSq_eta', 'gamma1', 'gamma2'))) %>%
+    ggplot() + geom_line(aes(support, dens)) + facet_wrap(~var, scales = 'free')
+    
   
   draws <- c(-5, -5, 0, 0, 0, 0)
   hyper <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(10, 6)))
@@ -449,18 +469,26 @@ forecasts{
   prior[[2]] <- matrix(noHierLam, ncol = 1)
   prior[[3]] <- matrix(noMixLam, ncol = 1)
   fit <- prior
-  for(i in 2:11){#seq_along(id$idfc)){
+  
+  datafc <- list()
+  for(i in seq_along(id$idfc)){
+    carsAug %>%
+    filter(ID == id$idfc[i]) %>%
+    mutate(n = seq_along(v),
+           vl = ifelse(n == 1, 0, lag(v)),
+           a = v - lag(v),
+           d = delta - pi/2) %>%
+    filter(n > 1 & n <= 501) %>% 
+    select(a , d) %>%
+    as.matrix() -> datafc[[i]]
+  }
+  saveRDS(datafc, 'ForecastData.RDS')
+  
+  
+  for(i in seq_along(id$idfc)){
     
     # Extract Data
-    carsAug %>%
-      filter(ID == id$idfc[i]) %>%
-      mutate(n = seq_along(v),
-             vl = ifelse(n == 1, 0, lag(v)),
-             a = v - lag(v),
-             d = delta - pi/2) %>%
-      filter(n > 1 & n <= 501) %>% 
-      select(a , d) %>%
-      as.matrix() -> data
+    datafc[[i]] -> data
     
     # Set forcast supports
     asup <- seq(0.8*min(data[,1]), 1.25*max(data[,1]), length.out=1000)
