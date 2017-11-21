@@ -103,7 +103,8 @@
 \item Self driving cars becoming more common
 \item Cars are easy capable of driving by themselves if there is no traffic around them
 \item Cars need to be able to predict movement of other cars
-\item Drivers display differing behaviour, able to group drivers into different categories
+\item Wide range of unconditional variances and first two partial autocorrelations observed while fitting each model individually - evidence of heterogeneity
+\item Drivers display differing behaviour, could be able to group drivers into different categories
 \item Heteogeneity between and within groups
 \item Need to deal with new cars as they are observed
 \end{itemize}
@@ -120,7 +121,7 @@
 \item Use polynomials to get $\hat{x}_{i, t}$ and $\hat{y}_{i, t}$ as estimates of the midpoint of the lane after travelling a distance $d_{i, t}$.
 \item Define new coordinates 
 \begin{align}
-x^*_{i, t} &= \sqrt{(x_{i, t}-\hat{x}_{i, t})^2 + (y_{i, t} - \hat{y}_{i, t})^2)} \label{xRel} \\
+x^*_{i, t} &= \mbox{sign}(x_{i, t} - \hat{x}_{i, t})\sqrt{(x_{i, t}-\hat{x}_{i, t})^2 + (y_{i, t} - \hat{y}_{i, t})^2)} \label{xRel} \\
 y^*_{i, t} &= d_{i, t} \label{yRel}
 \end{align}
 \end{enumerate}
@@ -156,6 +157,12 @@ Multiple groups of differing driver behaviour can be allowed while still retaini
 \end{equation}
 For each $j = 1, \dots, K$, multivariate normal priors are chosen for $\mu_j$ with mean $\bar{\mu}_j$ and variance matrix $\Omega_j$, Inverse Wishart priors are chosen for $\Sigma_j$ with degrees of freedom $\tau_j$ and scale matrix $\Psi_j$. $k_{i}$ has a multinomial distribution with mixture probabilities $\boldsymbol{\pi_i} = \{\pi_{1, i}, \dots, \pi_{K, i}\}$, where $\boldsymbol{\pi_i}$ has a Dirichlet prior with parameters $\alpha_1, \alpha_2, \dots, \alpha_K$. This can be estimated with MCMC methods.
 
+
+\begin{itemize}
+\item Add a Direchlet Process Prior to make this an infinite mixture
+\item Use slice sampling in the MCMC
+\end{itemize}
+
 \section{Online Process}
 
 Notation:
@@ -181,17 +188,33 @@ p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S_2}) \propto p(y_{N+1, S_1+1:S_2} | \theta_
 \end{equation}
 \item Set $p(\theta_{N+1} |  y_{1:N}, y_{N+1, 1:S_1}) = q(\theta_{N+1} | y_{N+1, 1:S_1})$, fit VB  $q(\theta_{N+1} | y_{N+1, 1:S_2}) \approx p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S_2})$
 \item Repeat as new data is observed
+\item MCMC will always need to use the whole dataset to update the posterior, but this should only need the new data so runtime will not depend on T.
 \end{itemize}
 
 \section{Empirical}
 
+\begin{figure}[h]
+\centering
+\includegraphics[width = 0.8\textwidth]{HierSingleKDE.png}
+\caption{Left: $p(\theta_i | \beta, y_{1:N})$ for a hierarchical mixture model with K = 6 and N = 2000. Right: Kernel Density Estimate of the posterior means from the same cars modelled individually. The hierarchical model has captured the bimodality and skewness present in the individual posterior means.}
+\label{fig:HierSingleKDE}
+\end{figure}
+
 Comparisions:
 \begin{enumerate}
-\item VB Approximation with the above process
-\item One Car MCMC/VB without prior information
-\item One Car MCMC/VB with mild prior informaiton - eg. One Component
+\item No prior information for the new car
+\item Prior information without heterogeneity - all cars share parameters
+\item Prior information from hierarchical model with one component
+\item Prior information from large / infinite mixture hierarchical model
 \end{enumerate}
-Compare performance with different observed samples - prior informaiton should be very beneficial for first few seconds but expect methods to converge over time.
+
+\begin{itemize}
+\item Compare forecasts for different sample sizes and forecast horizons
+\item eg. Fit model to one second, forecast next second
+\item Fit model to two seconds, forecast next second etc.
+\item Expect models based on the MCMC to outperform non MCMC models for first few seconds, not to matter as much as large amounts of data is obsered.
+\item Could also compare VB and MCMC methods for the same models.
+\end{itemize}
 
 \section{Conclusion}
 

@@ -279,31 +279,31 @@ fitCarMods <- function(data, prevFit, increment, starting){
   results <- list()
   if(increment){
     for(k in 1:3){
-      results[[k]] <- updateVB(data, prevFit[[k]], stepsize = S, lags = 2, model = arUpdater)
+      results[[k]] <- updateVB(data, prevFit[[k]], stepsize = S, lags = 2, model = arUpdater)$lambda
     }
-    results[[4]] <- updateVBMix(data, prevFit[[4]], stepsize = S, lags = 2, model = arUpdateMix)
+    #results[[4]] <- updateVBMix(data, prevFit[[4]], stepsize = S, lags = 2, model = arUpdateMix)$lambda
   } else {
     for(k in 1:3){
       mean <- prevFit[[k]][1:6]
-      u <- matrix(prevFit[[k]][7:42], k)
-      linv(solve(t(u)))
+      u <- matrix(prevFit[[k]][7:42], 6)
+      linv <- solve(t(u))
       
       if(k == 1){
-        results[[k]] <- carsVB(data, starting, lags = 2, model = arUpdater, mean = mean, Linv = linv)
+        results[[k]] <- carsVB(data, starting, lags = 2, model = arUpdater, mean = mean, Linv = linv, dimTheta = 6)$lambda
       } else {
-        results[[k]] <- carsVB(data, prevFit[[k]], lags = 2, model = arUpdater, mean = mean, Linv = linv)
+        results[[k]] <- carsVB(data, prevFit[[k]], lags = 2, model = arUpdater, mean = mean, Linv = linv, dimTheta = 6)$lambda
       }
     }
-    mean <- prevFit[[4]][1:(6*6)]
-    linv <- NULL
-    logdets <- NULL
-    for(k in 1:6){
-      u <- matrix(prevFit[[4]][36 + 1:36 + (k-1)*36], 6)
-      linv <- rbind(linv, solve(t(u)))
-      logdets <- c(logdets, -log(det(u)))
-    }
-    weights <- prevFit[[4]][36*7 + 1:6]
-    results[[4]] <- carsVB(data, prevFit[[4]], lags = 2, model = arUpdateMix, mean = mean, Linv = linv, logdets = logdets, weights = weights)
+    #mean <- prevFit[[4]][1:(6*6)]
+    #linv <- NULL
+    #logdets <- NULL
+    #for(k in 1:6){
+    #  u <- matrix(prevFit[[4]][36 + 1:36 + (k-1)*36], 6)
+    #  linv <- rbind(linv, solve(t(u)))
+    #  logdets <- c(logdets, -log(det(u)))
+    #}
+    #weights <- prevFit[[4]][36*7 + 1:6]
+    #results[[4]] <- carsVB(data, prevFit[[4]], lags = 2, model = arUpdateMix, mean = mean, Linv = linv, logdets = logdets, weights = weights)
   }
   results
 }

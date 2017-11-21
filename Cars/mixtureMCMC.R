@@ -34,12 +34,14 @@ mixtureMCMC <- function(data, reps, draw, hyper, thin = 1, K = 2, error = 'gauss
   
   for(i in 2:reps){
     # timing
-    if(i == 2){
+    if(i == 50){
       startTime <- Sys.time()
-    } else if(i < 5000 & i %% 1000 == 0){
-      timePerIter <- (Sys.time() - startTime)/(i - 2)
+    } else if(i == 150){
+      timePerIter <- (Sys.time() - startTime) / 100
       class(timePerIter) <- 'numeric'
+      print(paste0('Estimated Finishing Time: ', Sys.time() + timePerIter * (reps - 150)))
       if(attr(timePerIter, 'units') == 'mins'){
+        attr(timePerIter, 'units') = 'secs'
         timePerIter <- timePerIter * 60
       }
     }
@@ -162,12 +164,14 @@ sliceSampler <- function(data, reps, draw, hyper, thin = 1, K = 10, error = 'gau
   sumK <- rep(N/K, K)
   for(i in 2:reps){
     # timing
-    if(i == 2){
+    if(i == 50){
       startTime <- Sys.time()
-    } else if(i < 5000 & i %% 1000 == 0){
-      timePerIter <- (Sys.time() - startTime)/(i - 2)
+    } else if(i == 150){
+      timePerIter <- (Sys.time() - startTime) / 100
       class(timePerIter) <- 'numeric'
+      print(paste0('Estimated Finishing Time: ', Sys.time() + timePerIter * (reps - 150)))
       if(attr(timePerIter, 'units') == 'mins'){
+        attr(timePerIter, 'units') = 'secs'
         timePerIter <- timePerIter * 60
       }
     }
@@ -293,13 +297,14 @@ hierNoMixMCMC <-function(data, reps, draw, hyper, thin = 1, error = 'gaussian', 
   stepsizeCons <- (1 - 1/dim) * sqrt(2*pi) * exp(alpha^2/2) / (2 * alpha)  +  1 / (dim * 0.234 * (1 - 0.234))
   
   for(i in 2:reps){
-    # timing
-    if(i == 2){
+    if(i == 50){
       startTime <- Sys.time()
-    } else if(i < 5000 & i %% 1000 == 0){
-      timePerIter <- (Sys.time() - startTime)/(i - 2)
+    } else if(i == 150){
+      timePerIter <- (Sys.time() - startTime) / 100
       class(timePerIter) <- 'numeric'
+      print(paste0('Estimated Finishing Time: ', Sys.time() + timePerIter * (reps - 150)))
       if(attr(timePerIter, 'units') == 'mins'){
+        attr(timePerIter, 'units') = 'secs'
         timePerIter <- timePerIter * 60
       }
     }
@@ -359,7 +364,7 @@ hierNoMixMCMC <-function(data, reps, draw, hyper, thin = 1, error = 'gaussian', 
   list(draws = saveDraws, accept = accept, steps = stepsize)
 }
   
-noHierMCMC <- -function(data, reps, draw, hyper, thin = 1, error = 'gaussian', stepsize = 0.01){
+noHierMCMC <- function(data, reps, draw, hyper, thin = 1, error = 'gaussian', stepsize = 0.01){
   N <- length(data)
   #set up likelihood function and theta dimension
   if(error == 'gaussian'){
@@ -405,10 +410,10 @@ noHierMCMC <- -function(data, reps, draw, hyper, thin = 1, error = 'gaussian', s
         oldDens <- oldDens + likelihood(data[[j]], draw, hyper$mean, hyper$varInv)
       }
       ratio <- exp(canDens - oldDens)
-      c <- stepsize[j] / stepsizeCons
+      c <- stepsize[k] / stepsizeCons
       if(runif(1) < ratio){
         accept[k] <- accept[k] + 1
-        draw[k] <- candidate
+        draw <- candidate
         stepsize[k] <- stepsize[k] + c * (1 - 0.44) / (18 + i)
       } else {
         stepsize[k] <- stepsize[k] - c * 0.44 / (18 + i)

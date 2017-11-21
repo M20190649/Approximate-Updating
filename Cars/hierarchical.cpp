@@ -503,4 +503,31 @@ Rcpp::List arUpdaterMix(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec
                             Rcpp::Named("val") = eval);
 }
 
-
+// [[Rcpp::export]]
+cube evalFcDens (mat data, mat means, mat L, int M, int S, vec asup, vec dsup){
+  int N = asup.n_elem;
+  int K = means.n_cols;
+  cube densities (N * S, 2, K, fill::zeros);
+  boost::math::normal_distribution<> Zdist(0, 1);
+  for(int m = 0; m < M; ++m){
+    for(int k = 0; k < K; ++k){
+      double afc1 = data(1, 0), afc2 = data(0, 0), dfc1 = data(1, 1), dfc2 = data(0, 1), afc, dfc;
+      vec draws = means.col(k) + L.rows(k*6, (k+1)*6-1) * randn<vec>(6);
+      for(int h = 0; h < S; ++h){
+        afc = afc1 * draws(2) + afc2 * draws(3);
+        dfc = dfc1 * draws(4) + dfc2 * draws(5);
+        double Zafc = (data(2+h, 0) - afc) / sqrt(std::exp(draws(0)));
+        double Zdfc = (data(2+h, 1) - dfc) / sqrt(std::exp(draws(1)));
+        for(int n = 0; n < N; ++n){
+          densities(N*h + n, 0, k) += pdf(Zdist, Zafc) / M;
+          densities(N*h + n, 1, k) += pdf(Zdist, Zdfc) / M;
+        }
+        afc2 = afc1;
+        afc1 = afc;
+        dfc2 = dfc1;
+        dfc1 = dfc;
+      }
+    }
+  }
+  return densities;
+}

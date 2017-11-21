@@ -186,7 +186,7 @@ densities %>%
 
 OtherMods{
   data <- readRDS('MCMCData.RDS')
-  reps <- 50000
+  reps <- 5000
   
   draws <- list()
   hyper <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(10, 6)), v = 6, scale = diag(1, 6))
@@ -194,14 +194,54 @@ OtherMods{
   for(i in 1:N){
     draws[[i+1]] <- c(-5, -5, 0, -0.1, 0.15, 0.05)
   }
+  N <- 100
+  datSub <- list()
+  for(i in 1:N){
+    datSub[[i]] <- data[[i]]
+  }
   
-  noMixDraws <- hierNoMixMCMC(data, reps, draws, hyper, thin = 10)
+  noMixDraws <- hierNoMixMCMC(datSub, reps, draws, hyper, thin = 10)
   saveRDS(noMixDraws, 'noMixN2000.RDS')
+  
+  noMixDraws$draws[[1]]$mean %>%
+    as.data.frame() %>%
+    cbind(iter = 1:(reps/thin)) %>%
+    mutate(V1 = exp(V1), V2 = exp(V2)) %>%
+    rename(sigSq_eps = V1, sigSq_eta = V2, phi1 = V3, phi2 = V4, gamma1 = V5, gamma2 = V6) %>%
+    gather(var, draw, -iter) %>%
+    mutate(var = factor(var, levels = c('sigSq_eps', 'phi1', 'phi2', 'sigSq_eta', 'gamma1', 'gamma2'))) %>%
+    filter(iter > 100) %>%
+    ggplot() + geom_line(aes(iter, draw)) + facet_wrap(~var, scales = 'free')
+  
+  noMixMean <- rep(0, 6)
+  noMixVar <- matrix(0, 6, 6)
+  for(i in (reps/(2*thin)+1):(reps/thin)){
+    noMixMean <- noMixMean + noMixDraws$draws[[1]]$mean[i,] / (reps / (2 * thin))
+    noMixVar <- noMixVar + solve(noMixDraws$draws[[1]]$varInv[,,i]) / (reps / (2 * thin))
+  }
+  noMixLam <- c(noMixMean, chol(noMixVar))
   
   draws <- c(-5, -5, 0, 0, 0, 0)
   hyper <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(10, 6)))
-  noHierDraws <- noHierMCMC(data, reps, draws, hyper, thin = 10, stepsize = c(0.01, 0.01, 0.1, 0.1, 0.1, 0.1))
+  noHierDraws <- noHierMCMC(datSub, reps, draws, hyper, thin = 10, stepsize = c(0.01, 0.01, 0.1, 0.1, 0.1, 0.1))
   saveRDS(noHierDraws, 'noHierN2000.RDS')
+  
+  noHierDraws$draws %>%
+    as.data.frame() %>%
+    cbind(iter = 1:(reps/thin)) %>%
+    mutate(V1 = exp(V1), V2 = exp(V2)) %>%
+    rename(sigSq_eps = V1, sigSq_eta = V2, phi1 = V3, phi2 = V4, gamma1 = V5, gamma2 = V6) %>%
+    gather(var, draw, -iter) %>%
+    mutate(var = factor(var, levels = c('sigSq_eps', 'phi1', 'phi2', 'sigSq_eta', 'gamma1', 'gamma2'))) %>%
+    filter(iter > 100) %>%
+    ggplot() + geom_line(aes(iter, draw)) + facet_wrap(~var, scales = 'free')
+  
+  noHierMean <- rep(0, 6)
+  noHierVar <- var(noHierDraws$draws[(reps/(2*thin)+1):(reps/thin),])
+  noHierLam <- c(noHierMean, chol(noHierVar))
+  for(i in (reps/(2*thin)+1):(reps/thin)){
+    noHierMean <- noHierMean + noHierDraws$draws[i,] / (reps / (2 * thin))
+  }
   
 }
 
@@ -402,17 +442,18 @@ forecasts{
   # This should be parallelised and put onto slurm.
   increment <- FALSE
   S <- 10
-  maxT <- 200
+  maxT <- 300
   K <- 6
   sSeq <- seq(S, maxT, S)
   results <- data.frame()
   methods <- c('None', 'No Hier', 'Single', 'Mixture')
-  vars <- c('sigSq_eps', 'sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2') 
   prior <- list()
-  starting <- c(-5, -5, rep(0, 4), c(chol(diag(0.5, 6))))
-  prior[[1]] <- c(-5, -5, rep(0, 4), c(chol(diag(c(5, 5, 10, 10, 10, 10)))))
+  starting <- matrix(c(-5, -5, rep(0, 4), c(chol(diag(0.5, 6)))), ncol = 1)
+  prior[[1]] <- matrix(c(-5, -5, rep(0, 4), c(chol(diag(c(5, 5, 10, 10, 10, 10))))), ncol = 1)
+  prior[[2]] <- matrix(noHierLam, ncol = 1)
+  prior[[3]] <- matrix(noMixLam, ncol = 1)
   fit <- prior
-  for(i in seq_along(id$idfc)){
+  for(i in 2:11){#seq_along(id$idfc)){
     
     # Extract Data
     carsAug %>%
@@ -446,60 +487,30 @@ forecasts{
         fit <- fitCarMods(dat, prior, increment, starting)
       }
 
-      # Extract Variance Matrices
-      sigma <- list()
+      # Extract Lower Triangular Matrices
+      L <- NULL
       for(k in 1:3){
-        u <- matrix(fit[[k]][7:42], 6)
-        sigma[[k]] <- t(u) %*% u
+        L <- rbind(L, t(matrix(fit[[k]][7:42], 6)))
       }
-      sigma[[4]] <- list()
-      for(k in 1:K){
-        u <- matrix(fit[[4]][1:36 + 6*K + 36*(k-1)], 6)
-        sigma[[4]][[k]] <- t(u) %*% u
-      }
-      weights <- fit[[4]][42*K+1:K]
-      # Set up forcast densities
-      density <- list(matrix(0, 1000*S, 2),
-                      matrix(0, 1000*S, 2),
-                      matrix(0, 1000*S, 2),
-                      matrix(0, 1000*S, 2))
-      # Average forecasts over 1000 draws from posterior
-      for(l in 1:1000){
-        # Draw sample for each method
-        draws <- matrix(0, 6, 4)
-        draws[,1] <- mvtnorm::rmvnorm(1, fit[[1]][1:6], sigma[[1]])
-        draws[,2] <- mvtnorm::rmvnorm(1, fit[[2]][1:6], sigma[[2]])
-        draws[,3] <- mvtnorm::rmvnorm(1, fit[[3]][1:6], sigma[[3]])
-        u <- runif(1)
-        group <- min(which(cumsum(weights) > u))
-        draws[,4] <- mvtnorm::rmvnorm(1, fit[[4]][[group]][1:6], sigma[[4]][[group]])
-        
-        # Forecast densities for each approach
-        for(k in 1:4){
-          afc1 <- data[sSeq[s], 1]
-          afc2 <- data[sSeq[s]-1, 1]
-          dfc1 <- data[sSeq[s], 2]
-          dfc2 <- data[sSeq[s]-1, 2]
-          # Forecast from h = 1, ..., S steps ahead
-          for(h in 1:S){
-            afc <- afc1 * draws[3, k] + afc2 * draws[4, k]
-            density[[k]][1:1000 + (h-1)*1000, 1] <- density[[k]][1:1000 + (h-1)*1000, 1] + dnorm(asup, afc, sqrt(exp(draws[1, k]))) / 1000
-            dfc <- dfc1 * draws[5, k] + dfc2 * draws[6, k]
-            density[[k]][1:1000 + (h-1)*1000, 2] <- density[[k]][1:1000 + (h-1)*1000, 2] + dnorm(dsup, dfc, sqrt(exp(draws[2, k]))) / 1000
-            afc2 <- afc1
-            afc1 <- afc
-            dfc2 <- dfc1
-            dfc1 <- dfc
-          }
-        }
-      }
+      means <- cbind(fit[[1]][1:6],
+                     fit[[2]][1:6],
+                     fit[[3]][1:6]) 
+      #sigma4 <- list()
+      #for(k in 1:K){
+      #  u <- matrix(fit[[4]][1:36 + 6*K + 36*(k-1)], 6)
+      #  sigma4[[k]] <- t(u) %*% u
+      #}
+      #weights <- fit[[4]][42*K+1:K]
+      
+      densities <- evalFcDens(data[-1:S + sSeq[s], ], means, L, 1000, S, asup, dsup)
+      
       # Grab logscores for each method, h, and variable.
-      for(k in 1:4){
+      for(k in 1:3){
         for(h in 1:S){
           aindex <- min(which(asup > data[sSeq[s]+h,1]))
-          alogscore <- log(density[[k]][(h-1)*1000 + aindex, 1])
+          alogscore <- log(densities[(h-1)*1000 + aindex, 1, k])
           dindex <- min(which(dsup > data[sSeq[s]+h,2]))
-          dlogscore <- log(density[[k]][(h-1)*1000 + dindex, 2])
+          dlogscore <- log(densities[(h-1)*1000 + dindex, 2, k])
           # Attach results
           results <- rbind(results, 
                            data.frame(logscore = c(alogscore, dlogscore),
@@ -514,6 +525,11 @@ forecasts{
     print(i)
   }
   
+  
+  results %>%
+    group_by(S, method, variable) %>%
+    summarise(ls = mean(logscore, na.rm = TRUE)) %>%
+    ggplot() + geom_line(aes(S, ls, colour = method)) + facet_wrap(~variable, scales = 'free')
   
 }
 
