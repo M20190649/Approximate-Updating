@@ -186,7 +186,7 @@ densities %>%
 
 OtherMods{
   data <- readRDS('MCMCData.RDS')
-  reps <- 5000
+  reps <- 50000
   
   draws <- list()
   hyper <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(10, 6)), v = 6, scale = diag(1, 6))
@@ -194,13 +194,8 @@ OtherMods{
   for(i in 1:N){
     draws[[i+1]] <- c(-5, -5, 0, -0.1, 0.15, 0.05)
   }
-  N <- 100
-  datSub <- list()
-  for(i in 1:N){
-    datSub[[i]] <- data[[i]]
-  }
-  
-  noMixDraws <- hierNoMixMCMC(datSub, reps, draws, hyper, thin = 10)
+
+  noMixDraws <- hierNoMixMCMC(data, reps, draws, hyper, thin = 10)
   saveRDS(noMixDraws, 'noMixN2000.RDS')
   
   noMixDraws$draws[[1]]$mean %>%
@@ -223,7 +218,8 @@ OtherMods{
   
   draws <- c(-5, -5, 0, 0, 0, 0)
   hyper <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(10, 6)))
-  noHierDraws <- noHierMCMC(datSub, reps, draws, hyper, thin = 10, stepsize = c(0.01, 0.01, 0.1, 0.1, 0.1, 0.1))
+  hyper$var <- diag(solve(hyper$varInv))
+  noHierDraws <- noHierMCMC(data, reps, draws, hyper, thin = 10, stepsize = 0.01)
   saveRDS(noHierDraws, 'noHierN2000.RDS')
   
   noHierDraws$draws %>%

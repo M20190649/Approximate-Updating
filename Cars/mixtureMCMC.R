@@ -366,7 +366,7 @@ hierNoMixMCMC <-function(data, reps, draw, hyper, thin = 1, error = 'gaussian', 
   
 noHierMCMC <- function(data, reps, draw, hyper, thin = 1, error = 'gaussian', stepsize = 0.01){
   N <- length(data)
-  #set up likelihood function and theta dimension
+  # set up likelihood function and theta dimension
   if(error == 'gaussian'){
     likelihood <- nlogDensity
     dim <- 6
@@ -376,15 +376,36 @@ noHierMCMC <- function(data, reps, draw, hyper, thin = 1, error = 'gaussian', st
   } else {
     stop('error must be gaussian or t')
   }
-  if(length(stepsize) == 1){
-    stepsize <- rep(stepsize, dim)
-  } 
-  accept <- rep(0, dim)
-  #set up storage for saved draws
+  accept <- 0
+  # set up storage for saved draws
   nSave <- floor(reps / thin)
   saveDraws <- matrix(0, nSave, dim)
   # changing MH acceptance rate
   stepsizeCons <- 0.44 * (1 - 0.44)
+  
+  # sums of data
+  a11 <- a22 <- a12 <- a01 <- a02 <- 0
+  d11 <- d22 <- d12 <- d01 <- d02 <- 0
+  for(i in 1:N){
+    T <- nrow(data[[i]])
+    for(t in 3:T){
+      a11 <- a11 + data[[i]][t-1, 1]^2
+      a22 <- a22 + data[[i]][t-2, 1]^2
+      a12 <- a12 + data[[i]][t-1, 1] * data[[i]][t-2, 1]
+      a01 <- a01 + data[[i]][t-1, 1] * data[[i]][t, 1]
+      a02 <- a02 + data[[i]][t-2, 1] * data[[i]][t, 1]
+      d11 <- d11 + data[[i]][t-1, 2]^2
+      d22 <- d22 + data[[i]][t-2, 2]^2
+      d12 <- d12 + data[[i]][t-1, 2] * data[[i]][t-2, 2]
+      d01 <- d01 + data[[i]][t-1, 2] * data[[i]][t, 2]
+      d02 <- d02 + data[[i]][t-2, 2] * data[[i]][t, 2]
+    }
+  }
+  # Metropolis Hastings variables
+  MHvar <- 1:2
+  if(error == 't'){
+    MHvar <- c(MHvar, 7:8)
+  }
   
   for(i in 2:reps){
     # timing
@@ -399,26 +420,47 @@ noHierMCMC <- function(data, reps, draw, hyper, thin = 1, error = 'gaussian', st
         timePerIter <- timePerIter * 60
       }
     }
-    # theta
-    for(k in 1:dim){
-      candidate <- draw
-      candidate[k] <- candidate[k] + stepsize[k] * rnorm(1)
-      canDens <- 0
-      oldDens <- 0
-      for(j in 1:N){
-        canDens <- canDens + likelihood(data[[j]], candidate, hyper$mean, hyper$varInv)
-        oldDens <- oldDens + likelihood(data[[j]], draw, hyper$mean, hyper$varInv)
-      }
-      ratio <- exp(canDens - oldDens)
-      c <- stepsize[k] / stepsizeCons
-      if(runif(1) < ratio){
-        accept[k] <- accept[k] + 1
-        draw <- candidate
-        stepsize[k] <- stepsize[k] + c * (1 - 0.44) / (18 + i)
-      } else {
-        stepsize[k] <- stepsize[k] - c * 0.44 / (18 + i)
-      }
+    # log_sigma_squared and nu (if error ~ t)
+    candidate <- draw
+    candidate[MHvar] <- candidate[MHvar] + stepsize * rnorm(dim-4)
+    canDens <- 0
+    oldDens <- 0
+    for(j in 1:N){
+      canDens <- canDens + likelihood(data[[j]], candidate, hyper$mean, hyper$varInv)
+      oldDens <- oldDens + likelihood(data[[j]], draw, hyper$mean, hyper$varInv)
     }
+    ratio <- exp(canDens - oldDens)
+    c <- stepsize / stepsizeCons
+    if(runif(1) < ratio){
+      accept <- accept + 1
+      draw <- candidate
+      stepsize <- stepsize + c * (1 - 0.44) / (18 + i)
+    } else {
+      stepsize <- stepsize - c * 0.44 / (18 + i)
+    }
+    # phi 1
+    meanNumer <- hyper$var[3] * (a01 - draw[4] * a12)  +  exp(draw[1]) * hyper$mean[3]
+    meanDenom <- hyper$var[3] * a11  +  exp(draw[1])
+    var <- exp(draw[1]) * hyper$var[3] / meanDenom
+    draw[3] <- rnorm(1, meanNumer / meanDenom, sqrt(var))
+    
+    # phi 2
+    meanNumer <- hyper$var[4] * (a02 - draw[3] * a12)  +  exp(draw[1]) * hyper$mean[4]
+    meanDenom <- hyper$var[4] * a22  +  exp(draw[1])
+    var <- exp(draw[1]) * hyper$var[4] / meanDenom
+    draw[4] <- rnorm(1, meanNumer / meanDenom, sqrt(var))
+    
+    # gamma 1
+    meanNumer <- hyper$var[5] * (d01 - draw[6] * d12)  +  exp(draw[2]) * hyper$mean[5]
+    meanDenom <- hyper$var[5] * d11  +  exp(draw[2])
+    var <- exp(draw[2]) * hyper$var[5] / meanDenom
+    draw[5] <- rnorm(1, meanNumer / meanDenom, sqrt(var))
+    
+    # gamma 2
+    meanNumer <- hyper$var[6] * (d02 - draw[5] * d12)  +  exp(draw[2]) * hyper$mean[6]
+    meanDenom <- hyper$var[6] * d22  +  exp(draw[2])
+    var <- exp(draw[2]) * hyper$var[6] / meanDenom
+    draw[6] <- rnorm(1, meanNumer / meanDenom, sqrt(var))
 
     # save draws
     if(i %% thin == 0){
