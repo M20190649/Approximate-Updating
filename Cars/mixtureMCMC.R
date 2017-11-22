@@ -478,3 +478,44 @@ noHierMCMC <- function(data, reps, draw, hyper, thin = 1, error = 'gaussian', st
   }
   list(draws = saveDraws, accept = accept, steps = stepsize)
 }
+
+singleMCMCallMH <- function(data, reps, draw, hyper, thin = 1, error = 'gaussian', stepsize = 0.01){
+  # set up likelihood function and theta dimension
+  if(error == 'gaussian'){
+    likelihood <- nlogDensity
+    dim <- 6
+  } else if(error == 't') {
+    likelihood <- tlogDensity
+    dim <- 8
+  } else {
+    stop('error must be gaussian or t')
+  }
+  accept <- 0
+  # set up storage for saved draws
+  nSave <- floor(reps / thin)
+  saveDraws <- matrix(0, nSave, dim)
+  # changing MH acceptance rate
+  stepsizeCons <- 0.44 * (1 - 0.44)
+  
+  for(i in 2:reps){
+    candidate <- draw
+    candidate <- candidate + stepsize * rnorm(dim)
+    canDens <- likelihood(data, candidate, hyper$mean, hyper$varInv)
+    oldDens <- likelihood(data, draw, hyper$mean, hyper$varInv)
+    ratio <- exp(canDens - oldDens)
+    c <- stepsize / stepsizeCons
+    if(runif(1) < ratio){
+      accept <- accept + 1
+      draw <- candidate
+      stepsize <- stepsize + c * (1 - 0.44) / (18 + i)
+    } else {
+      stepsize <- stepsize - c * 0.44 / (18 + i)
+    }
+    
+    # save draws
+    if(i %% thin == 0){
+      saveDraws[i/thin,] <- draw
+    }
+  }
+  list(draws = saveDraws, accept = accept, steps = stepsize)
+}

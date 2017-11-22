@@ -194,6 +194,7 @@ OtherMods{
 
   noMixDraws <- hierNoMixMCMC(data, reps, draws, hyper, thin = 10)
   saveRDS(noMixDraws, 'noMixN2000.RDS')
+  noMixDraws <- readRDS('noMixN2000.RDS')
   
   noMixDraws$draws[[1]]$mean %>%
     as.data.frame() %>%
@@ -202,7 +203,7 @@ OtherMods{
     rename(sigSq_eps = V1, sigSq_eta = V2, phi1 = V3, phi2 = V4, gamma1 = V5, gamma2 = V6) %>%
     gather(var, draw, -iter) %>%
     mutate(var = factor(var, levels = c('sigSq_eps', 'phi1', 'phi2', 'sigSq_eta', 'gamma1', 'gamma2'))) %>%
-    filter(iter > 100) %>%
+    filter(iter > 1000) %>%
     ggplot() + geom_line(aes(iter, draw)) + facet_wrap(~var, scales = 'free')
   
   noMixMean <- rep(0, 6)
@@ -228,10 +229,10 @@ OtherMods{
   }
   noMixLam <- c(noMixMean, chol(noMixVar))
   densities <- as.data.frame(densities)
-  colnames(densities) <- vars
+  colnames(densities) <- c('sigSq_eps', 'sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2')
   densities %>% 
     gather(var, dens) %>%
-    cbind(support = c(support)) %>%
+    cbind(support = unlist(c(support))) %>%
     mutate(var = factor(var, levels = c('sigSq_eps', 'phi1', 'phi2', 'sigSq_eta', 'gamma1', 'gamma2'))) %>%
     ggplot() + geom_line(aes(support, dens)) + facet_wrap(~var, scales = 'free')
     
@@ -241,6 +242,7 @@ OtherMods{
   hyper$var <- diag(solve(hyper$varInv))
   noHierDraws <- noHierMCMC(data, reps, draws, hyper, thin = 10, stepsize = 0.01)
   saveRDS(noHierDraws, 'noHierN2000.RDS')
+  noHierDraws <- readRDS('noHierN2000.RDS')
   
   noHierDraws$draws %>%
     as.data.frame() %>%
@@ -254,10 +256,10 @@ OtherMods{
   
   noHierMean <- rep(0, 6)
   noHierVar <- var(noHierDraws$draws[(reps/(2*thin)+1):(reps/thin),])
-  noHierLam <- c(noHierMean, chol(noHierVar))
   for(i in (reps/(2*thin)+1):(reps/thin)){
     noHierMean <- noHierMean + noHierDraws$draws[i,] / (reps / (2 * thin))
   }
+  noHierLam <- c(noHierMean, chol(noHierVar))
   
 }
 
@@ -468,7 +470,16 @@ forecasts{
   prior[[1]] <- matrix(c(-5, -5, rep(0, 4), c(chol(diag(c(5, 5, 10, 10, 10, 10))))), ncol = 1)
   prior[[2]] <- matrix(noHierLam, ncol = 1)
   prior[[3]] <- matrix(noMixLam, ncol = 1)
+  saveRDS(prior, 'prior.RDS')
   fit <- prior
+  
+  hyper <- list()
+  for(k in 1:3){
+    hyper[[k]] <- list()
+    hyper[[k]]$mean <- prior[[k]][1:6]
+    uinv <- solve(matrix(prior[[k]][7:42], 6))
+    hyper[[k]]$varInv <- t(uinv) %*% uinv
+  }
   
   datafc <- list()
   for(i in seq_along(id$idfc)){
@@ -491,9 +502,22 @@ forecasts{
     datafc[[i]] -> data
     
     # Set forcast supports
-    asup <- seq(0.8*min(data[,1]), 1.25*max(data[,1]), length.out=1000)
-    dsup <- seq(0.8*min(data[,2]), 1.25*max(data[,2]), length.out=1000)
-      
+    aLower <- min(data[,1])
+    if(aLower < 0){
+      aLower <- 1.5 * aLower
+    } else {
+      aLower <- 0.5 * aLower
+    }
+    dLower <- min(data[,2])
+    if(dLower < 0){
+      dLower <- 1.5 * dLower
+    } else {
+      dLower <- 0.5 * dLower
+    }
+    
+    asup <- seq(aLower, 1.5*max(data[,1]), length.out=1000)
+    dsup <- seq(dLower, 1.5*max(data[,2]), length.out=1000)
+    
     # Incrementally add data to VB fits
     for(s in seq_along(sSeq)){
       if(sSeq[s] > nrow(data)){
@@ -510,8 +534,14 @@ forecasts{
       } else {
         fit <- fitCarMods(dat, prior, increment, starting)
       }
-
-      # Extract Lower Triangular Matrices
+      # Run MCMC for each method
+      MCMC <- list()
+      for(k in 1:3){
+        MCMC[[k]] <- singleMCMCallMH(dat, 5000, c(-5, -5, 0, 0, 0, 0), hyper[[k]])$draws
+      }
+      
+      
+      # Extract Lower Triangular Matrices from VB
       L <- NULL
       for(k in 1:3){
         L <- rbind(L, t(matrix(fit[[k]][7:42], 6)))
@@ -519,27 +549,25 @@ forecasts{
       means <- cbind(fit[[1]][1:6],
                      fit[[2]][1:6],
                      fit[[3]][1:6]) 
-      #sigma4 <- list()
-      #for(k in 1:K){
-      #  u <- matrix(fit[[4]][1:36 + 6*K + 36*(k-1)], 6)
-      #  sigma4[[k]] <- t(u) %*% u
-      #}
-      #weights <- fit[[4]][42*K+1:K]
       
-      densities <- evalFcDens(data[-1:S + sSeq[s], ], means, L, 1000, S, asup, dsup)
+      
+      densities <- evalFcDens(data[(sSeq[s]-1):sSeq[s], ], means, L, 1000, S, asup, dsup, MCMC)
       
       # Grab logscores for each method, h, and variable.
       for(k in 1:3){
         for(h in 1:S){
           aindex <- min(which(asup > data[sSeq[s]+h,1]))
-          alogscore <- log(densities[(h-1)*1000 + aindex, 1, k])
+          alogscoreVB <- log(densities[(h-1)*1000 + aindex, 1, k])
+          alogscoreMCMC <- log(densities[(h-1)*1000 + aindex, 3, k])
           dindex <- min(which(dsup > data[sSeq[s]+h,2]))
-          dlogscore <- log(densities[(h-1)*1000 + dindex, 2, k])
+          dlogscoreVB <- log(densities[(h-1)*1000 + dindex, 2, k])
+          dlogscoreMCMC <- log(densities[(h-1)*1000 + dindex, 4, k])
           # Attach results
           results <- rbind(results, 
-                           data.frame(logscore = c(alogscore, dlogscore),
-                                      variable = c('a', 'd'),
-                                      method = methods[k],
+                           data.frame(logscore = c(alogscoreVB, alogscoreMCMC, dlogscoreVB, dlogscoreMCMC),
+                                      variable = c('a', 'a', 'd', 'd'),
+                                      method = c('VB', 'MCMC', 'VB', 'MCMC'),
+                                      prior = methods[k],
                                       S = sSeq[s],
                                       h = h,
                                       id = id$idfc[i]))
