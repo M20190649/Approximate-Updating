@@ -461,20 +461,23 @@ forecasts{
   increment <- FALSE
   S <- 10
   maxT <- 300
-  K <- 6
   sSeq <- seq(S, maxT, S)
   results <- data.frame()
-  methods <- c('None', 'No Hier', 'Single', 'Mixture')
-  prior <- list()
+  methods <- c('None', 'Hierarchy')
   starting <- matrix(c(-5, -5, rep(0, 4), c(chol(diag(0.5, 6)))), ncol = 1)
+  
+  prior <- list()
   prior[[1]] <- matrix(c(-5, -5, rep(0, 4), c(chol(diag(c(5, 5, 10, 10, 10, 10))))), ncol = 1)
-  prior[[2]] <- matrix(noHierLam, ncol = 1)
-  prior[[3]] <- matrix(noMixLam, ncol = 1)
+  #prior[[2]] <- matrix(noHierLam, ncol = 1)
+  prior[[2]] <- matrix(noMixLam, ncol = 1)
   saveRDS(prior, 'prior.RDS')
+  
+  prior <- readRDS('prior.RDS')
+  prior <- list(prior[[1]], prior[[3]])
   fit <- prior
   
   hyper <- list()
-  for(k in 1:3){
+  for(k in 1:2){
     hyper[[k]] <- list()
     hyper[[k]]$mean <- prior[[k]][1:6]
     uinv <- solve(matrix(prior[[k]][7:42], 6))
@@ -494,12 +497,12 @@ forecasts{
     as.matrix() -> datafc[[i]]
   }
   saveRDS(datafc, 'ForecastData.RDS')
-  
+  datafc <- readRDS('ForecastData.RDS')
   
   for(i in seq_along(id$idfc)){
     
     # Extract Data
-    datafc[[i]] -> data
+    data <- datafc[[i]]
     
     # Set forcast supports
     aLower <- min(data[,1])
@@ -536,25 +539,26 @@ forecasts{
       }
       # Run MCMC for each method
       MCMC <- list()
-      for(k in 1:3){
-        MCMC[[k]] <- singleMCMCallMH(dat, 5000, c(-5, -5, 0, 0, 0, 0), hyper[[k]])$draws
+      for(k in 1:2){
+        MCMC[[k]] <- singleMCMCallMH(dat, 5000, c(-5, -5, 0, 0, 0, 0), hyper[[k]],
+                                     stepsize = ifelse(k == 1, 0.1, 0.01))$draws
       }
       
       
       # Extract Lower Triangular Matrices from VB
       L <- NULL
-      for(k in 1:3){
+      for(k in 1:2){
         L <- rbind(L, t(matrix(fit[[k]][7:42], 6)))
       }
       means <- cbind(fit[[1]][1:6],
-                     fit[[2]][1:6],
-                     fit[[3]][1:6]) 
+                     fit[[2]][1:6])
+                     #fit[[3]][1:6]) 
       
       
       densities <- evalFcDens(data[(sSeq[s]-1):sSeq[s], ], means, L, 1000, S, asup, dsup, MCMC)
       
       # Grab logscores for each method, h, and variable.
-      for(k in 1:3){
+      for(k in 1:2){
         for(h in 1:S){
           aindex <- min(which(asup > data[sSeq[s]+h,1]))
           alogscoreVB <- log(densities[(h-1)*1000 + aindex, 1, k])
@@ -576,13 +580,42 @@ forecasts{
     }
     print(i)
   }
-  
-  
-  results %>%
-    group_by(S, method, variable) %>%
-    summarise(ls = mean(logscore, na.rm = TRUE)) %>%
-    ggplot() + geom_line(aes(S, ls, colour = method)) + facet_wrap(~variable, scales = 'free')
-  
+
+library(scales)
+reverselog_trans <- function(base = exp(1)) {
+  trans <- function(x) -log(x, base)
+  inv <- function(x) base^(-x)
+  trans_new(paste0("reverselog-", format(base)), trans, inv, 
+            log_breaks(base = base), 
+            domain = c(1e-100, Inf))
 }
 
+results %>% 
+  group_by(id, method, prior, S, h) %>%
+  summarise(ls = -sum(logscore)) %>%
+  mutate(T = ceiling(S / 30)) %>%
+  ggplot() + geom_boxplot(aes(factor(T), ls, colour = prior)) + 
+  facet_wrap(~method, ncol = 1) +
+  theme_bw() +
+  labs(x = 'T Range', y = 'Combined Logscore') + 
+  scale_x_discrete(labels = c('10-30', '40-60', '70-90', '100-120', '130-150', 
+                              '160-180', '190-210', '220-240', '250-270', '280-300')) + 
+  scale_y_continuous(trans = reverselog_trans(base=10),
+                     labels=trans_format("identity", function(x) -x))
 
+results %>%
+  group_by(id, method, prior, S) %>%
+  summarise(ls = sum(logscore)) %>%
+  filter(ls != -Inf) %>%
+  ungroup() %>%
+  group_by(prior, method) %>%
+  summarise(mean = mean(ls),
+            sd = sd(ls),
+            skew = moments::skewness(ls),
+            l95 = quantile(ls, 0.025),
+            l50 = quantile(ls, 0.25),
+            med = median(ls),
+            u50 = quantile(ls, 0.75),
+            u95 = quantile(ls, 0.975),
+            n = n())
+}

@@ -66,13 +66,14 @@ carsVB <- function(data, lambda, S = 25, maxIter = 5000, alpha = 0.01, beta1 = 0
 fitCarMods <- function(data, prevFit, increment, starting){
   S <- nrow(data)
   results <- list()
+  K <- length(prevFit)
   #if(increment){
   #  for(k in 1:3){
   #    results[[k]] <- updateVB(data, prevFit[[k]], stepsize = S, lags = 2, model = arUpdater)$lambda
   #  }
     #results[[4]] <- updateVBMix(data, prevFit[[4]], stepsize = S, lags = 2, model = arUpdateMix)$lambda
   #} else {
-    for(k in 1:3){
+    for(k in 1:K){
       mean <- prevFit[[k]][1:6]
       u <- matrix(prevFit[[k]][7:42], 6)
       linv <- solve(t(u))
@@ -109,17 +110,17 @@ singleMCMCallMH <- function(data, reps, draw, hyper, thin = 1, error = 'gaussian
   saveDraws <- matrix(0, nSave, dim)
   # changing MH acceptance rate
   stepsizeCons <- 0.44 * (1 - 0.44)
-  
+  oldDens <- likelihood(data, draw, hyper$mean, hyper$varInv)
   for(i in 2:reps){
     candidate <- draw
     candidate <- candidate + stepsize * rnorm(dim)
     canDens <- likelihood(data, candidate, hyper$mean, hyper$varInv)
-    oldDens <- likelihood(data, draw, hyper$mean, hyper$varInv)
     ratio <- exp(canDens - oldDens)
     c <- stepsize / stepsizeCons
     if(runif(1) < ratio){
       accept <- accept + 1
       draw <- candidate
+      oldDens <- canDens
       stepsize <- stepsize + c * (1 - 0.44) / (18 + i)
     } else {
       stepsize <- stepsize - c * 0.44 / (18 + i)

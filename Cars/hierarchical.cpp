@@ -272,8 +272,8 @@ struct hierAr {
     Matrix<T, Dynamic, 1> hypKernel(dim);
     hypKernel.fill(0);
     for(int i = 0; i < dim; ++i){
-      for(int j = i; j < dim; ++j){
-        hypKernel(i) += (thetaHat(j) - hyperMean(j)) * hyperLinv(j, i);
+      for(int j = 0; j <= i; ++j){
+        hypKernel(i) += (thetaHat(j) - hyperMean(j)) * hyperLinv(i, j);
       }
       hyperprior += - 0.5 * pow(hypKernel(i), 2);
     }
@@ -284,8 +284,8 @@ struct hierAr {
     kernel.fill(0);
     for(int k = 0; k < N; ++k){
       for(int i = 0; i < dim; ++i){
-        for(int j = i; j < dim; ++j){
-          kernel(i, k) += (theta(j , k) - thetaHat(j)) * Linv(j, i);
+        for(int j = 0; j <= i; ++j){
+          kernel(i, k) += (theta(j , k) - thetaHat(j)) * Linv(i, j);
         }
         prior += - 0.5 * pow(kernel(i, k), 2);
       }
@@ -370,8 +370,8 @@ struct arUpdate {
     Matrix<T, Dynamic, 1> kernel(dim);
     kernel.fill(0);
     for(int i = 0; i < dim; ++i){
-      for(int j = i; j < dim; ++j){
-        kernel(i) += (theta(j) - mean(j)) * Linv(j, i);
+      for(int j = 0; j <= i; ++j){
+        kernel(i) += (theta(j) - mean(j)) * Linv(i, j);
       }
       prior += - 0.5 * pow(kernel(i), 2);
     }

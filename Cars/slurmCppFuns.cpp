@@ -173,8 +173,8 @@ struct arUpdate {
     Matrix<T, Dynamic, 1> kernel(dim);
     kernel.fill(0);
     for(int i = 0; i < dim; ++i){
-      for(int j = i; j < dim; ++j){
-        kernel(i) += (theta(j) - mean(j)) * Linv(j, i);
+      for(int j = 0; j <= i; ++j){
+        kernel(i) += (theta(j) - mean(j)) * Linv(i, j);
       }
       prior += - 0.5 * pow(kernel(i), 2);
     }
@@ -191,8 +191,8 @@ struct arUpdate {
       loglikKernel(t, 0) = data(t, 0);
       loglikKernel(t, 1) = data(t, 1);
       for(int i = 1; i <= lags; ++i){
-        loglikKernel(t, 0) -= data(t-i, 0) * theta(2*i);
-        loglikKernel(t, 1) -= data(t-i, 1) * theta(2*i+1);
+        loglikKernel(t, 0) -= data(t-i, 0) * theta(1 + i);
+        loglikKernel(t, 1) -= data(t-i, 1) * theta(1 + lags + i);
       }
       logLik += - 0.5 * theta(0) - 0.5 * theta(1) - 
         pow(loglikKernel(t, 0), 2) / (2 * sigSqV) -
@@ -241,7 +241,7 @@ cube evalFcDens (mat data, mat means, mat L, int M, int S, vec asup, vec dsup, R
       }
       // MCMC forecast densities
       afc1 = data(1, 0); afc2 = data(0, 0); dfc1 = data(1, 1); dfc2 = data(0, 1);
-      draws = MCMCdraws.row(MCMCdraws.n_rows - 1000 +m).t();
+      draws = MCMCdraws.row(1003 + 4 * m).t();
       for(int h = 0; h < S; ++h){
         afc = afc1 * draws(2) + afc2 * draws(3);
         dfc = dfc1 * draws(4) + dfc2 * draws(5);
