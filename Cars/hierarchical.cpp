@@ -415,92 +415,146 @@ Rcpp::List arUpdater(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec me
 
 struct arUpdateMix {
   const mat data;
-  const vec epsilon;
   const vec mean;
   const mat Linv;
-  const int lags;
   const vec logdets;
   const vec weights;
-  arUpdateMix(const mat& dataIn, const vec& epsIn, const vec& meanIn, const mat& LinvIn, const int& lagsIn, const vec& logdetsIn, const vec& weightsIn) :
-    data(dataIn), epsilon(epsIn), mean(meanIn), Linv(LinvIn), lags(lagsIn), logdets(logdetsIn), weights(weightsIn) {}
+  arUpdateMix(const mat& dataIn, const vec& meanIn, const mat& LinvIn, const vec& logdetsIn, const vec& weightsIn) :
+    data(dataIn), mean(meanIn), Linv(LinvIn), logdets(logdetsIn), weights(weightsIn) {}
   template <typename T> //
-  T operator ()(const Matrix<T, Dynamic, 1>& lambda)
+  T operator ()(const Matrix<T, Dynamic, 1>& theta)
     const{
     using std::log; using std::exp; using std::pow; using std::sqrt; using std::fabs;
     int N = data.n_rows;
-    int dim = 2 + 2 * lags;
-    // Create theta as Mu + U %*% Eps
-    Matrix<T, Dynamic, 1> theta1(dim);
-    for(int i = 0; i < dim; ++i){
-      theta1(i) = lambda(i);
-      for(int j = 0; j <= i; ++j){
-        theta1(i) += lambda(dim*(i+2) + j) * epsilon(j);
-      }
-    }
-    Matrix<T, Dynamic, 1> theta2(dim);
-    for(int i = 0; i < dim; ++i){
-      theta2(i) = lambda(dim + i);
-      for(int j = 0; j <= i; ++j){
-        theta2(i) += lambda(dim*(dim + 2 + i) + j) * epsilon(j);
-      }
-    }
-    T w = 1.0 / (1 + exp(-lambda(2*dim*(dim+1))));
-  
-    Matrix<T, Dynamic, 1> theta = w * theta1  +  (1-w) * theta2;  
+    int K = weights.n_elem;
     // Constrained Positive
     T sigSqV = exp(theta(0)), sigSqD = exp(theta(1));
-    // Evaluate log(p(theta)), start by evaluative the quadrating in the MVN exponents
-    Matrix<T, Dynamic, Dynamic> kernel(dim, 2);
+    // Evaluate log(p(theta)), start by evaluative the quadratic in the MVN exponents
+    Matrix<T, Dynamic, Dynamic> kernel(6, K);
     kernel.fill(0);
-    T exponent1 = 0, exponent2 = 0;
-    for(int i = 0; i < dim; ++i){
-      for(int j = i; j < dim; ++j){
-        kernel(i, 0) += (theta(j) - mean(j)) * Linv(j, i);
-        kernel(i, 1) += (theta(j) - mean(j+dim)) * Linv(j+dim, i);
+    Matrix<T, Dynamic, 1> exponents(K);
+    exponents.fill(0);
+    T prior = 0;
+    for(int k = 0; k < K; ++k){
+      for(int i = 0; i < 6; ++i){
+        for(int j = 0; j <= i; ++j){
+          kernel(i, k) += (theta(j) - mean(k*6 + j)) * Linv(k*6 + i, j);
+        }
+        exponents(k) += pow(kernel(i, k), 2);
       }
-      exponent1 += pow(kernel(i, 0), 2);
-      exponent2 += pow(kernel(i, 1), 2);
+      prior += weights(k) * logdets(k) * exp(-0.5 * exponents(k));
     }
     // Put it together with weights and precalculated det(2*pi*Sig)^(-0.5) as priorComp
-    T prior = log(weights(0)* logdets(0) * exp(-0.5 * exponent1)  +
-      weights(1) * logdets(1) * exp(-0.5 * exponent2));
+    prior = log(prior);
     
-    
-    // Evaluate Log Det J
-    T logdetJ = theta(0)  +  theta(1)  +  log(fabs(w*lambda(dim) + (1-w)*lambda(dim*(dim+2))))  +
-      log(fabs(w*lambda(2*dim+1) + (1-w)*lambda(dim*(dim+3)+1))) +  (2*lags) * (log(w) + log(1-w));
-    for(int i = 2; i < dim; ++i){
-      logdetJ += log(fabs(lambda(dim*(i+2) + i)))  +  log(fabs(lambda(dim*(dim + 2 + i) + i)));
-    }
     // Evaluate log likelihood
     T logLik = 0;
-    Matrix<T, Dynamic, Dynamic> loglikKernel(N, 2);
-    for(int t = lags; t < N; ++t){
-      loglikKernel(t, 0) = data(t, 0);
-      loglikKernel(t, 1) = data(t, 1);
-      for(int i = 1; i <= lags; ++i){
-        loglikKernel(t, 0) -= data(t-i, 0) * theta(2*i);
-        loglikKernel(t, 1) -= data(t-i, 1) * theta(2*i+1);
-      }
-      logLik += - 0.5 * theta(0) - 0.5 * theta(1) - 
-        pow(loglikKernel(t, 0), 2) / (2 * sigSqV) -
-        pow(loglikKernel(t, 1), 2) / (2 * sigSqD);
+    for(int t = 2; t < N; ++t){
+      logLik += - 0.5 * (theta(0) + theta(1)) - pow(data(t, 0) - theta(2) * data(t-1, 0) - theta(3) * data(t-2, 0), 2) / (2 * sigSqV) -
+        pow(data(t, 1) - theta(4) * data(t-1, 1) - theta(5) * data(t-2, 1), 2) / (2 * sigSqD);
     }
-    return prior + logLik + logdetJ;
+    return prior + logLik;
   }
 };
 
+mat dThetadLambda(mat lambda, vec eps){
+  int K = lambda.n_cols;
+  mat out(12, K, fill::ones);
+  for(int k = 0; k < 6; ++k){
+    out.row(k+6) = eps(k);
+  }
+  return out;
+}
+
+mat dJdLambda(mat lambda, int k){
+  int K = lambda.n_cols;
+  mat out(12, K, fill::zeros);
+  for(int i = 6; i < 12; ++i){
+    out(i, k) = 1.0 / std::abs(lambda(i, k));
+  }
+  return out;
+}
+
+mat dThetadPi(Matrix<double, Dynamic, 1> theta, vec pi, mat lambda){
+  int K = pi.n_elem;
+  mat out(6, K);
+  double f;
+  for(int i = 0; i < 6; ++i){
+    f = 0;
+    for(int k = 0; k < K; ++k){
+      boost::math::normal_distribution<> dist(lambda(k), lambda(6+k));
+      out(i, k) = - cdf(dist, theta(i));
+      f += pi(k) * pdf(dist, theta(i));
+    }
+    out.row(i) /= f;
+  }
+  return out;
+}
+
+mat dPidZ(vec z){
+  int K = z.n_elem;
+  mat out(K, K);
+  vec ez = exp(z);
+  double sumSq = std::pow(sum(ez), 2);
+ 
+  for(int i = 0; i < K; ++i){
+    for(int j = i; j < K; ++j){
+      if(i == j){
+        double other = sumSq - ez(i);
+        out(i, j) = ez(i) * other / sumSq;
+      } else {
+        out(i, j) = out(j, i) = ez(i) * ez(j) / sumSq;
+      }
+    }
+  }
+  return out;
+}
+
+
 // [[Rcpp::export]]
-Rcpp::List arUpdaterMix(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec mean, mat Linv, int lags, vec logdets, vec weights){
-  Map<MatrixXd> lambda(Rcpp::as<Map<MatrixXd> >(lambdaIn));
+Rcpp::List arUpdaterMix(mat data, mat lambda, vec pi, vec eps, vec z, Rcpp::NumericMatrix thetaIn, int k, vec mean, mat Linv, vec logdets, vec weights){
+  Map<MatrixXd> theta(Rcpp::as<Map<MatrixXd> >(thetaIn));
+  int K = lambda.n_cols;
   double eval;
-  Matrix<double, Dynamic, 1>  grad(13 + 20 * lags + 8 * lags * lags);
-  // Autodiff
-  arUpdateMix p(data, epsilon, mean, Linv, lags, logdets, weights);
+  Matrix<double, Dynamic, 1>  thetaGrad(6);
+  
+  // Autodiff log p wrt theta
+  arUpdateMix p(data, mean, Linv, logdets, weights);
   stan::math::set_zero_all_adjoints();
-  stan::math::gradient(p, lambda, eval, grad);
-  return Rcpp::List::create(Rcpp::Named("grad") = grad,
+  stan::math::gradient(p, theta, eval, thetaGrad);
+
+  // diff theta wrt lambda
+  mat lambdaGrad = dThetadLambda(lambda, eps);
+  
+  // diff log J wrt lambda
+  mat jGrad = dJdLambda(lambda, k);
+  
+  // combine lambda gradients
+  for(int i = 0; i < 6; ++i){
+    lambdaGrad.row(i) *= thetaGrad(i);
+    lambdaGrad.row(6+i) *= thetaGrad(i);
+  }
+  lambdaGrad += jGrad;
+  
+  // diff theta wrt pi
+  mat piGrad = dThetadPi(theta, pi, lambda);
+  
+  // diff pi wrt z
+  mat zGrad = dPidZ(z);
+  
+  // combine z gradients
+  vec zGradFull(K, fill::zeros);
+  for(int i = 0; i < K; ++i){
+    for(int k = 0; k < K; ++k){
+      for(int j = 0; j < 6; ++j){
+        zGradFull(i) += thetaGrad(j) * piGrad(j, k) * zGrad(k, i);
+      }
+    }
+  }
+  return Rcpp::List::create(Rcpp::Named("Lgrad") = lambdaGrad,
+                            Rcpp::Named("Zgrad") = zGradFull,
                             Rcpp::Named("val") = eval);
+  
 }
 
 // [[Rcpp::export]]

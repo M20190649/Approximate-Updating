@@ -201,7 +201,7 @@ drawTheta <- function(thetaHat, var){
   draw
 }
 
-updateVB <- function(data, lambda, stepsize = 1, lags = 1, model = arUpdater,  ...){
+updateVB <- function(data, lambda, stepsize = 10, lags = 2, model = arUpdater,  ...){
   dim <- 2 + 2 * lags
   n <- stepsize + lags
   starting <- seq(1, nrow(data), stepsize)
@@ -219,24 +219,25 @@ updateVB <- function(data, lambda, stepsize = 1, lags = 1, model = arUpdater,  .
   lambda
 }
 
-updateVBMix <- function(data, lambda, stepsize = 1, lags = 1, K = 6, model = arUpdaterMix,  ...){
-  dim <- 2 + 2 * lags
+updateVBMix <- function(data, lambda, stepsize = 10, lags = 2, K = 6){
   n <- stepsize + lags
   starting <- seq(1, nrow(data), stepsize)
   for(t in seq_along(starting)){
     mean <- prevFit[[4]][1:(dim*K)]
     linv <- NULL
-    logdets <- NULL
+    dets <- NULL
     for(k in 1:K){
-      u <- matrix(lambda[dim*K + 1:dim^2 + (k-1)*dim^2], dim)
+      u <- matrix(lambda[6*K + 1:36 + (k-1)*36], 6)
       linv <- rbind(linv, solve(t(u)))
-      logdets <- c(logdets, -log(det(u)))
+      dets <- c(dets, det(solve(u)))
     }
-    weights <- lambda[K * dim * (dim+1) + 1:K]
+    weights <- lambda[K * 42 + 1:K]
     dat <- data[starting[t]:min(nrow(data), starting[t]+n-1),]
     if(is.matrix(dat)){
       if(nrow(dat) > lags){
-        lambda <- carsVB(dat, lambda, dimTheta = dim, model = model, mean = mean, Linv = linv, lags = lags, logdets = logdets, weights = weights...)$lambda
+        lambda <- carsVBMixScore(data, prevFit[[4]], lags = 2, 
+                                 priorMix = list(mean = mean, linv = linv, dets = dets, weights = weights),
+                                 S = 5, maxIter = 10000, threshold = 0.1)$lambda
       }
     } 
   }

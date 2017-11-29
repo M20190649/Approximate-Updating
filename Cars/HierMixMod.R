@@ -1,7 +1,5 @@
 ########## TO DO #############
 # Replace K with a Direchlet Process & Slice Sampler in the MCMC
-# Write VB algorithm with Graves' mixture derivatives - implement in arUpdaterMix
-# Run Slurm code
 
 # Consider new online implementations: 
 # add new data every 100ms or batches slightly more often 
@@ -9,17 +7,14 @@
 
 # For the supervisors:
 # Write more things.
+# Set a meeting at some stage
 
 
 library(tidyverse)
 library(Rcpp)
 library(RcppArmadillo)
 library(GGally)
-source('mixtureMCMC.R')
-sourceCpp('arvdMCMC.cpp')
-sourceCpp('hierarchical.cpp')
 id <- readRDS('carsID.RDS')
-data <- readRDS('MCMCData.RDS')
 
 read.csv('carsAug.csv') %>%
   select(ID, relX, dist, relv, reldelta) %>%
@@ -62,9 +57,10 @@ for(k in 1:K){
   hyper[[k]] <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(c(5, 5, 10, 10, 10, 10))), v = 6, scale = diag(1, 6))
   draws[[1]][[k]] <- list(mean = c(-5, -5, 0, 0, 0, 0), varInv = diag(10, 6))
 }
+draw[[1]]$pi <- rep(1/K, K)
 hyper$alpha <- rep(1, K)
 for(i in 1:N){
-  draws[[i+1]] <- list(theta = c(-5, -5, 0, -0.1, 0.15, 0.05), k = sample(1:2, 1), pi = rep(1/K, K))
+  draws[[i+1]] <- list(theta = c(-5, -5, 0, -0.1, 0.15, 0.05), k = sample(1:K, 1), pi = rep(1/K, K))
 }
 
 
@@ -179,6 +175,29 @@ densities %>%
   facet_wrap(~var, scales = 'free', ncol = 1) + 
   labs(title = 'Hierarchical Model') + 
   theme(legend.position = 'none')
+
+  means <- rep(0, 6*6)
+  varinv <- matrix(0, 6*6, 6)
+  linv <- matrix(0, 6*6, 6)
+  pi <- rep(0, 6)
+  for(i in 4001:8000){
+    for(k in 1:6){
+      means[(k-1)*6 + 1:6] <- means[(k-1)*6 + 1:6] + mixDraws$draws[[1]][[k]]$mean[i,] / 4000
+      uinv <- chol(mixDraws$draws[[1]][[k]]$varInv[,,i])
+      linv[(k-1)*6 + 1:6,] <-  linv[(k-1)*6 + 1:6,] + uinv / 4000
+      varinv[(k-1)*6 + 1:6,] <-  varinv[(k-1)*6 + 1:6,] + t(uinv) %*% uinv / 4000
+      for(n in 1:2000){
+        pi[k] <- pi[k] + mixDraws$draws[[1+n]]$pi[i, k] / (2000 * 4000)
+      }
+    }
+  }
+  dets <- numeric(6)
+  for(k in 1:6){
+    dets[k] <- det(linv[(k-1)*6 + 1:6, ])  
+  }
+  priorMix <- list(mean = means, linv = linv, varInv = varinv, dets = dets, weights = pi)
+  startingLam <- c(means, rep(c(diag(0.5, 6)), 6), rep(1, 6))
+
 }
 
 OtherMods{
@@ -424,7 +443,7 @@ posMeans %>%
 
 sliceSampler{
   set.seed(1)
-  N <- 200
+  N <- 100
   idSubset <- sample(noStop, N)
   data <- list()
   for(i in 1:N){
@@ -438,149 +457,167 @@ sliceSampler{
       select(a , d) %>%
       as.matrix() -> data[[i]]
   }
-  reps <- 10000
-  K <- 10
-  thin <- 1
+  reps <- 100000
+  maxK <- 20
+  thin <- 10
+  burn <- 0.9
+  
   draws <- list(list())
   hyper <- list()
-  for(k in 1:K){
-    hyper[[k]] <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(10, 6)), v = 6, scale = diag(1, 6))
+  for(k in 1:maxK){
+    hyper[[k]] <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(c(5, 5, 10, 10, 10, 10))), v = 6, scale = diag(1, 6))
     draws[[1]][[k]] <- list(mean = c(-5, -5, 0, 0, 0, 0), varInv = diag(10, 6))
   }
-  draws[[1]]$pi <- rep(1/K, K)
-  draws[[1]]$alpha <- 5
+  draws[[1]]$pi <- rep(1/maxK, maxK)
+  hyper$M <- 1
   for(i in 1:N){
-    draws[[i+1]] <- list(theta = c(-5, -5, 0, -0.1, 0.15, 0.05), k = sample(1:K, 1))
+    draws[[i+1]] <- list(theta = c(-5, -5, 0, -0.1, 0.15, 0.05), k = sample(1:5, 1))
   }
-    
-  sliceDraws <- sliceSampler(data, reps, draws, hyper, thin, K, 'gaussian', 0.01)
+  sliceDraws <- sliceSampler(data, reps, draws, hyper, thin, 10, 'gaussian', 0.01)
 }
 
 forecasts{
   # This should be parallelised and put onto slurm.
-  increment <- FALSE
-  S <- 10
-  maxT <- 300
-  sSeq <- seq(S, maxT, S)
-  results <- data.frame()
-  methods <- c('None', 'Hierarchy')
-  starting <- matrix(c(-5, -5, rep(0, 4), c(chol(diag(0.5, 6)))), ncol = 1)
+increment <- FALSE
+S <- 10
+maxT <- 300
+sSeq <- seq(S, maxT, S)
+results <- data.frame()
+methods <- c('None', 'Hierarchy')
+starting <- matrix(c(-5, -5, rep(0, 4), c(chol(diag(0.5, 6)))), ncol = 1)
+
+prior <- list()
+prior[[1]] <- matrix(c(-5, -5, rep(0, 4), c(chol(diag(c(5, 5, 10, 10, 10, 10))))), ncol = 1)
+#prior[[2]] <- matrix(noHierLam, ncol = 1)
+prior[[2]] <- matrix(noMixLam, ncol = 1)
+saveRDS(prior, 'prior.RDS')
+
+prior <- readRDS('prior.RDS')
+prior <- list(prior[[1]], prior[[3]])
+fit <- prior
+
+hyper <- list()
+for(k in 1:2){
+  hyper[[k]] <- list()
+  hyper[[k]]$mean <- prior[[k]][1:6]
+  uinv <- solve(matrix(prior[[k]][7:42], 6))
+  hyper[[k]]$varInv <- t(uinv) %*% uinv
+}
+
+datafc <- list()
+for(i in seq_along(id$idfc)){
+  carsAug %>%
+  filter(ID == id$idfc[i]) %>%
+  mutate(n = seq_along(v),
+         vl = ifelse(n == 1, 0, lag(v)),
+         a = v - lag(v),
+         d = delta - pi/2) %>%
+  filter(n > 1 & n <= 501) %>% 
+  select(a , d) %>%
+  as.matrix() -> datafc[[i]]
+}
+saveRDS(datafc, 'ForecastData.RDS')
+datafc <- readRDS('ForecastData.RDS')
+
+for(i in seq_along(id$idfc)){
   
-  prior <- list()
-  prior[[1]] <- matrix(c(-5, -5, rep(0, 4), c(chol(diag(c(5, 5, 10, 10, 10, 10))))), ncol = 1)
-  #prior[[2]] <- matrix(noHierLam, ncol = 1)
-  prior[[2]] <- matrix(noMixLam, ncol = 1)
-  saveRDS(prior, 'prior.RDS')
+  # Extract Data
+  data <- datafc[[i]]
   
-  prior <- readRDS('prior.RDS')
-  prior <- list(prior[[1]], prior[[3]])
-  fit <- prior
-  
-  hyper <- list()
-  for(k in 1:2){
-    hyper[[k]] <- list()
-    hyper[[k]]$mean <- prior[[k]][1:6]
-    uinv <- solve(matrix(prior[[k]][7:42], 6))
-    hyper[[k]]$varInv <- t(uinv) %*% uinv
+  # Set forcast supports
+  aLower <- min(data[,1])
+  if(aLower < 0){
+    aLower <- 1.5 * aLower
+  } else {
+    aLower <- 0.5 * aLower
+  }
+  dLower <- min(data[,2])
+  if(dLower < 0){
+    dLower <- 1.5 * dLower
+  } else {
+    dLower <- 0.5 * dLower
   }
   
-  datafc <- list()
-  for(i in seq_along(id$idfc)){
-    carsAug %>%
-    filter(ID == id$idfc[i]) %>%
-    mutate(n = seq_along(v),
-           vl = ifelse(n == 1, 0, lag(v)),
-           a = v - lag(v),
-           d = delta - pi/2) %>%
-    filter(n > 1 & n <= 501) %>% 
-    select(a , d) %>%
-    as.matrix() -> datafc[[i]]
+  asup <- seq(aLower, 1.5*max(data[,1]), length.out=1000)
+  dsup <- seq(dLower, 1.5*max(data[,2]), length.out=1000)
+    
+  # Incrementally add data to VB fits
+  for(s in seq_along(sSeq)){
+    if(sSeq[s] > nrow(data)){
+      break
+    }
+    if(s == 1 | !increment){
+      dat <- data[1:sSeq[s],]
+    } else {
+      dat <- data[(sSeq[s-1]+1):sSeq[s],]
+    }
+    # Update posterior approximations - Or re-estimate new ones from scratch
+    if(increment){
+      fit <- fitCarMods(dat, fit, increment, NULL)
+    } else {
+      fit <- fitCarMods(dat, prior, increment, starting)
+    }
+    # Run MCMC for each method
+    MCMC <- list()
+    for(k in 1:2){
+      MCMC[[k]] <- singleMCMCallMH(dat, 5000, c(-5, -5, 0, 0, 0, 0), hyper[[k]],
+                                   stepsize = ifelse(k == 1, 0.1, 0.01))$draws
+    }
+    
+    
+    # Extract Lower Triangular Matrices from VB
+    L <- NULL
+    for(k in 1:2){
+      L <- rbind(L, t(matrix(fit[[k]][7:42], 6)))
+    }
+    means <- cbind(fit[[1]][1:6],
+                   fit[[2]][1:6])
+                   #fit[[3]][1:6]) 
+    
+    
+    densities <- evalFcDens(data[(sSeq[s]-1):sSeq[s], ], means, L, 1000, S, asup, dsup, MCMC)
+    
+    # Grab logscores for each method, h, and variable.
+    for(k in 1:2){
+      for(h in 1:S){
+        aindex <- min(which(asup > data[sSeq[s]+h,1]))
+        alogscoreVB <- log(densities[(h-1)*1000 + aindex, 1, k])
+        alogscoreMCMC <- log(densities[(h-1)*1000 + aindex, 3, k])
+        dindex <- min(which(dsup > data[sSeq[s]+h,2]))
+        dlogscoreVB <- log(densities[(h-1)*1000 + dindex, 2, k])
+        dlogscoreMCMC <- log(densities[(h-1)*1000 + dindex, 4, k])
+        # Attach results
+        results <- rbind(results, 
+                        data.frame(logscore = c(alogscoreVB, alogscoreMCMC, dlogscoreVB, dlogscoreMCMC),
+                                   variable = c('a', 'a', 'd', 'd'),
+                                   method = c('VB', 'MCMC', 'VB', 'MCMC'),
+                                   prior = methods[k],
+                                   S = sSeq[s],
+                                   h = h,
+                                   id = id$idfc[i]))
+      }
+    }
   }
-  saveRDS(datafc, 'ForecastData.RDS')
-  datafc <- readRDS('ForecastData.RDS')
+  print(i)
+}
   
-  for(i in seq_along(id$idfc)){
-    
-    # Extract Data
-    data <- datafc[[i]]
-    
-    # Set forcast supports
-    aLower <- min(data[,1])
-    if(aLower < 0){
-      aLower <- 1.5 * aLower
-    } else {
-      aLower <- 0.5 * aLower
-    }
-    dLower <- min(data[,2])
-    if(dLower < 0){
-      dLower <- 1.5 * dLower
-    } else {
-      dLower <- 0.5 * dLower
-    }
-    
-    asup <- seq(aLower, 1.5*max(data[,1]), length.out=1000)
-    dsup <- seq(dLower, 1.5*max(data[,2]), length.out=1000)
-    
-    # Incrementally add data to VB fits
-    for(s in seq_along(sSeq)){
-      if(sSeq[s] > nrow(data)){
-        break
-      }
-      if(s == 1 | !increment){
-        dat <- data[1:sSeq[s],]
-      } else {
-        dat <- data[(sSeq[s-1]+1):sSeq[s],]
-      }
-      # Update posterior approximations - Or re-estimate new ones from scratch
-      if(increment){
-        fit <- fitCarMods(dat, fit, increment, NULL)
-      } else {
-        fit <- fitCarMods(dat, prior, increment, starting)
-      }
-      # Run MCMC for each method
-      MCMC <- list()
-      for(k in 1:2){
-        MCMC[[k]] <- singleMCMCallMH(dat, 5000, c(-5, -5, 0, 0, 0, 0), hyper[[k]],
-                                     stepsize = ifelse(k == 1, 0.1, 0.01))$draws
-      }
-      
-      
-      # Extract Lower Triangular Matrices from VB
-      L <- NULL
-      for(k in 1:2){
-        L <- rbind(L, t(matrix(fit[[k]][7:42], 6)))
-      }
-      means <- cbind(fit[[1]][1:6],
-                     fit[[2]][1:6])
-                     #fit[[3]][1:6]) 
-      
-      
-      densities <- evalFcDens(data[(sSeq[s]-1):sSeq[s], ], means, L, 1000, S, asup, dsup, MCMC)
-      
-      # Grab logscores for each method, h, and variable.
-      for(k in 1:2){
-        for(h in 1:S){
-          aindex <- min(which(asup > data[sSeq[s]+h,1]))
-          alogscoreVB <- log(densities[(h-1)*1000 + aindex, 1, k])
-          alogscoreMCMC <- log(densities[(h-1)*1000 + aindex, 3, k])
-          dindex <- min(which(dsup > data[sSeq[s]+h,2]))
-          dlogscoreVB <- log(densities[(h-1)*1000 + dindex, 2, k])
-          dlogscoreMCMC <- log(densities[(h-1)*1000 + dindex, 4, k])
-          # Attach results
-          results <- rbind(results, 
-                           data.frame(logscore = c(alogscoreVB, alogscoreMCMC, dlogscoreVB, dlogscoreMCMC),
-                                      variable = c('a', 'a', 'd', 'd'),
-                                      method = c('VB', 'MCMC', 'VB', 'MCMC'),
-                                      prior = methods[k],
-                                      S = sSeq[s],
-                                      h = h,
-                                      id = id$idfc[i]))
-        }
-      }
-    }
+
+
+}
+
+results {
+  
+results <- NULL
+for(i in seq_along(id$idfc)){
+  tmp <- read.csv(paste0('eval/car', id$idfc[[i]], '.csv'))
+  results <- rbind(results, tmp)
+  tmp <- read.csv(paste0('evalMix/car', id$idfc[[i]], '.csv'))
+  results <- rbind(results, tmp)
+  if(i %% 100 == 0){
     print(i)
   }
-
+}
+  
 library(scales)
 reverselog_trans <- function(base = exp(1)) {
   trans <- function(x) -log(x, base)
@@ -593,8 +630,11 @@ reverselog_trans <- function(base = exp(1)) {
 results %>% 
   group_by(id, method, prior, S, h) %>%
   summarise(ls = -sum(logscore)) %>%
-  mutate(T = ceiling(S / 30)) %>%
-  ggplot() + geom_boxplot(aes(factor(T), ls, colour = prior)) + 
+  ungroup() %>%
+  mutate(T = ceiling(S / 30),
+         prior = factor(prior, levels = c('None', 'Hierarchy', 'Finite Mixture'))) %>%
+  ggplot() +
+  geom_boxplot(aes(factor(T), ls, colour = prior)) + 
   facet_wrap(~method, ncol = 1) +
   theme_bw() +
   labs(x = 'T Range', y = 'Combined Logscore') + 
@@ -618,4 +658,5 @@ results %>%
             u50 = quantile(ls, 0.75),
             u95 = quantile(ls, 0.975),
             n = n())
+  
 }

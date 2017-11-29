@@ -260,9 +260,126 @@ cube evalFcDens (mat data, mat means, mat L, int M, int S, vec asup, vec dsup, R
 }
 
 // [[Rcpp::export]]
+cube evalVBDens (mat data, Rcpp::List means, Rcpp::List L, vec weights, int M, int S, vec asup, vec dsup){
+  int N = asup.n_elem;
+  int K = means.length();
+  cube densities (N * S, 2, K, fill::zeros);
+  boost::math::normal_distribution<> Zdist(0, 1);
+  for(int k = 0; k < K; ++k){
+    // Take a draw from the VB posterior
+    vec submean = means(k);
+    mat subL = L(k);
+    for(int m = 0; m < M; ++m){
+      double afc1 = data(1, 0), afc2 = data(0, 0), dfc1 = data(1, 1), dfc2 = data(0, 1), afc, dfc;
+      vec draws;
+      if(k < K - 1){
+        draws = submean + subL * randn<vec>(6);
+      } else {
+        int mix, Nmix = weights.n_elem;
+        double u = randu<vec>(1)[0];
+        for(int i = 0; i < Nmix; ++i){
+          if(u < weights(i)){
+            mix = i;
+            break;
+          }
+        }
+        vec submean2 = submean.rows(mix*6, (mix+1)*6 - 1);
+        mat subL2 = subL.rows(mix*6, (mix+1)*6-1);
+        draws = submean2 + subL2 * randn<vec>(6);
+      }
+      // VB forecast densities
+      for(int h = 0; h < S; ++h){
+        afc = afc1 * draws(2) + afc2 * draws(3);
+        dfc = dfc1 * draws(4) + dfc2 * draws(5);
+        for(int n = 0; n < N; ++n){
+          densities(N*h + n, 0, k) += pdf(Zdist, (asup(n) - afc) / sqrt(std::exp(draws(0)))) / M;
+          densities(N*h + n, 1, k) += pdf(Zdist, (dsup(n) - dfc) / sqrt(std::exp(draws(1)))) / M;
+        }
+        afc2 = afc1;
+        afc1 = afc;
+        dfc2 = dfc1;
+        dfc1 = dfc;
+      }
+    }
+  }
+  return densities;
+}
+
+// [[Rcpp::export]]
+mat evalMixDens (mat data, vec means, mat L, vec sumWeights, int M, int S, vec asup, vec dsup, mat MCMCdraws){
+  int N = asup.n_elem;
+  int K = sumWeights.n_elem;
+  mat densities (N * S, 4, fill::zeros);
+  boost::math::normal_distribution<> Zdist(0, 1);
+  
+  for(int m = 0; m < M; ++m){
+    // VB forecast densities
+      double afc1 = data(1, 0), afc2 = data(0, 0), dfc1 = data(1, 1), dfc2 = data(0, 1), afc, dfc;
+      double u = randu<vec>(1)[0];
+      int k;
+      for(int i = 0; i < K; ++i){
+        if(u < sumWeights(i)){
+          k = i;
+          break;
+        }
+      }
+      vec submean = means.rows(k*6, (k+1)*6 - 1);
+      mat subL = L.rows(k*6, (k+1)*6-1);
+      vec draws = submean + subL * randn<vec>(6);
+      for(int h = 0; h < S; ++h){
+        afc = afc1 * draws(2) + afc2 * draws(3);
+        dfc = dfc1 * draws(4) + dfc2 * draws(5);
+        for(int n = 0; n < N; ++n){
+          densities(N*h + n, 0) += pdf(Zdist, (asup(n) - afc) / sqrt(std::exp(draws(0)))) / M;
+          densities(N*h + n, 1) += pdf(Zdist, (dsup(n) - dfc) / sqrt(std::exp(draws(1)))) / M;
+        }
+        afc2 = afc1;
+        afc1 = afc;
+        dfc2 = dfc1;
+        dfc1 = dfc;
+      }
+    // MCMC forecast densities
+    afc1 = data(1, 0); afc2 = data(0, 0); dfc1 = data(1, 1); dfc2 = data(0, 1);
+    draws = MCMCdraws.row(1003 + 4 * m).t();
+    for(int h = 0; h < S; ++h){
+      afc = afc1 * draws(2) + afc2 * draws(3);
+      dfc = dfc1 * draws(4) + dfc2 * draws(5);
+      for(int n = 0; n < N; ++n){
+        densities(N*h + n, 2) += pdf(Zdist, (asup(n) - afc) / sqrt(std::exp(draws(0)))) / M;
+        densities(N*h + n, 3) += pdf(Zdist, (dsup(n) - dfc) / sqrt(std::exp(draws(1)))) / M;
+      }
+      afc2 = afc1;
+      afc1 = afc;
+      dfc2 = dfc1;
+      dfc1 = dfc;
+    }
+  }
+  return densities;
+}
+
+// [[Rcpp::export]]
 double nlogDensity (mat data, vec theta, vec mu, mat varInv){
   int T = data.n_rows;
-  double dens = 0.5 * log(det(varInv)) - 0.5 * as_scalar((theta - mu).t() * varInv * (theta - mu));
+  double dens = 0.5 * std::log(det(varInv)) - 0.5 * as_scalar((theta - mu).t() * varInv * (theta - mu));
+  for(int t = 2; t < T; ++t){
+    dens +=  - 0.5 * (theta(0) + theta(1)) - 
+      pow(data(t, 0) - theta(2) * data(t-1, 0) - theta(3) * data(t-2, 0), 2) / (2 * std::exp(theta(0))) -
+      pow(data(t, 1) - theta(4) * data(t-1, 1) - theta(5) * data(t-2, 1), 2) / (2 * std::exp(theta(1)));
+  }
+  return dens;
+}
+
+// [[Rcpp::export]]
+double nMixLogDens (mat data, vec theta, vec mu, mat varInv, vec weights){
+  int T = data.n_rows;
+  int K = weights.n_elem;
+  double dens = 0;
+  for(int k = 0; k < K; ++k){
+    vec submean = mu.subvec(k*6, (k+1)*6-1);
+    mat subinv = varInv.rows(k*6, (k+1)*6-1);
+    dens += weights(k) * std::sqrt(det(subinv)) * std::exp(-0.5 * as_scalar((theta - submean).t() * subinv * (theta - submean)));
+  }
+  dens = std::log(dens);
   for(int t = 2; t < T; ++t){
     dens +=  - 0.5 * (theta(0) + theta(1)) - 
       pow(data(t, 0) - theta(2) * data(t-1, 0) - theta(3) * data(t-2, 0), 2) / (2 * exp(theta(0))) -
@@ -284,3 +401,104 @@ double tlogDensity (mat data, vec theta, vec mu, mat varInv){
   }
   return dens;
 }
+
+struct scoreMixNormal {
+  const vec theta;
+  const int K;
+  scoreMixNormal(const vec& thetaIn, const int& kIn) :
+    theta(thetaIn), K(kIn) {}
+  template <typename T> //
+  T operator ()(const Matrix<T, Dynamic, 1>& lambda)
+    const{
+    using std::log; using std::exp; using std::pow; using std::sqrt; using std::fabs;
+    
+    Matrix<T, Dynamic, 1> dets(K);
+    for(int k = 0; k < K; ++k){
+      dets(k) = 1;
+      for(int i = 0; i < 6; ++i){
+        dets(k) *= fabs(lambda(6*K + 36*k + 7*i));
+      }
+    }
+    
+    Matrix<T, Dynamic, Dynamic> kernel(6, K);
+    kernel.fill(0);
+    Matrix<T, Dynamic, 1> exponents(K);
+    exponents.fill(0);
+
+    for(int k = 0; k < K; ++k){
+      for(int i = 0; i < 6; ++i){
+        for(int j = 0; j <= i; ++j){
+          kernel(i, k) += (theta(j) - lambda(k*6 + j)) * lambda(6*K + 36*k + 6*i + j);
+        }
+        exponents(k) += pow(kernel(i, k), 2);
+      }
+    }
+    
+    Matrix<T, Dynamic, 1> pi(6);
+    T sumez = 0;
+    for(int k = 0; k < 6; ++k){
+      sumez += exp(lambda(42*K + k));
+    }
+    for(int k = 0; k < 6; ++k){
+      pi(k) = exp(lambda(42*K + k)) / sumez;
+    }
+    
+    
+    T density = 0;
+    for(int k = 0; k < K; ++k){
+      density += pi(k)* dets(k) * exp(-0.5 * exponents(k));
+    }
+    T logDens = log(density);
+    
+    return logDens;
+  }
+};
+
+double pLogDensMix(mat data, vec theta, vec mean, mat Linv, vec dets, vec weights){
+  int N = data.n_rows;
+  int K = weights.n_elem;
+  // Constrained Positive
+  double sigSqV = exp(theta(0)), sigSqD = exp(theta(1));
+  // Evaluate log(p(theta)), start by evaluative the quadratic in the MVN exponents
+  mat kernel(6, K, fill::zeros);
+  vec exponents(K, fill::zeros);
+  double prior = 0;
+  for(int k = 0; k < K; ++k){
+    for(int i = 0; i < 6; ++i){
+      for(int j = 0; j <= i; ++j){
+        kernel(i, k) += (theta(j) - mean(k*6 + j)) * Linv(k*6 + i, j);
+      }
+      exponents(k) += pow(kernel(i, k), 2);
+    }
+    prior += weights(k) * dets(k) * exp(-0.5 * exponents(k));
+  }
+  
+  // Evaluate log likelihood
+  double logLik = 0;
+  for(int t = 2; t < N; ++t){
+    logLik += - 0.5 * (theta(0) + theta(1)) - pow(data(t, 0) - theta(2) * data(t-1, 0) - theta(3) * data(t-2, 0), 2) / (2 * sigSqV) -
+      pow(data(t, 1) - theta(4) * data(t-1, 1) - theta(5) * data(t-2, 1), 2) / (2 * sigSqD);
+  }
+  return log(prior) + logLik;
+}
+
+// [[Rcpp::export]]
+Rcpp::List scoreDeriv(mat data, Rcpp::NumericMatrix lambdaIn, vec theta, int K, vec mean, mat Linv, vec dets, vec weights){
+  Map<MatrixXd> lambda(Rcpp::as<Map<MatrixXd> >(lambdaIn));
+  double qEval;
+  Matrix<double, Dynamic, 1> grad(43*K);
+  
+  scoreMixNormal logQ(theta, K);
+  stan::math::set_zero_all_adjoints();
+  stan::math::gradient(logQ, lambda, qEval, grad);
+  
+  double logp = pLogDensMix(data, theta, mean, Linv, dets, weights);
+  double elbo = logp - qEval;
+  
+  for(int i = 0; i < 43*K; ++i){
+    grad(i) *= elbo;
+  }
+  return Rcpp::List::create(Rcpp::Named("grad") = grad,
+                            Rcpp::Named("val") = elbo);
+}
+    

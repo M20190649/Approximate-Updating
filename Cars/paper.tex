@@ -146,49 +146,57 @@ where $a_{t}$ denotes the acceleration at time $t$.
 
 Auto-regressive processes of orders $p$ and $q$ for $a_i$ and  $\delta_i$ are used to model the level of persistance and variation of driver actions, with
 \begin{align}
-a_{t} &= \sum_{j = 1}^p \phi_{j} a_{t-j} + \epsilon_{t} \label{aAR} \\
-\delta_{t} &= \pi/2 + \sum_{j = 1}^q \gamma_{j} (\delta_{t-j} - \pi/2) + \eta_{t} \label{dAR}
+a_{t} &= \sum_{j = 1}^p \phi_{j} a_{t-j} + \sigma_{\epsilon} \epsilon_{t} \label{aAR} \\
+\delta_{t} &= \pi/2 + \sum_{j = 1}^q \gamma_{j} (\delta_{t-j} - \pi/2) + \sigma_{\eta} \eta_{t} \label{dAR}
 \end{align}
-assuming that $\epsilon_{t}$ are independently and identically distributed according to a Student's t distribution with variance $\sigma^{2}_{\epsilon}$ and degrees of freedom $\nu_{\epsilon}$, and $\eta_{t}$ similarly has a Student't t distribution with variance $\sigma^{2}_{\eta}$ and degrees of freedom $\nu_{\eta}$. The parameter vector to be estimated is collected as $\theta = \{\phi_{1}, \dots, \phi_{p}, \gamma_{1}, \dots, \gamma_{q}, \log(\sigma^{2}_{\epsilon}), \log(\nu_{\epsilon}), \log(\sigma^{2}_{\eta}), \log(\nu_{\eta}) \} \in \mathbb{R}^{p + q + 4}$.
+where $\epsilon_{t}$ and $\eta_t$ are independently and identically distributed according to a standard normal distribution. The parameter vector to be estimated is collected as $\theta = \{\phi_{1}, \dots, \phi_{p}, \gamma_{1}, \dots, \gamma_{q}, \log(\sigma^{2}_{\epsilon}), \log(\sigma^{2}_{\eta})\} \in \mathbb{R}^{p + q + 2}$.
 
 Multiple groups of differing driver behaviour can be allowed while still retaining heterogeneity with each group by jointly estimating each vehicle driver's individual parameter vector, $\theta_i$, as part of a heirarchical model, independently drawing $\theta_i$ from a $K$ component mixture of multivariate normal distributions, augmenting each $\theta_i$ with a mixture component $k_i = 1, \dots, K$ such that 
 \begin{equation}
 \theta_i | k_i = j \sim N(\mu_j, \Sigma_j).
 \end{equation}
-For each $j = 1, \dots, K$, multivariate normal priors are chosen for $\mu_j$ with mean $\bar{\mu}_j$ and variance matrix $\Omega_j$, Inverse Wishart priors are chosen for $\Sigma_j$ with degrees of freedom $\tau_j$ and scale matrix $\Psi_j$. $k_{i}$ has a multinomial distribution with mixture probabilities $\boldsymbol{\pi_i} = \{\pi_{1, i}, \dots, \pi_{K, i}\}$, where $\boldsymbol{\pi_i}$ has a Dirichlet prior with parameters $\alpha_1, \alpha_2, \dots, \alpha_K$. This can be estimated with MCMC methods.
+For each $j = 1, \dots, K$, multivariate normal priors are chosen for $\mu_j$ with mean $\bar{\mu}_j$ and variance matrix $\Omega_j$, Inverse Wishart priors are chosen for $\Sigma_j$ with degrees of freedom $\tau_j$ and scale matrix $\Psi_j$. $k_{i}$ has a multinomial distribution with mixture probabilities $\boldsymbol{\pi_i} = \{\pi_{1, i}, \dots, \pi_{K, i}\}$, where $\boldsymbol{\pi_i}$ has a Dirichlet prior with parameters $\alpha_1, \alpha_2, \dots, \alpha_K$. Defining $\beta = \{\mu_i, \Sigma_i, i = 1, \dots, K\}$, $y_{i, 1:T} = \{\delta_{i, s}, a_{i, s} | s = 1, \dots, T\}$ and $y_{1:N} = \{y_{i, 1:T} | i = 1, \dots, N\}$ the posterior distribution $p(\theta_1, \dots, \theta_N, \beta | y_{1:N})$ can be estimated with MCMC methods.
 
 
 \begin{itemize}
-\item Add a Direchlet Process Prior to make this an infinite mixture
-\item Use slice sampling in the MCMC
+\item To do: Add a Direchlet Process Prior to make this an infinite mixture
+\item I've been trying to do this but I get results where all of the component indicator variables in the MCMC go to one component instead of the mixture assigning as many clusters as possible as Tas suggested would happen. I assume I'm doing something wrong.
 \end{itemize}
 
-\section{Online Process}
+\section{Streaming Data Process}
 
 Notation:
 \begin{itemize}
-\item $y_{i, 1:T} = \{\delta_{i, s}, a_{i, s} | s = 1, 2, \dots, T\}$ 
-\item $y_{1:N} = \{y_{i, 1:T} | i = 1, 2, \dots N\}$
 \item $q(\theta_i | y_{i, 1:T}) \approx p(\theta_i | y_{i, 1:T}, y_{1:N})$, $\lambda$ parameters and dependence on other cars suppressed - more important to be clear about which observations from the new vehicle are used to construct the approximation.
-\item $\beta = \{\mu_i, \Sigma_i, i, = 1, 2, \dots, K)$.
 \end{itemize}
 
-Modelling process:
 \begin{itemize}
-\item From Section 3 we have the distribution $p(\beta | y_{1:N})$.
-\item The posterior distribution of a new car is given by
+\item While on the road a self driving car may wish to make posterior inferences on the parameter set of cars around them. They may be interested in the degree of erraticness / variance of their actions.
+\item The posterior for car $N+1$ is given by 
 \begin{equation}
 p(\theta_{N+1} | y_{1:N+1}) \propto p(y_{N+1} | \theta_{N+1}) p(\theta_{N+1} | \beta) p (\beta | y_{1:N})
 \end{equation}
-\item As N is large we can replace $ p(\theta_{N+1} | \beta) p (\beta | y_{1:N})$ with $ p(\theta_{N+1} | \beta_{MAP})$ where $\beta_{MAP}$ is the maximum of $ p (\beta | y_{1:N})$, or some other suitable point estimate.
+\item As N is large replace $ p(\theta_{N+1} | \beta) p (\beta | y_{1:N})$ with $ p(\theta_{N+1} | \beta_{MAP})$ where $\beta_{MAP}$ is the maximum of $p(\beta | y_{1:N})$, or some other suitable point estimate. This approximate distribution now has a closed form. 
+\item Subsequently fitting $p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S})  \propto p(y_{N+1} | \theta_{N+1}) p(\theta_{N+1} | \beta_{MAP})$ is fairly easy with MCMC / VB etc.
+\item When $S$ is small, the information in the prior will dominate the individual information.
+\item However, for some $T > S$ the information in the car's individual movements should become more relevant and forecasts could be improved by updating the distribution to $p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:T})$.
+\item This update takes the form of
+\begin{equation}
+p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:T}) \propto p(y_{N+1, S+1:T} | \theta_{N+1}) p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S})
+\end{equation}
+\item Due to the lack of a closed form expression for $p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S})$, in reality the updating begins again from the prior re-using the data in $y_{N+1, 1:S}$.
+\item Due to the demands of driving, the car wants the update carried out as soon as possible, and ideally should be able to discard this previously used information and use only $y_{N+1, S+1:T}$, reducing the time and memory complexity from $O(T)$ to $O(T-S)$. 
+\item Defining $q(\theta_{N+1} | y_{N+1, 1:S})$ as the Variational Bayes approximation of $p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S})$, an online method is proposed to update $q(\theta_{N+1} | y_{N+1, 1:S})$ to $q(\theta_{N+1} | y_{N+1, 1:T})$:
+\begin{enumerate}
 \item Observe $y_{N+1, 1:S_1}$, fit VB $q(\theta_{N+1} | y_{N+1, 1:S_1}) \approx p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S_1})$
 \item Observe $y_{N+1, S_1+1:S_2}$, in this case the model becomes
 \begin{equation}
 p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S_2}) \propto p(y_{N+1, S_1+1:S_2} | \theta_{N+1})p(\theta_{N+1} |  y_{1:N}, y_{N+1, 1:S_1})
 \end{equation}
-\item Set $p(\theta_{N+1} |  y_{1:N}, y_{N+1, 1:S_1}) = q(\theta_{N+1} | y_{N+1, 1:S_1})$, fit VB  $q(\theta_{N+1} | y_{N+1, 1:S_2}) \approx p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S_2})$
+\item Set $p(\theta_{N+1} |  y_{1:N}, y_{N+1, 1:S_1}) = q(\theta_{N+1} | y_{N+1, 1:S_1})$
+\item Fit VB  $q(\theta_{N+1} | y_{N+1, 1:S_2}) \approx p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S_2})$
 \item Repeat as new data is observed
-\item MCMC will always need to use the whole dataset to update the posterior, but this should only need the new data so runtime will not depend on T.
+\end{enumerate}
 \end{itemize}
 
 \section{Empirical}
@@ -200,20 +208,34 @@ p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S_2}) \propto p(y_{N+1, S_1+1:S_2} | \theta_
 \label{fig:HierSingleKDE}
 \end{figure}
 
-Comparisions:
+Models:
 \begin{enumerate}
 \item No prior information for the new car
-\item Prior information without heterogeneity - all cars share parameters
 \item Prior information from hierarchical model with one component
-\item Prior information from large / infinite mixture hierarchical model
+\item Prior information from large mixture hierarchical model
 \end{enumerate}
 
+Methods:
+\begin{enumerate}
+\item MCMC
+\item Regular VB (fit to full sample)
+\item Streaming VB (fit to new data only)
+\end{enumerate}
+
+Evaluation:
 \begin{itemize}
 \item Compare forecasts for different sample sizes and forecast horizons
-\item eg. Fit model to one second, forecast next second
-\item Fit model to two seconds, forecast next second etc.
-\item Expect models based on the MCMC to outperform non MCMC models for first few seconds, not to matter as much as large amounts of data is obsered.
-\item Could also compare VB and MCMC methods for the same models.
+\item Strategy: Fit model to one $S = 10$ (one second), forecast next second
+\item Fit model to $S = 2$, forecast next second, repeat.
+\item Collect logscores for predictive densities marginalised over the posterior distributions.
+\end{itemize}
+
+Results:
+\begin{itemize}
+\item Models based on the stromg prior information to outperform no information models for first few seconds, where we see a significant improvement in the log scores. As the dataset increases to > 100 observations (10 seconds), the data dominates and the prior choice does not have much impact. The median logscore (and probably other quantiles, hard to see from the graph) at a larger value of T increases as expected, showing that it is important to re-estimate the model with an increased dataset. However it seems that this re-estimation could probably be done with a simpler prior structure than the full hierarchy. 
+\item Compare streaming data VB - Hoping it will be comparable to other methods, it technically may be a bit worse as it uses one more approximation than the standard VB, but I don't think this will have a very big impact. It certainly will be faster, so if the performance is roughly equal this is evidence in favour of the online method. 
+\item Compare VB and MCMC methods for the same models to get an idea of approximation error.
+\item Still waiting on the cluster for standard VB Finite Mixture Model and all VB streams.
 \end{itemize}
 
 \section{Conclusion}
