@@ -755,7 +755,7 @@ NoGaps2 <- function(data, reps, draw, hyper, thin = 1, k = 10, stepsizeStart = 0
               accept[i] <- accept[i+1]
             }
             draw[[k]] <- temp
-            save[[k]] <- tempSave
+            saveT[[k]] <- tempSave
             stepsize[k] <- ss
             accept[k] <- acc
             s[s > s[j]] <- s[s > s[j]] - 1
@@ -796,12 +796,13 @@ NoGaps2 <- function(data, reps, draw, hyper, thin = 1, k = 10, stepsizeStart = 0
         }
       }
     }
-    n <- n[1:k]
+    n <- table(s)
     accept <- accept[1:k]
     stepsize <- stepsize[1:k]
-  
+    draw <- draw[1:k]
+
     # draw new values for each theta_i
-    MH <- NoGapsMH(data, draw, stepsize, accept, stepsizeCons, hyper$Mean, hyper$varInv, s, iter)
+    MH <- NoGapsMH(data, draw, stepsize, accept, stepsizeCons, hyper$mean, hyper$varInv, s, iter)
     draw <- MH$draws
     stepsize <- MH$stepsize
     accept <- MH$accept
