@@ -57,12 +57,12 @@ double mvtDens (vec theta, vec mu, mat varInv){
 }
 
 // [[Rcpp::export]]
-List NoGapsMH (List data, List draw, vec stepsize, vec accept, double stepsizeCons, vec hyperMean, mat hyperVarInv, vec s, int iter){
-  int k = draw.length(), N = data.length();
-  
+Rcpp::List NoGapsMH (Rcpp::List data, Rcpp::List draw, vec stepsize, vec accept, double stepsizeCons, vec hyperMean, mat hyperVarInv, vec s, int iter){
+  int k = draw.length();
+  int N = data.length();
   for(int i = 0; i < k; ++i){
     vec oldDraw = draw(i);
-    vec candidate = oldDraw  +  stepsize(i) * randn<vec>(6)[0];
+    vec candidate = oldDraw  +  stepsize(i) * randn<vec>(6);
     double canDens = 0, oldDens = 0;
     for(int j = 0; j < N; ++j){
       if(s(j) == i + 1){
@@ -70,8 +70,9 @@ List NoGapsMH (List data, List draw, vec stepsize, vec accept, double stepsizeCo
         oldDens += nlogDensity(data(i), oldDraw, hyperMean, hyperVarInv);
       }
     }
-    double ratio = exp(canDens - oldDens), u = randu<vec>(1)[0];
-    if(u < ratio){
+    double ratio = exp(canDens - oldDens);
+  
+    if(randu<double>() < ratio){
       accept(i) += 1;
       draw(i) = candidate;
       stepsize(i) += stepsizeCons * stepsize(i) * (1 - 0.234) / (28 + iter);
@@ -79,16 +80,11 @@ List NoGapsMH (List data, List draw, vec stepsize, vec accept, double stepsizeCo
       stepsize(i) -= stepsizeCons * stepsize(i) * 0.234 / (28 + iter);
     }
   }
-  return List::Create(Named("Draws") = draws,
-                      Named("Stepsize") = stepsize,
-                      Named("Accept") = accept);
+  return Rcpp::List::create(Rcpp::Named("draws") = draw,
+                            Rcpp::Named("stepsize") = stepsize,
+                            Rcpp::Named("accept") = accept);
 }
   
-  
-
-  
-
-
 
 
 

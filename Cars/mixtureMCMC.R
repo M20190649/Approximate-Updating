@@ -802,9 +802,9 @@ NoGaps2 <- function(data, reps, draw, hyper, thin = 1, k = 10, stepsizeStart = 0
   
     # draw new values for each theta_i
     MH <- NoGapsMH(data, draw, stepsize, accept, stepsizeCons, hyper$Mean, hyper$varInv, s, iter)
-    draw <- MH$Draws
-    stepsize <- MH$Stepsize
-    accept <- MH$Accept
+    draw <- MH$draws
+    stepsize <- MH$stepsize
+    accept <- MH$accept
     
     # save draws
     if(iter %% thin == 0){

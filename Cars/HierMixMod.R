@@ -685,39 +685,11 @@ results %>%
 
 noGapsSampler {
   set.seed(1)
-  N <- 500
-  idSubset <- sample(id$idSubset, N)
-  data <- list()
-  for(i in 1:N){
-    carsAug %>%
-      filter(ID == idSubset[i]) %>%
-      mutate(n = seq_along(v),
-             vl = ifelse(n == 1, 0, lag(v)),
-             a = v - lag(v),
-             d = delta - pi/2) %>%
-      filter(n > 1 & n <= 501) %>% 
-      select(a , d) %>%
-      as.matrix() -> data[[i]]
-  }
-  reps <- 25000
+  data <- readRDS('MCMCData.RDS')
+  
+  reps <- 75000
   thin <- 10
-  startK <- 5
-  
-  draws <- list(list())
-  hyper <- list(mean = c(-5, -5, rep(0, 4)),
-                varInv = solve(diag(c(5, 5, 10, 10, 10, 10))),
-                df = 6, 
-                scale = diag(1, 6),
-                alpha = 1)
-  for(k in 1:startK){
-    draws[[1]][[k]] <- list(mean = c(-5, -5, 0, 0, 0, 0),
-                            varInv = diag(10, 6))
-  }
-  for(i in 1:N){
-    draws[[i+1]] <- list(theta = c(-5, -5, 0, -0.1, 0.15, 0.05))
-  }
-  noGapDraws <- NoGaps(data, reps, draws, hyper, thin, startK, 0.01)
-  
+  startK <- 10
   
   hyper <- list(mean = c(-5, -5, 0, 0, 0, 0),
                 varInv = diag(c(0.1, 0.1, 1, 1, 1, 1)),
