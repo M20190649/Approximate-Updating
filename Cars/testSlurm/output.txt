@@ -1,0 +1,226 @@
+
+R version 3.4.1 (2017-06-30) -- "Single Candle"
+Copyright (C) 2017 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> rm(list=ls())
+> repenv <- Sys.getenv("SLURM_ARRAY_TASK_ID")
+> i <- as.numeric(repenv)
+> set.seed(1000 + i)
+> 
+> library(Rcpp, lib.loc = 'packages')
+> library(RcppArmadillo, lib.loc = 'packages')
+> library(RcppEigen, lib.loc = 'packages')
+
+Attaching package: ‘RcppEigen’
+
+The following objects are masked from ‘package:RcppArmadillo’:
+
+    fastLm, fastLmPure
+
+> library(rstan, lib.loc = 'packages')
+Loading required package: ggplot2
+Loading required package: StanHeaders
+rstan (Version 2.16.2, packaged: 2017-07-03 09:24:58 UTC, GitRev: 2e1f913d3ca3)
+For execution on a local, multicore CPU with excess RAM we recommend calling
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+> source('slurmRFuns.R')
+> sourceCpp('slurmCppFuns.cpp')
+> 
+> id <- readRDS('carsID.RDS')
+> datafc <- readRDS('ForecastData.RDS')
+> prior <- readRDS('priorStream.RDS')
+> H <- 30
+> S <- 10
+> maxT <- 300
+> 
+> sSeq <- seq(S, maxT, S)
+> results <- data.frame()
+> methods <- c('None', 'Single Hierarchy', 'Finite Mixture')
+> 
+> starting <- list(matrix(c(-5, -5, rep(0, 4), c(chol(diag(0.5, 6)))), ncol = 1),
++                  matrix(c(rnorm(36, c(-5, -5, 0, 0, 0, 0), sd = 0.25), rep(c(diag(runif(1), 6)), 6), rep(1, 6)), ncol = 1))
+> 
+> 
+> # MCMC Hyper parameters
+> hyper <- list()
+> for(k in 1:2){
++   hyper[[k]] <- list()
++   hyper[[k]]$mean <- prior[[k]][1:6]
++   uinv <- solve(matrix(prior[[k]][7:42], 6))
++   hyper[[k]]$varInv <- t(uinv) %*% uinv
++ }
+> # Mixture Prior
+> mean <- prior[[3]][1:36]
+> varinv <- NULL
+> for(k in 1:6){
++   uinv <- matrix(prior[[3]][k*36 + 1:36], 6)
++   varinv <- rbind(varinv, t(uinv) %*% uinv)
++ }
+> weights <- prior[[3]][6*7*6 + 1:6]
+> weights <- exp(weights) / sum(exp(weights))
+> hyper[[3]] <- list(mean = mean, varInv = varinv, weights = weights)
+> 
+> 
+> 
+> # Extract Data
+> data <- datafc[[i]]
+> 
+> # Set forcast supports
+> aLower <- min(data[,1])
+> if(aLower < 0){
++   aLower <- 1.5 * aLower
++ } else {
++   aLower <- 0.5 * aLower
++ }
+> dLower <- min(data[,2])
+> if(dLower < 0){
++   dLower <- 1.5 * dLower
++ } else {
++   dLower <- 0.5 * dLower
++ }
+> 
+> asup <- seq(aLower, 1.5*max(data[,1]), length.out=1000)
+> dsup <- seq(dLower, 1.5*max(data[,2]), length.out=1000)
+> 
+> # Incrementally add data to VB fits
+> for(s in seq_along(sSeq)){
++   if(sSeq[s] > nrow(data)){
++     break
++   }
++   # Get data for stream
++   if(s == 1){
++     dat <- data[1:sSeq[s],]
++   } else {
++     dat <- data[(sSeq[s-1]+1):sSeq[s],]
++   }
++   # Update posterior approximations - Or re-estimate new ones from scratch for streaming data
++   if(s == 1){
++     fitOnline <- fitCarMods(dat, prior, starting)
++   } else {
++     fitOnline <- fitCarMods(dat, fitOnline, starting)
++   }
++ 
++   # Get offline VB posteriors
++   if(s == 1){
++     fitOffline <- fitOnline
++   } else {
++     fitOffline <- fitCarMods(data[1:sSeq[s],], prior, starting)
++   }
++   
++   # Get MCMC posteriors
++   MCMC <- list()
++   for(k in 1:3){
++     MCMC[[k]] <- singleMCMCallMH(data[1:sSeq[s],], 10000, c(-5, -5, 0, 0, 0, 0), hyper[[k]],
++                                  stepsize = 0.05, mix = (k == 3))$draws[5001:10000,]
++   }         
++                             
++   
++   # Extract Lower Triangular Matrices from VB
++   L <- list()
++   means <- list()
++   for(k in 1:2){
++     means[[k]] <- fitOnline[[k]][1:6]
++     L[[k]] <- matrix(fitOnline[[k]][7:42], 6)
++   }
++   means[[3]] <- fitOnline[[3]][1:36]
++   # Convert Inverse from mixture lambda to L
++   L[[3]] <- matrix(0, ncol = 6, nrow = 36)
++   for(k in 1:6){
++     L[[3]][(k-1)*6 + 1:6,] <- t(solve(matrix(fitOnline[[3]][36*k + 1:36], 6)))
++   }
++   w <- exp(fitOnline[[3]][253:258]) / sum(exp(fitOnline[[3]][253:258]))
++ 
++   densitiesOnline <- evalVBDens(data[(sSeq[s]-1):sSeq[s], ], means, L, cumsum(w), 1000, H, asup, dsup)
++   
++   # Repeat for offline
++   if(s == 1){
++     densitiesOffline <- densitiesOnline
++   } else {
++     L <- list()
++     means <- list()
++     for(k in 1:2){
++       means[[k]] <- fitOffline[[k]][1:6]
++       L[[k]] <- matrix(fitOffline[[k]][7:42], 6)
++     }
++     means[[3]] <- fitOffline[[3]][1:36]
++     L[[3]] <- matrix(0, ncol = 6, nrow = 36)
++     for(k in 1:6){
++       L[[3]][(k-1)*6 + 1:6,] <- t(solve(matrix(fitOffline[[3]][36*k + 1:36], 6)))
++     }
++     w <- exp(fitOffline[[3]][253:258]) / sum(exp(fitOffline[[3]][253:258]))
++   
++     densitiesOffline <- evalVBDens(data[(sSeq[s]-1):sSeq[s], ], means, L, cumsum(w), 1000, H, asup, dsup)
++   }
++   # Finally MCMC
++   densitiesMCMC <- evalMCMCDens(data[(sSeq[s]-1):sSeq[s], ], 1000, H, asup, dsup, MCMC)
++   
++  
++   # Grab logscores for each method, h, and variable.
++   for(k in 1:3){
++     for(h in 1:H){
++       aindex <- min(which(asup > data[sSeq[s]+h,1]))
++       dindex <- min(which(dsup > data[sSeq[s]+h,2]))
++       
++       alogscoreVBOff <- log(densitiesOffline[(h-1)*1000 + aindex, 1, k])
++       dlogscoreVBOff <- log(densitiesOffline[(h-1)*1000 + dindex, 2, k])
++       alogscoreVBOn <- log(densitiesOnline[(h-1)*1000 + aindex, 1, k])
++       dlogscoreVBOn <- log(densitiesOnline[(h-1)*1000 + dindex, 2, k])
++       alogscoreMCMC <- log(densitiesMCMC[(h-1)*1000 + aindex, 1, k])
++       dlogscoreMCMC <- log(densitiesMCMC[(h-1)*1000 + dindex, 2, k])
++      
++     # Attach results
++       results <- rbind(results, 
++                        data.frame(logscore = c(alogscoreVBOff, dlogscoreVBOff, alogscoreVBOn, dlogscoreVBOn, alogscoreMCMC, dlogscoreMCMC),
++                                   variable = rep(c('a', 'd'), 3),
++                                   method = rep(c('VB-Offline', 'VB-Stream', 'MCMC'), rep(2, 3)),
++                                   prior = methods[k],
++                                   S = sSeq[s],
++                                   h = h,
++                                   id = id$idfc[i]))
++     }
++   }
++   print(paste(i, s))
++ }
+[1] "1 3"
+[1] "5 1"
+[1] "1 4"
+[1] "5 2"
+[1] "1 5"
+Error in solve.default(matrix(fitOffline[[3]][36 * k + 1:36], 6)) : 
+  system is computationally singular: reciprocal condition number = 8.29765e-19
+Calls: t -> solve -> solve.default
+Execution halted
+[1] "5 3"
+[1] "1 6"
+[1] "1 7"
+[1] "5 4"
+[1] "1 8"
+[1] "5 5"
+[1] "1 9"
+[1] "5 6"
+[1] "5 7"
+[1] "1 10"
+[1] "5 8"
+[1] "1 11"
+[1] "1 12"
+[1] "5 9"
+[1] "1 13"
+Error in evalVBDens(data[(sSeq[s] - 1):sSeq[s], ], means, L, cumsum(w),  : 
+  Error in function boost::math::pdf(const normal_distribution<double>&, double): Random variate x is -nan, but must be finite!
+Execution halted
