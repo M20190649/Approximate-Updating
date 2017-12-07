@@ -519,3 +519,311 @@ singleMCMCallMH <- function(data, reps, draw, hyper, thin = 1, error = 'gaussian
   }
   list(draws = saveDraws, accept = accept, steps = stepsize)
 }
+
+NoGaps <- function(data, reps, draw, hyper, thin = 1, k = 10, stepsize = 0.01){
+  N <- length(data)
+  stepsize <- rep(stepsize, N)
+  accept <- rep(0, N)
+
+  #set up storage for saved draws
+  nSave <- floor(reps / thin)
+  save <- list(list())
+  dim <- 6
+  for(i in 1:k){
+    save[[1]][[i]] <- list(mean = matrix(0, nSave, dim), varInv = array(0, dim = c(dim, dim, nSave)))
+  }
+  for(i in 1:N){
+    save[[i+1]] <- list(theta = matrix(0, nSave, dim), s = rep(0, nSave))
+  }
+  
+  # changing MH acceptance rate
+  alpha <- - qnorm(0.234/2)
+  stepsizeCons <- (1 - 1/6) * sqrt(2*3.141598) * exp(alpha^2/2) / (2 * alpha)  +  1 / (6 * 0.234 * (1 - 0.234))
+  
+  # initialise groups randomly
+  s <- sample(1:k, N, replace = TRUE)
+  n <- table(s)
+  
+  for(iter in 2:reps){
+    # timing
+    if(iter == 50){
+      startTime <- Sys.time()
+    } else if(iter == 150){
+      timePerIter <- (Sys.time() - startTime) / 100
+      class(timePerIter) <- 'numeric'
+      print(paste0('Estimated Finishing Time: ', Sys.time() + timePerIter * (reps - 150)))
+      if(attr(timePerIter, 'units') == 'mins'){
+        attr(timePerIter, 'units') = 'secs'
+        timePerIter <- timePerIter * 60
+      }
+    }
+    
+    # Resample s indices for each i
+    # First sample a k+1'th mu / precision for any new groups
+    draw[[1]][[k+1]] <- list(mean = c(mvtnorm::rmvnorm(1, hyper$mean, solve(hyper$varInv))),
+                             varInv = rWishart(1, hyper$df, hyper$scale)[,,1])
+    save[[1]][[k+1]] <- list(mean = matrix(0, nSave, dim), varInv = array(0, dim = c(dim, dim, nSave)))
+
+    for(j in 1:N){
+      skip = FALSE
+      # mu_j is the only element of the cluster
+      if(n[s[j]] == 1){
+        prob <- k / (k+1)
+        if(runif(1) > prob){
+          # Keep s_j the same with above probability
+          # Otherwise remove group, shuffle labels
+          if(s[j] < k){
+            # If the group already was k, then we keep it the same,
+            # Otherwise shift everything above it down by one and put the now empty cluster in the k'th spot
+            temp <- draw[[1]][[s[j]]]
+            tempSave <- save[[1]][[s[j]]]
+            for(i in s[j]:(k-1)){
+              draw[[1]][[i]] <- draw[[1]][[i+1]]
+              save[[1]][[i]] <- save[[1]][[i+1]]
+            }
+            draw[[1]][[k]] <- temp
+            save[[1]][[k]] <- tempSave
+            s[s > s[j]] <- s[s > s[j]] - 1
+            s[j] <- k
+            n <- table(s)
+          }
+          # remove the group
+          k <- k - 1
+        } else {
+          # repeating the one element cluster
+          skip = TRUE
+        }
+      }
+      # If we didn't chose to keep a one element cluster the same we must resample s via MacEachern Muller 3.2
+      if(!skip){
+        n[s[j]] <- n[s[j]]  - 1
+        probS <- rep(0, k+1)
+        for(i in 1:k){
+          probS[i] <- n[i] * mvtDens(draw[[j+1]]$theta, draw[[1]][[i]]$mean, draw[[1]][[i]]$varInv)
+        }
+        probS[k+1] <- hyper$alpha / (k + 1) * mvtDens(draw[[j+1]]$theta, draw[[1]][[k+1]]$mean, draw[[1]][[k+1]]$varInv)
+        probS <- probS / sum(probS)
+        s[j] <- sample(1:(k+1), 1, prob = probS)
+        if(s[j] == k+1){
+          # add a new group, draw a new k+1'th group
+          n <- c(n, 1)
+          k <- k + 1
+          draw[[1]][[k+1]] <- list(mean = c(mvtnorm::rmvnorm(1, hyper$mean, solve(hyper$varInv))),
+                                   varInv = rWishart(1, hyper$df, hyper$scale)[,,1])
+          save[[1]][[k+1]] <- list(mean = matrix(0, nSave, dim), varInv = array(0, dim = c(dim, dim, nSave)))
+          
+        } else {
+          # add to the count of thew newly assigned group
+          n[s[j]] <- n[s[j]] + 1
+        }
+      }
+    }
+    n <- n[1:k]
+    
+    # draw new values for each mu / varInv pair
+    sumTheta <- matrix(0, 6, k)
+    for(j in 1:N){
+      sumTheta[,s[j]] <-  sumTheta[,s[j]] + draw[[j+1]]$theta
+    }
+    for(group in 1:k){
+      var <- hyper$varInv + n[group] * draw[[1]][[group]]$varInv
+      var <- solve(var)
+      mean <- var %*% hyper$varInv %*% hyper$mean  +  var %*%  draw[[1]][[group]]$varInv %*%  sumTheta[,group]
+      
+      draw[[1]][[group]]$mean <- c(mvtnorm::rmvnorm(1, mean, var))
+      vardf <- hyper$df 
+      scaleMat <- hyper$scale
+      for(j in 1:N){
+        if(s[j] == group){
+          vardf <- vardf + 1
+          scaleMat <- scaleMat + outer(draw[[j+1]]$theta - draw[[1]][[group]]$mean, draw[[j+1]]$theta - draw[[1]][[group]]$mean)
+        }
+      }
+      draw[[1]][[group]]$varInv <- rWishart(1, vardf, solve(scaleMat))[,,1]
+    }
+    
+    # draw new values for each theta_i
+    for(j in 1:N){
+      candidate <- draw[[j+1]]$theta +  stepsize[j] * rnorm(dim)
+      canDens <- nlogDensity(data[[j]], candidate, draw[[1]][[s[j]]]$mean, draw[[1]][[s[j]]]$varInv)
+      oldDens <- nlogDensity(data[[j]], draw[[j+1]]$theta, draw[[1]][[s[j]]]$mean, draw[[1]][[s[j]]]$varInv)
+      
+      ratio <- exp(canDens - oldDens)
+      
+      c <- stepsize[j] * stepsizeCons
+      if(runif(1) < ratio){
+        accept[j] <- accept[j] + 1
+        draw[[j+1]]$theta <- candidate
+        stepsize[j] <- stepsize[j] + c * (1 - 0.234) / (28 + i)
+      } else {
+        stepsize[j] <- stepsize[j] - c * 0.234 / (28 + i)
+      }
+    }
+    
+    # save draws
+    if(iter %% thin == 0){
+      for(group in 1:k){
+        save[[1]][[group]]$mean[iter/thin,] <- draw[[1]][[group]]$mean
+        save[[1]][[group]]$varInv[,,iter/thin] <- draw[[1]][[group]]$varInv
+      }
+      for(j in 1:N){
+        save[[j+1]]$theta[iter/thin, ] <- draw[[j+1]]$theta
+        save[[j+1]]$s[iter/thin] <- s[j]
+      }
+    }
+    # print progress
+    if(iter %% 1000 == 0){
+      mins <-  (reps - iter) * timePerIter[1] / 60
+      if(mins > 120){
+        print(paste0('Iteration: ', iter, '. Est. Time Remaining: ', round(mins / 60, 2), ' hours.'))
+      } else {
+        print(paste0('Iteration: ', iter, '. Est. Time Remaining: ', round(mins, 2), ' minutes.'))
+      }
+    }
+  }
+  
+  save
+}
+  
+NoGaps2 <- function(data, reps, draw, hyper, thin = 1, k = 10, stepsizeStart = 0.01){
+  N <- length(data)
+  stepsize <- rep(stepsizeStart, k)
+  accept <- rep(0, k)
+  
+  #set up storage for saved draws
+  nSave <- floor(reps / thin)
+  saveS <- matrix(0, nSave, N)
+  saveT <- list()
+  for(i in 1:k){
+    saveT[[i]] <- matrix(0, nSave, 6)
+  }
+  
+  # changing MH acceptance rate
+  alpha <- - qnorm(0.234/2)
+  stepsizeCons <- (1 - 1/6) * sqrt(2*3.141598) * exp(alpha^2/2) / (2 * alpha)  +  1 / (6 * 0.234 * (1 - 0.234))
+  
+  # initialise groups randomly
+  s <- sample(1:k, N, replace = TRUE)
+  n <- table(s)
+  
+  for(iter in 2:reps){
+    # timing
+    if(iter == 50){
+      startTime <- Sys.time()
+    } else if(iter == 150){
+      timePerIter <- (Sys.time() - startTime) / 100
+      class(timePerIter) <- 'numeric'
+      print(paste0('Estimated Finishing Time: ', Sys.time() + timePerIter * (reps - 150)))
+      if(attr(timePerIter, 'units') == 'mins'){
+        attr(timePerIter, 'units') = 'secs'
+        timePerIter <- timePerIter * 60
+      }
+    } else if(iter %% 100 == 50){
+      timePerIter <- (Sys.time() - startTime) / (iter - 50);
+      if(attr(timePerIter, 'units') == 'mins'){
+        attr(timePerIter, 'units') = 'secs'
+        timePerIter <- timePerIter * 60
+      }
+    }
+    
+    # Resample s indices for each i
+    # First sample a k+1'th mu / precision for any new groups
+    draw[[k+1]] <-  c(mvtnorm::rmvnorm(1, hyper$mean, hyper$var))
+    saveT[[k+1]] <- matrix(0, nSave, 6)
+    accept <- c(accept, 0)
+    stepsize <- c(stepsize, stepsizeStart)
+    for(j in 1:N){
+      skip = FALSE
+      # theta_j is the only element of the cluster
+      if(n[s[j]] == 1){
+        prob <- k / (k+1)
+        u <- runif(1)
+        if(u > prob){
+          # Keep s_j the same with above probability
+          # Otherwise remove group, shuffle labels
+          if(s[j] < k){
+            # If the group already was k, then we keep it the same,
+            # Otherwise shift everything above it down by one and put the now empty cluster in the k'th spot
+            temp <- draw[[s[j]]]
+            tempSave <- saveT[[s[j]]]
+            ss <- stepsize[s[j]]
+            acc <- accept[s[j]]
+            for(i in s[j]:(k-1)){
+              draw[[i]] <- draw[[i+1]]
+              saveT[[i]] <- saveT[[i+1]]
+              stepsize[i] <- stepsize[i+1]
+              accept[i] <- accept[i+1]
+            }
+            draw[[k]] <- temp
+            save[[k]] <- tempSave
+            stepsize[k] <- ss
+            accept[k] <- acc
+            s[s > s[j]] <- s[s > s[j]] - 1
+            s[j] <- k
+            saveT[[k+1]] <- NULL
+          }
+          # remove the group
+          k <- k - 1
+          n <- table(s)
+        } else {
+          # repeating the one element cluster
+          skip = TRUE
+        }
+      }
+      # If we didn't chose to keep a one element cluster the same we must resample s via MacEachern Muller 3.2
+      if(!skip){
+        n[s[j]] <- n[s[j]]  - 1
+        probS <- rep(0, k+1)
+        for(i in 1:k){
+          probS[i] <- log(n[i]) + nlikelihood(data[[j]], draw[[i]])
+        }
+        probS[k+1] <- log(hyper$alpha / (k + 1)) + nlikelihood(data[[j]], draw[[k+1]])
+        probS <- probS - max(probS)
+        probS <- exp(probS) / sum(exp(probS))
+        s[j] <- sample(1:(k+1), 1, prob = probS)
+        if(s[j] == k+1){
+          # add a new group, draw a new k+1'th group
+          n <- c(n[1:k], 1)
+          k <- k + 1
+          draw[[k+1]] <- c(mvtnorm::rmvnorm(1, hyper$mean, hyper$var))
+          saveT[[k+1]] <- matrix(0, nSave, dim)
+          accept[k+1] <- 0
+          stepsize[k+1] <- stepsizeStart
+          
+        } else {
+          # add to the count of thew newly assigned group
+          n[s[j]] <- n[s[j]] + 1
+        }
+      }
+    }
+    n <- n[1:k]
+    accept <- accept[1:k]
+    stepsize <- stepsize[1:k]
+  
+    # draw new values for each theta_i
+    MH <- NoGapsMH(data, draw, stepsize, accept, stepsizeCons, hyper$Mean, hyper$varInv, s, iter)
+    draw <- MH$Draws
+    stepsize <- MH$Stepsize
+    accept <- MH$Accept
+    
+    # save draws
+    if(iter %% thin == 0){
+      for(group in 1:k){
+        saveT[[group]][iter/thin,] <- draw[[group]]
+      }
+      saveS[iter/thin,] <- s
+    }
+    # print progress
+    if(iter %% 1000 == 0){
+      mins <-  (reps - iter) * timePerIter[1] / 60
+      if(mins > 120){
+        print(paste0('Iteration: ', iter, '. Est. Time Remaining: ', round(mins / 60, 2), ' hours.'))
+      } else {
+        print(paste0('Iteration: ', iter, '. Est. Time Remaining: ', round(mins, 2), ' minutes.'))
+      }
+    }
+  }
+  
+  list(saveT, saveS, accept)
+}  
+  

@@ -101,42 +101,56 @@
 
 \begin{itemize}
 \item Self driving cars becoming more common
-\item Cars are easy capable of driving by themselves if there is no traffic around them
-\item Cars need to be able to predict movement of other cars
+\item Cars can perform complex maneuvers on their own, and are capable of detecing the location of cars around them
+\item Cars need to improve their ability to detect the movement of cars around them
 \item Wide range of unconditional variances and first two partial autocorrelations observed while fitting each model individually - evidence of heterogeneity
-\item Drivers display differing behaviour, could be able to group drivers into different categories
-\item Heteogeneity between and within groups
-\item Need to deal with new cars as they are observed
+\item Forecasts of car movement could be improved by building a hierarchical model that shares information between cars while allowing each driver to have their own parameter vector
+\item As new cars are observed we need to make parameter estimates as quickly as possible
+\item Strong prior information from the hierarchical model can be a substitute for the lack of data in the first few seconds of observing a new car
+\item As time passes this original estimation needs to be updated as the stream of data becomes large enough for the prior impact to be reduced
+\item We would like to be able to do this using only the newly observed data, instead of re-estimating a model re-using the old data.
+\item The aim of this paper is to make efficient forecasts by:
+\begin{enumerate}
+\item Using prior information when available
+\item Update the posterior as new data is observed fast enough to be viable
+\end{enumerate}
+\item We expect that the prior information will make a significant difference early on in the sample, but there will be a significant gain in forecast accuracy as more data increases. At this point the hierarchical prior isn't too useful, but we need to be able to fit the model in time!
+\item At the end of the day we will have a lot of forecast evaluations from MCMC, VB and a new VB stream method, a non mean-field adaption of {\v S}m{\'i}dl 2006
+\item We can compare the performance of different levels of prior information, and different levels of approximation error in the forecasts
 \end{itemize}
 
 \section{Data processing}
 
 \begin{itemize}
-\item Modern cars are able to track lane marking and can calculate distance to other cars in relative co-ordinates (Thuy and Leon 2010)
-\item Data from NGSIM is in coordinates relative to start of road - no impact of the curvature of the lane
-\item Fit curve to car data to estimate lane midpoints (Woo et. al. 2016) 
+\item Data is provided by the NGSIM project, which observes ~5000 cars for a 2000 feet section of the US 101 Highway.
+\item Observations of x/y coordinates are provided every 100 ms (10 hz), with around 500-1000 observations per car.
+\item Around 2000 of these cars changed lanes or stopped moving somewhere in the sample and are discarded.
+\item There was some curvature in the road which means there are systematic movements in the car paths.
+\item Modern cars are able to track lane marking and can calculate distance to other cars in relative co-ordinates (Thuy and Leon 2010), instead of relative to the Earth (ie. ignores curves)
+\item Prior research fits a polynomial curve to detected lane markings to build a model of the road lane edges (Woo et. al. 2016) 
+\item Instead, I fit splines to the positions of each car to build an estimate of the road midpoint. Relative coordiantes are found separately for each lane using the movements of 100 cars / lane by the following procedure:
 \begin{enumerate}
 \item At each point in time $t$ calculate the total distance each car has travelled along the road using $d_{i, t} = \sum_{s=1}^t v_{i, s}$, where $v_{i, s}$ is the velocity of car $i$ at time $s$. 
 \item Estimate smoothing splines of the form $x_{i, t} = f(d_{i, t})$ and $y_{i, t} = g(d_{i, t})$, where $x_{i, t}$ and $y_{i, t}$ are the car coordinates relative to the start of the road.
-\item Use polynomials to get $\hat{x}_{i, t}$ and $\hat{y}_{i, t}$ as estimates of the midpoint of the lane after travelling a distance $d_{i, t}$.
+\item Use models to get $\hat{x}_{i, t}$ and $\hat{y}_{i, t}$ as estimates of the midpoint of the lane after travelling a distance $d_{i, t}$.
 \item Define new coordinates 
 \begin{align}
 x^*_{i, t} &= \mbox{sign}(x_{i, t} - \hat{x}_{i, t})\sqrt{(x_{i, t}-\hat{x}_{i, t})^2 + (y_{i, t} - \hat{y}_{i, t})^2)} \label{xRel} \\
 y^*_{i, t} &= d_{i, t} \label{yRel}
 \end{align}
 \end{enumerate}
-\item Note: This should be calculated separately for each lane, cars used to estimate splines are excluded from further modelling
+\item These cars are not used for any further modelling, leaving 2873 cars travelling on a straightened out road with no noticable systematic curvature. (ie. no patterns in many cars turning at the same spot)
 \end{itemize}
 
 \section{Hierarchical Motion Model}
 
-The position of car $i$ at time $t$ can be fully determined by its inital position, $\{x^*_{i, 0}, y^*_{i, 0}\}$ and the history of the driver's inputs: the cars velocity $v_{i, t}$ and steering angle, $\delta_{i, t}$ by
+The position of any vechicle at time $t$ can be fully determined by its inital position, $\{x^*_{i, 0}, y^*_{i, 0}\}$ and the history of the driver's inputs: the cars velocity $v_{i, t}$ and steering angle, $\delta_{i, t}$ by
 \begin{align}
 x^*_{t} &= x^*_{t-1} + v_{t} \cos(\delta_{t}) \label{xEq} \\
 y^*_{t} &= y^*_{t-1} + v_{t} \sin(\delta_{t}). \label{yEq},
 \end{align}
-where $\delta_{t} = \pi/2$ denotes that the car has no lateral movement and $x^*_{t} = x^*_{t-1}$.
-From this relationship, the key inputs can be extracted by
+where $\delta_{t} = \pi/2$ denotes that the car has no lateral relative movement and $x^*_{t} = x^*_{t-1}$.
+From this relationship, the driver's key inputs to motion can be extracted by
 \begin{align}
 \delta_{t} &= \tan^{-1}\left(\frac{(y^*_{t} - y^*_{t-1})}{(x^*_{t} - x^*_{t-1})} \right) \label{dEq} \\
 v_{t} &= \sqrt{(x^*_{t} - x^*_{t-1})^2 + (y^*_{t} - y^*_{t-1})^2} \label{vEq} \\
@@ -144,7 +158,7 @@ a_{t} &= v_{t} - v_{t-1}. \label{aEq}
 \end{align}
 where $a_{t}$ denotes the acceleration at time $t$.
 
-Auto-regressive processes of orders $p$ and $q$ for $a_i$ and  $\delta_i$ are used to model the level of persistance and variation of driver actions, with
+Auto-regressive processes of orders $p$ and $q$ for $a_t$ and  $\delta_t$ are used to model the level of persistance and variation of driver actions, with
 \begin{align}
 a_{t} &= \sum_{j = 1}^p \phi_{j} a_{t-j} + \sigma_{\epsilon} \epsilon_{t} \label{aAR} \\
 \delta_{t} &= \pi/2 + \sum_{j = 1}^q \gamma_{j} (\delta_{t-j} - \pi/2) + \sigma_{\eta} \eta_{t} \label{dAR}
@@ -159,16 +173,12 @@ For each $j = 1, \dots, K$, multivariate normal priors are chosen for $\mu_j$ wi
 
 
 \begin{itemize}
+\item This model is fit to 2000 cars in the sample, leaving 873 for forecasting.
 \item To do: Add a Direchlet Process Prior to make this an infinite mixture
-\item I've been trying to do this but I get results where all of the component indicator variables in the MCMC go to one component instead of the mixture assigning as many clusters as possible as Tas suggested would happen. I assume I'm doing something wrong.
+\item I've been trying this but I get results where all of the component indicator variables in the MCMC go to one component instead of the mixture assigning as many clusters as possible as Tas suggested would happen. I assume I'm doing something wrong but I haven't figured out what yet.
 \end{itemize}
 
 \section{Streaming Data Process}
-
-Notation:
-\begin{itemize}
-\item $q(\theta_i | y_{i, 1:T}) \approx p(\theta_i | y_{i, 1:T}, y_{1:N})$, $\lambda$ parameters and dependence on other cars suppressed - more important to be clear about which observations from the new vehicle are used to construct the approximation.
-\end{itemize}
 
 \begin{itemize}
 \item While on the road a self driving car may wish to make posterior inferences on the parameter set of cars around them. They may be interested in the degree of erraticness / variance of their actions.
@@ -176,8 +186,8 @@ Notation:
 \begin{equation}
 p(\theta_{N+1} | y_{1:N+1}) \propto p(y_{N+1} | \theta_{N+1}) p(\theta_{N+1} | \beta) p (\beta | y_{1:N})
 \end{equation}
-\item As N is large replace $ p(\theta_{N+1} | \beta) p (\beta | y_{1:N})$ with $ p(\theta_{N+1} | \beta_{MAP})$ where $\beta_{MAP}$ is the maximum of $p(\beta | y_{1:N})$, or some other suitable point estimate. This approximate distribution now has a closed form. 
-\item Subsequently fitting $p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S})  \propto p(y_{N+1} | \theta_{N+1}) p(\theta_{N+1} | \beta_{MAP})$ is fairly easy with MCMC / VB etc.
+\item As N is large $p (\beta | y_{1:N})$ is fairly precise, so replace $ p(\theta_{N+1} | \beta) p (\beta | y_{1:N})$ with $ p(\theta_{N+1} | \hat{\beta})$ where $\hat{\beta}$ is the posterior mean of $\beta$. This approximation gives us a closed form for $ p(\theta_{N+1} | \hat{\beta})$.
+\item Subsequently fitting $p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S})  \propto p(y_{N+1} | \theta_{N+1}) p(\theta_{N+1} | \hat{\beta})$ is fairly easy with MCMC / VB etc.
 \item When $S$ is small, the information in the prior will dominate the individual information.
 \item However, for some $T > S$ the information in the car's individual movements should become more relevant and forecasts could be improved by updating the distribution to $p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:T})$.
 \item This update takes the form of
@@ -188,15 +198,16 @@ p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:T}) \propto p(y_{N+1, S+1:T} | \theta_{N+1})
 \item Due to the demands of driving, the car wants the update carried out as soon as possible, and ideally should be able to discard this previously used information and use only $y_{N+1, S+1:T}$, reducing the time and memory complexity from $O(T)$ to $O(T-S)$. 
 \item Defining $q(\theta_{N+1} | y_{N+1, 1:S})$ as the Variational Bayes approximation of $p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S})$, an online method is proposed to update $q(\theta_{N+1} | y_{N+1, 1:S})$ to $q(\theta_{N+1} | y_{N+1, 1:T})$:
 \begin{enumerate}
-\item Observe $y_{N+1, 1:S_1}$, fit VB $q(\theta_{N+1} | y_{N+1, 1:S_1}) \approx p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S_1})$
-\item Observe $y_{N+1, S_1+1:S_2}$, in this case the model becomes
+\item Observe $y_{N+1, 1:S}$, fit VB $q(\theta_{N+1} | y_{N+1, 1:S}) \approx p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S})$
+\item Observe $y_{N+1, S+1:T}$, in this case the model becomes
 \begin{equation}
-p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S_2}) \propto p(y_{N+1, S_1+1:S_2} | \theta_{N+1})p(\theta_{N+1} |  y_{1:N}, y_{N+1, 1:S_1})
+p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:T}) \propto p(y_{N+1, S+1:T} | \theta_{N+1})p(\theta_{N+1} |  y_{1:N}, y_{N+1, 1:S})
 \end{equation}
-\item Set $p(\theta_{N+1} |  y_{1:N}, y_{N+1, 1:S_1}) = q(\theta_{N+1} | y_{N+1, 1:S_1})$
-\item Fit VB  $q(\theta_{N+1} | y_{N+1, 1:S_2}) \approx p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S_2})$
+\item Set $p(\theta_{N+1} |  y_{1:N}, y_{N+1, 1:S}) = q(\theta_{N+1} | y_{N+1, 1:S})$
+\item Fit VB  $q(\theta_{N+1} | y_{N+1, 1:T}) \approx p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:T})$
 \item Repeat as new data is observed
 \end{enumerate}
+\item The performance of this approach should be similar to (but probably slightly lower than) the regular VB fit but it is faster as $T$ increases relative to $T - S$.
 \end{itemize}
 
 \section{Empirical}
@@ -210,7 +221,7 @@ p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S_2}) \propto p(y_{N+1, S_1+1:S_2} | \theta_
 
 Models:
 \begin{enumerate}
-\item No prior information for the new car
+\item No prior information for the new car - very flat priors.
 \item Prior information from hierarchical model with one component
 \item Prior information from large mixture hierarchical model
 \end{enumerate}
@@ -218,24 +229,34 @@ Models:
 Methods:
 \begin{enumerate}
 \item MCMC
-\item Regular VB (fit to full sample)
+\item Regular VB (fit each update to the new sample)
 \item Streaming VB (fit to new data only)
 \end{enumerate}
 
 Evaluation:
 \begin{itemize}
 \item Compare forecasts for different sample sizes and forecast horizons
-\item Strategy: Fit model to one $S = 10$ (one second), forecast next second
-\item Fit model to $S = 2$, forecast next second, repeat.
+\item Strategy: Fit model for one car up time time $S = 10$ (one second), forecast from $S+1:S+30$ (three seconds seems to be a standard forecast horizon for driver reaction, though surely self driving cars have a faster reaction time).
+\item Fit model to $S = 20$, forecast next three seconds, repeat.
 \item Collect logscores for predictive densities marginalised over the posterior distributions.
+\item Repeat for each of the 873 remaining cars.
 \end{itemize}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width = 0.95\textwidth]{logscoresByPrior.png}
+\caption{Predictive log-scores for $p(a_{T+1:T+10}, d_{T+1:T+10} | a_{1:T}, d_{1:T})$ for $T = \{10, 20, \dots, 300\}$ for each of the three levels of prior information fit by both MCMC and VB. Stronger prior information improves forecasts in small samples, but as $T$ increases there are clear benefits to refitting the model regardless of the level of prior information. There was a mixtake in the VB finite mixture code which has been corrected but I am still waiting for the fixed results.}
+\label{fig:MainResults}
+\end{figure}
+
 
 Results:
 \begin{itemize}
-\item Models based on the stromg prior information to outperform no information models for first few seconds, where we see a significant improvement in the log scores. As the dataset increases to > 100 observations (10 seconds), the data dominates and the prior choice does not have much impact. The median logscore (and probably other quantiles, hard to see from the graph) at a larger value of T increases as expected, showing that it is important to re-estimate the model with an increased dataset. However it seems that this re-estimation could probably be done with a simpler prior structure than the full hierarchy. 
+\item Models based on the strong prior information outperform no information models for first few seconds, where we see a significant improvement in the log scores. As the dataset increases to $> 100$ observations (10 seconds), the data dominates and the prior choice does not have much impact. The median logscore (and probably other quantiles, hard to see from the graph) at a larger value of T increases as expected, showing that it is important to re-estimate the model with an increased dataset. However it seems that this re-estimation could probably be done with a simpler prior structure than the full hierarchy without any big loss.
 \item Compare streaming data VB - Hoping it will be comparable to other methods, it technically may be a bit worse as it uses one more approximation than the standard VB, but I don't think this will have a very big impact. It certainly will be faster, so if the performance is roughly equal this is evidence in favour of the online method. 
 \item Compare VB and MCMC methods for the same models to get an idea of approximation error.
 \item Still waiting on the cluster for standard VB Finite Mixture Model and all VB streams.
+\item We will have multiple forecasts for each actual observation (eg. $p(y_{43} | y_{20}), p(y_{43} | y_{30})$ and $p(y_{43} | y_{40})$) which gives us another approach to look at the benefits of increased observed data.
 \end{itemize}
 
 \section{Conclusion}

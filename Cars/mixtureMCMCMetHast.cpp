@@ -20,6 +20,20 @@ double nlogDensity (mat data, vec theta, vec mu, mat varInv){
   }
   return dens;
 }
+
+// [[Rcpp::export]]
+double nlikelihood (mat data, vec theta){
+  int T = data.n_rows;
+  double dens = 0;
+  for(int t = 2; t < T; ++t){
+    dens +=  - 0.5 * (theta(0) + theta(1)) - 
+      pow(data(t, 0) - theta(2) * data(t-1, 0) - theta(3) * data(t-2, 0), 2) / (2 * exp(theta(0))) -
+      pow(data(t, 1) - theta(4) * data(t-1, 1) - theta(5) * data(t-2, 1), 2) / (2 * exp(theta(1)));
+  }
+  return dens;
+}
+
+
   
   
 // [[Rcpp::export]]
@@ -35,3 +49,51 @@ double tlogDensity (mat data, vec theta, vec mu, mat varInv){
   }
   return dens;
 }
+
+// [[Rcpp::export]]
+double mvtDens (vec theta, vec mu, mat varInv){
+  double logDens = 0.5 * log(det(varInv)) - 0.5 * as_scalar((theta - mu).t() * varInv * (theta - mu));
+  return exp(logDens);
+}
+
+// [[Rcpp::export]]
+List NoGapsMH (List data, List draw, vec stepsize, vec accept, double stepsizeCons, vec hyperMean, mat hyperVarInv, vec s, int iter){
+  int k = draw.length(), N = data.length();
+  
+  for(int i = 0; i < k; ++i){
+    vec oldDraw = draw(i);
+    vec candidate = oldDraw  +  stepsize(i) * randn<vec>(6)[0];
+    double canDens = 0, oldDens = 0;
+    for(int j = 0; j < N; ++j){
+      if(s(j) == i + 1){
+        canDens += nlogDensity(data(i), candidate, hyperMean, hyperVarInv);
+        oldDens += nlogDensity(data(i), oldDraw, hyperMean, hyperVarInv);
+      }
+    }
+    double ratio = exp(canDens - oldDens), u = randu<vec>(1)[0];
+    if(u < ratio){
+      accept(i) += 1;
+      draw(i) = candidate;
+      stepsize(i) += stepsizeCons * stepsize(i) * (1 - 0.234) / (28 + iter);
+    } else {
+      stepsize(i) -= stepsizeCons * stepsize(i) * 0.234 / (28 + iter);
+    }
+  }
+  return List::Create(Named("Draws") = draws,
+                      Named("Stepsize") = stepsize,
+                      Named("Accept") = accept);
+}
+  
+  
+
+  
+
+
+
+
+
+
+
+
+
+

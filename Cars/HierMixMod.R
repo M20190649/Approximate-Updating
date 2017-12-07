@@ -7,8 +7,10 @@
 
 # For the supervisors:
 # Write more things.
-# Set a meeting at some stage
 
+# Slurm stuff
+# Refit failed models
+# Refit mixture VB to all cars
 
 library(tidyverse)
 library(Rcpp)
@@ -606,18 +608,36 @@ for(i in seq_along(id$idfc)){
 }
 
 results {
-  
+
 results <- NULL
 for(i in seq_along(id$idfc)){
-  tmp <- read.csv(paste0('eval/car', id$idfc[[i]], '.csv'))
-  results <- rbind(results, tmp)
-  tmp <- read.csv(paste0('evalMix/car', id$idfc[[i]], '.csv'))
-  results <- rbind(results, tmp)
+  #tmp <- read.csv(paste0('eval/car', id$idfc[i], '.csv'))
+  #results <- rbind(results, tmp)
+  #tmp <- read.csv(paste0('evalMix/car', id$idfc[i], '.csv')) 
+  #results <- rbind(results, tmp)
+  try(assign('results',
+             rbind(results,
+                   read.csv(paste0('evalAll/car', id$idfc[i], '.csv')))))
   if(i %% 100 == 0){
     print(i)
   }
 }
   
+results %>%
+  #filter(method == 'MCMC' & prior == 'None') %>%
+  mutate(T = S + h,
+         horizon = ceiling(h/10)) %>%
+  group_by(method, prior, S, h, T, horizon, id) %>%
+  summarise(ls = - sum(logscore)) %>%
+  ungroup() %>%
+  select(T, id, ls, horizon, method, prior) %>%
+  filter(T > 30) %>%
+  ggplot() + geom_boxplot(aes(factor(horizon), ls)) +
+  facet_grid(method ~ prior) + 
+  scale_y_continuous(trans = reverselog_trans(base=10),
+                     labels=trans_format("identity", function(x) -x))
+
+
 library(scales)
 reverselog_trans <- function(base = exp(1)) {
   trans <- function(x) -log(x, base)
@@ -632,7 +652,8 @@ results %>%
   summarise(ls = -sum(logscore)) %>%
   ungroup() %>%
   mutate(T = ceiling(S / 30),
-         prior = factor(prior, levels = c('None', 'Hierarchy', 'Finite Mixture'))) %>%
+         prior = ifelse(as.character(prior) == 'Hierarchy', 'Single Component', as.character(prior)),
+         prior = factor(prior, levels = c('None', 'Single Component', 'Finite Mixture'))) %>%
   ggplot() +
   geom_boxplot(aes(factor(T), ls, colour = prior)) + 
   facet_wrap(~method, ncol = 1) +
@@ -641,7 +662,8 @@ results %>%
   scale_x_discrete(labels = c('10-30', '40-60', '70-90', '100-120', '130-150', 
                               '160-180', '190-210', '220-240', '250-270', '280-300')) + 
   scale_y_continuous(trans = reverselog_trans(base=10),
-                     labels=trans_format("identity", function(x) -x))
+                     labels=trans_format("identity", function(x) -x)) + 
+  theme(legend.position = 'bottom')
 
 results %>%
   group_by(id, method, prior, S) %>%
@@ -660,3 +682,55 @@ results %>%
             n = n())
   
 }
+
+noGapsSampler {
+  set.seed(1)
+  N <- 500
+  idSubset <- sample(id$idSubset, N)
+  data <- list()
+  for(i in 1:N){
+    carsAug %>%
+      filter(ID == idSubset[i]) %>%
+      mutate(n = seq_along(v),
+             vl = ifelse(n == 1, 0, lag(v)),
+             a = v - lag(v),
+             d = delta - pi/2) %>%
+      filter(n > 1 & n <= 501) %>% 
+      select(a , d) %>%
+      as.matrix() -> data[[i]]
+  }
+  reps <- 25000
+  thin <- 10
+  startK <- 5
+  
+  draws <- list(list())
+  hyper <- list(mean = c(-5, -5, rep(0, 4)),
+                varInv = solve(diag(c(5, 5, 10, 10, 10, 10))),
+                df = 6, 
+                scale = diag(1, 6),
+                alpha = 1)
+  for(k in 1:startK){
+    draws[[1]][[k]] <- list(mean = c(-5, -5, 0, 0, 0, 0),
+                            varInv = diag(10, 6))
+  }
+  for(i in 1:N){
+    draws[[i+1]] <- list(theta = c(-5, -5, 0, -0.1, 0.15, 0.05))
+  }
+  noGapDraws <- NoGaps(data, reps, draws, hyper, thin, startK, 0.01)
+  
+  
+  hyper <- list(mean = c(-5, -5, 0, 0, 0, 0),
+                varInv = diag(c(0.1, 0.1, 1, 1, 1, 1)),
+                var = diag(c(10, 10, 1, 1, 1, 1)),
+                alpha = 1)
+  
+  draws <- list()
+  for(i in 1:startK){
+    draws[[i]] <- rnorm(6, hyper$mean, sqrt(diag(hyper$var)))
+  }
+  
+  noGapDraws <- NoGaps2(data, reps, draws, hyper, thin, startK, 0.01)
+  
+}
+
+
