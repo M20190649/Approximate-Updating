@@ -276,7 +276,7 @@ cube evalVBDens (mat data, Rcpp::List means, Rcpp::List L, vec weights, int M, i
         draws = submean + subL * randn<vec>(6);
       } else {
         int mix, Nmix = weights.n_elem;
-        double u = randu<vec>(1)[0];
+        double u = randu<double>();
         for(int i = 0; i < Nmix; ++i){
           if(u < weights(i)){
             mix = i;
@@ -315,7 +315,7 @@ mat evalMixDens (mat data, vec means, mat L, vec sumWeights, int M, int S, vec a
   for(int m = 0; m < M; ++m){
     // VB forecast densities
       double afc1 = data(1, 0), afc2 = data(0, 0), dfc1 = data(1, 1), dfc2 = data(0, 1), afc, dfc;
-      double u = randu<vec>(1)[0];
+      double u = randu<double>();
       int k;
       for(int i = 0; i < K; ++i){
         if(u < sumWeights(i)){
