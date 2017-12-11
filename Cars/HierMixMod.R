@@ -611,13 +611,11 @@ results {
 
 results <- NULL
 for(i in seq_along(id$idfc)){
-  #tmp <- read.csv(paste0('eval/car', id$idfc[i], '.csv'))
-  #results <- rbind(results, tmp)
-  #tmp <- read.csv(paste0('evalMix/car', id$idfc[i], '.csv')) 
-  #results <- rbind(results, tmp)
-  try(assign('results',
-             rbind(results,
-                   read.csv(paste0('evalAll/car', id$idfc[i], '.csv')))))
+  tmp <- read.csv(paste0('eval/car', id$idfc[i], '.csv'))
+  results <- rbind(results, tmp)
+  #try(assign('results',
+  #           rbind(results,
+  #                 read.csv(paste0('evalAll/car', id$idfc[i], '.csv')))))
   if(i %% 100 == 0){
     print(i)
   }
@@ -647,16 +645,16 @@ reverselog_trans <- function(base = exp(1)) {
             domain = c(1e-100, Inf))
 }
 
-results %>% 
+results[results$method == 'VB-Stream',] %>% 
   group_by(id, method, prior, S, h) %>%
   summarise(ls = -sum(logscore)) %>%
   ungroup() %>%
-  mutate(T = ceiling(S / 30),
-         prior = ifelse(as.character(prior) == 'Hierarchy', 'Single Component', as.character(prior)),
-         prior = factor(prior, levels = c('None', 'Single Component', 'Finite Mixture'))) %>%
-  ggplot() +
-  geom_boxplot(aes(factor(T), ls, colour = prior)) + 
-  facet_wrap(~method, ncol = 1) +
+  #mutate(T = ceiling(S / 30)) %>%
+  ggplot() + geom_boxplot(aes(factor(S), ls)) + facet_wrap(~prior) +   
+  scale_y_continuous(trans = reverselog_trans(base=10),
+                     labels=trans_format("identity", function(x) -x)) 
+  geom_boxplot(aes(factor(T), ls, colour = method)) + 
+  facet_wrap(~prior, ncol = 1) +
   theme_bw() +
   labs(x = 'T Range', y = 'Combined Logscore') + 
   scale_x_discrete(labels = c('10-30', '40-60', '70-90', '100-120', '130-150', 
@@ -701,11 +699,11 @@ noGapsSampler {
   }
   reps <- 25000
   thin <- 10
-  startK <- 5
+  startK <- 15
   
   draws <- list(list())
-  hyper <- list(mean = c(-5, -5, rep(0, 4)),
-                varInv = solve(diag(c(5, 5, 10, 10, 10, 10))),
+  hyper <- list(mean = c(-7, -7, rep(0, 4)),
+                varInv = solve(diag(c(5, 5, 1, 1, 1, 1))),
                 df = 6, 
                 scale = diag(1, 6),
                 alpha = 1)
@@ -714,7 +712,7 @@ noGapsSampler {
                             varInv = diag(10, 6))
   }
   for(i in 1:N){
-    draws[[i+1]] <- list(theta = c(-5, -5, 0, -0.1, 0.15, 0.05))
+    draws[[i+1]] <- list(theta = c(mvtnorm::rmvnorm(1, hyper$mean, solve(hyper$varInv))))
   }
   noGapDraws <- NoGaps(data, reps, draws, hyper, thin, startK, 0.01)
   

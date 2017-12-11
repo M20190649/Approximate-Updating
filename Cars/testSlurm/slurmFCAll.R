@@ -152,18 +152,15 @@ for(s in 1:15){
       aindex <- min(which(asup > data[sSeq[s]+h,1]))
       dindex <- min(which(dsup > data[sSeq[s]+h,2]))
       
-      alogscoreVBOff <- log(densitiesOffline[(h-1)*1000 + aindex, 1])#, k])
-      dlogscoreVBOff <- log(densitiesOffline[(h-1)*1000 + dindex, 2])#, k])
-      alogscoreVBOn <- log(densitiesOnline[(h-1)*1000 + aindex, 1])#, k])
-      dlogscoreVBOn <- log(densitiesOnline[(h-1)*1000 + dindex, 2])#, k])
-      alogscoreMCMC <- log(densitiesMCMC[(h-1)*1000 + aindex, 1])#, k])
-      dlogscoreMCMC <- log(densitiesMCMC[(h-1)*1000 + dindex, 2])#, k])
+      densVBOff <- densitiesOffline[(h-1)*1000 + aindex, 1]  *  densitiesOffline[(h-1)*1000 + dindex, 2]  /  data[sSeq[s]+h, 3]
+      densVBOn <- densitiesOnline[(h-1)*1000 + aindex, 1]  *  densitiesOnline[(h-1)*1000 + dindex, 2]  /  data[sSeq[s]+h, 3]
+      densMCMC <- densitiesMCMC[(h-1)*1000 + aindex, 1]  *  densitiesMCMC[(h-1)*1000 + dindex, 2]  /  data[sSeq[s]+h, 3]
+        
      
     # Attach results
       results <- rbind(results, 
-                       data.frame(logscore = c(alogscoreVBOff, dlogscoreVBOff, alogscoreVBOn, dlogscoreVBOn, alogscoreMCMC, dlogscoreMCMC),
-                                  variable = rep(c('a', 'd'), 3),
-                                  method = rep(c('VB-Offline', 'VB-Stream', 'MCMC'), rep(2, 3)),
+                       data.frame(logscore = c(log(densVBOff), log(densVBOn), log(densMCMC)),
+                                  method = c('VB-Offline', 'VB-Stream', 'MCMC'),
                                   prior = 'Finite Mixture',#methods[k],
                                   S = sSeq[s],
                                   h = h,

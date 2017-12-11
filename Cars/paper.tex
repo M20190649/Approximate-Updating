@@ -101,7 +101,7 @@
 
 \begin{itemize}
 \item Self driving cars becoming more common
-\item Cars can perform complex maneuvers on their own, and are capable of detecing the location of cars around them
+\item Cars can perform complex maneuvers on their own, and are capable of detecting the location of cars around them
 \item Cars need to improve their ability to detect the movement of cars around them
 \item Wide range of unconditional variances and first two partial autocorrelations observed while fitting each model individually - evidence of heterogeneity
 \item Forecasts of car movement could be improved by building a hierarchical model that shares information between cars while allowing each driver to have their own parameter vector
@@ -122,16 +122,16 @@
 \section{Data processing}
 
 \begin{itemize}
-\item Data is provided by the NGSIM project, which observes ~5000 cars for a 2000 feet section of the US 101 Highway.
+\item Data is provided by the Next Generation Simulation (NGSIM) project, which observes ~5000 cars for a 2000 feet section of the US 101 Highway.
 \item Observations of x/y coordinates are provided every 100 ms (10 hz), with around 500-1000 observations per car.
 \item Around 2000 of these cars changed lanes or stopped moving somewhere in the sample and are discarded.
 \item There was some curvature in the road which means there are systematic movements in the car paths.
 \item Modern cars are able to track lane marking and can calculate distance to other cars in relative co-ordinates (Thuy and Leon 2010), instead of relative to the Earth (ie. ignores curves)
 \item Prior research fits a polynomial curve to detected lane markings to build a model of the road lane edges (Woo et. al. 2016) 
-\item Instead, I fit splines to the positions of each car to build an estimate of the road midpoint. Relative coordiantes are found separately for each lane using the movements of 100 cars / lane by the following procedure:
+\item Instead, I fit splines to the positions of each car to build an estimate of the road midpoint. Relative co-ordinates are found separately for each lane using the movements of 100 cars / lane by the following procedure:
 \begin{enumerate}
 \item At each point in time $t$ calculate the total distance each car has travelled along the road using $d_{i, t} = \sum_{s=1}^t v_{i, s}$, where $v_{i, s}$ is the velocity of car $i$ at time $s$. 
-\item Estimate smoothing splines of the form $x_{i, t} = f(d_{i, t})$ and $y_{i, t} = g(d_{i, t})$, where $x_{i, t}$ and $y_{i, t}$ are the car coordinates relative to the start of the road.
+\item Estimate independent smoothing splines of the form $x_{i, t} = f(d_{i, t})$ and $y_{i, t} = g(d_{i, t})$, where $x_{i, t}$ and $y_{i, t}$ are the car coordinates relative to the start of the road.
 \item Use models to get $\hat{x}_{i, t}$ and $\hat{y}_{i, t}$ as estimates of the midpoint of the lane after travelling a distance $d_{i, t}$.
 \item Define new coordinates 
 \begin{align}
@@ -144,7 +144,7 @@ y^*_{i, t} &= d_{i, t} \label{yRel}
 
 \section{Hierarchical Motion Model}
 
-The position of any vechicle at time $t$ can be fully determined by its inital position, $\{x^*_{i, 0}, y^*_{i, 0}\}$ and the history of the driver's inputs: the cars velocity $v_{i, t}$ and steering angle, $\delta_{i, t}$ by
+The position of any vehicle at time $t$ can be fully determined by its inital position, $\{x^*_{i, 0}, y^*_{i, 0}\}$ and the history of the driver's inputs: the cars velocity $v_{i, t}$ and steering angle, $\delta_{i, t}$ by
 \begin{align}
 x^*_{t} &= x^*_{t-1} + v_{t} \cos(\delta_{t}) \label{xEq} \\
 y^*_{t} &= y^*_{t-1} + v_{t} \sin(\delta_{t}). \label{yEq},
@@ -163,7 +163,11 @@ Auto-regressive processes of orders $p$ and $q$ for $a_t$ and  $\delta_t$ are us
 a_{t} &= \sum_{j = 1}^p \phi_{j} a_{t-j} + \sigma_{\epsilon} \epsilon_{t} \label{aAR} \\
 \delta_{t} &= \pi/2 + \sum_{j = 1}^q \gamma_{j} (\delta_{t-j} - \pi/2) + \sigma_{\eta} \eta_{t} \label{dAR}
 \end{align}
-where $\epsilon_{t}$ and $\eta_t$ are independently and identically distributed according to a standard normal distribution. The parameter vector to be estimated is collected as $\theta = \{\phi_{1}, \dots, \phi_{p}, \gamma_{1}, \dots, \gamma_{q}, \log(\sigma^{2}_{\epsilon}), \log(\sigma^{2}_{\eta})\} \in \mathbb{R}^{p + q + 2}$.
+where $\epsilon_{t}$ and $\eta_t$ are independently and identically distributed according to a standard normal distribution. The parameter vector to be estimated is collected as 
+\begin{equation*}
+\label{thetaVec}
+\theta = \{\phi_{1}, \dots, \phi_{p}, \gamma_{1}, \dots, \gamma_{q}, \log(\sigma^{2}_{\epsilon}), \log(\sigma^{2}_{\eta})\} \in \mathbb{R}^{p + q + 2}.
+\end{equation*}
 
 Multiple groups of differing driver behaviour can be allowed while still retaining heterogeneity with each group by jointly estimating each vehicle driver's individual parameter vector, $\theta_i$, as part of a heirarchical model, independently drawing $\theta_i$ from a $K$ component mixture of multivariate normal distributions, augmenting each $\theta_i$ with a mixture component $k_i = 1, \dots, K$ such that 
 \begin{equation}
@@ -174,7 +178,7 @@ For each $j = 1, \dots, K$, multivariate normal priors are chosen for $\mu_j$ wi
 
 \begin{itemize}
 \item This model is fit to 2000 cars in the sample, leaving 873 for forecasting.
-\item To do: Add a Direchlet Process Prior to make this an infinite mixture
+\item To do: Add a Dirichlet Process Prior to make this an infinite mixture
 \item I've been trying this but I get results where all of the component indicator variables in the MCMC go to one component instead of the mixture assigning as many clusters as possible as Tas suggested would happen. I assume I'm doing something wrong but I haven't figured out what yet.
 \end{itemize}
 
@@ -194,7 +198,7 @@ p(\theta_{N+1} | y_{1:N+1}) \propto p(y_{N+1} | \theta_{N+1}) p(\theta_{N+1} | \
 \begin{equation}
 p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:T}) \propto p(y_{N+1, S+1:T} | \theta_{N+1}) p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S})
 \end{equation}
-\item Due to the lack of a closed form expression for $p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S})$, in reality the updating begins again from the prior re-using the data in $y_{N+1, 1:S}$.
+\item To perform this update only using the data from $y_{N+1, S+1:T}$ we would need a closed form form expression for $p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S})$. With MCMC methods we only have a sample from this distribution so in reality the distribution isn't updated, instead we re-run the MCMC using the complete dataset using the prior $p(\theta_{N+1} | \hat{\beta})$.
 \item Due to the demands of driving, the car wants the update carried out as soon as possible, and ideally should be able to discard this previously used information and use only $y_{N+1, S+1:T}$, reducing the time and memory complexity from $O(T)$ to $O(T-S)$. 
 \item Defining $q(\theta_{N+1} | y_{N+1, 1:S})$ as the Variational Bayes approximation of $p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S})$, an online method is proposed to update $q(\theta_{N+1} | y_{N+1, 1:S})$ to $q(\theta_{N+1} | y_{N+1, 1:T})$:
 \begin{enumerate}

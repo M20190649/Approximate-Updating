@@ -556,6 +556,15 @@ NoGaps <- function(data, reps, draw, hyper, thin = 1, k = 10, stepsize = 0.01){
         attr(timePerIter, 'units') = 'secs'
         timePerIter <- timePerIter * 60
       }
+    } else if(iter %% 100 == 50){
+      timePerIter <- (Sys.time() - startTime) / (iter - 50);
+      if(attr(timePerIter, 'units') == 'mins'){
+        attr(timePerIter, 'units') = 'secs'
+        timePerIter <- timePerIter * 60
+      } else if(attr(timePerIter, 'units') == 'hours'){
+        attr(timePerIter, 'units') = 'secs'
+        timePerIter <- timePerIter * 3600
+      }
     }
     
     # Resample s indices for each i
@@ -563,6 +572,7 @@ NoGaps <- function(data, reps, draw, hyper, thin = 1, k = 10, stepsize = 0.01){
     draw[[1]][[k+1]] <- list(mean = c(mvtnorm::rmvnorm(1, hyper$mean, solve(hyper$varInv))),
                              varInv = rWishart(1, hyper$df, hyper$scale)[,,1])
     save[[1]][[k+1]] <- list(mean = matrix(0, nSave, dim), varInv = array(0, dim = c(dim, dim, nSave)))
+    
 
     for(j in 1:N){
       skip = FALSE
@@ -577,12 +587,13 @@ NoGaps <- function(data, reps, draw, hyper, thin = 1, k = 10, stepsize = 0.01){
             # Otherwise shift everything above it down by one and put the now empty cluster in the k'th spot
             temp <- draw[[1]][[s[j]]]
             tempSave <- save[[1]][[s[j]]]
-            for(i in s[j]:(k-1)){
-              draw[[1]][[i]] <- draw[[1]][[i+1]]
-              save[[1]][[i]] <- save[[1]][[i+1]]
-            }
+            
+            draw[[1]][s[j]:(k-1)] <- draw[[1]][(s[j]+1):k]
+            save[[1]][s[j]:(k-1)] <- save[[1]][(s[j]+1):k]
+            
             draw[[1]][[k]] <- temp
             save[[1]][[k]] <- tempSave
+            
             s[s > s[j]] <- s[s > s[j]] - 1
             s[j] <- k
             n <- table(s)
@@ -599,10 +610,11 @@ NoGaps <- function(data, reps, draw, hyper, thin = 1, k = 10, stepsize = 0.01){
         n[s[j]] <- n[s[j]]  - 1
         probS <- rep(0, k+1)
         for(i in 1:k){
-          probS[i] <- n[i] * mvtDens(draw[[j+1]]$theta, draw[[1]][[i]]$mean, draw[[1]][[i]]$varInv)
+          probS[i] <- log(n[i])  +  nlogDensity(data[[j]], draw[[j+1]]$theta, draw[[1]][[i]]$mean, draw[[1]][[i]]$varInv)
         }
-        probS[k+1] <- hyper$alpha / (k + 1) * mvtDens(draw[[j+1]]$theta, draw[[1]][[k+1]]$mean, draw[[1]][[k+1]]$varInv)
-        probS <- probS / sum(probS)
+        probS[k+1] <- log(hyper$alpha / (k + 1))  +   nlogDensity(data[[j]], draw[[j+1]]$theta, draw[[1]][[k+1]]$mean, draw[[1]][[k+1]]$varInv)
+        probS <- probS - max(probS)
+        probS <- exp(probS) / sum(exp(probS))
         s[j] <- sample(1:(k+1), 1, prob = probS)
         if(s[j] == k+1){
           # add a new group, draw a new k+1'th group
@@ -617,8 +629,10 @@ NoGaps <- function(data, reps, draw, hyper, thin = 1, k = 10, stepsize = 0.01){
           n[s[j]] <- n[s[j]] + 1
         }
       }
+      n <- table(s)
     }
-    n <- n[1:k]
+    draw[[1]] <- draw[[1]][1:k]
+    save[[1]] <- save[[1]][1:k]
     
     # draw new values for each mu / varInv pair
     sumTheta <- matrix(0, 6, k)
@@ -673,12 +687,13 @@ NoGaps <- function(data, reps, draw, hyper, thin = 1, k = 10, stepsize = 0.01){
     }
     # print progress
     if(iter %% 1000 == 0){
-      mins <-  (reps - iter) * timePerIter[1] / 60
-      if(mins > 120){
-        print(paste0('Iteration: ', iter, '. Est. Time Remaining: ', round(mins / 60, 2), ' hours.'))
-      } else {
-        print(paste0('Iteration: ', iter, '. Est. Time Remaining: ', round(mins, 2), ' minutes.'))
-      }
+      time <- as.numeric((reps - iter) * timePerIter[1])
+      hours <- floor(time / 3600)
+      mins <- floor(time %% 3600 / 60)
+      secs <- floor(time %% 60)
+      
+      print(paste0('Iteration: ', iter, '/', reps, '. Time Remaining: ', hours, ':', mins, ':', secs))
+      
     }
   }
   
@@ -723,6 +738,9 @@ NoGaps2 <- function(data, reps, draw, hyper, thin = 1, k = 10, stepsizeStart = 0
       if(attr(timePerIter, 'units') == 'mins'){
         attr(timePerIter, 'units') = 'secs'
         timePerIter <- timePerIter * 60
+      } else if(attr(timePerIter, 'units') == 'hours'){
+        attr(timePerIter, 'units') = 'secs'
+        timePerIter <- timePerIter * 3600
       }
     }
     
@@ -748,19 +766,19 @@ NoGaps2 <- function(data, reps, draw, hyper, thin = 1, k = 10, stepsizeStart = 0
             tempSave <- saveT[[s[j]]]
             ss <- stepsize[s[j]]
             acc <- accept[s[j]]
-            for(i in s[j]:(k-1)){
-              draw[[i]] <- draw[[i+1]]
-              saveT[[i]] <- saveT[[i+1]]
-              stepsize[i] <- stepsize[i+1]
-              accept[i] <- accept[i+1]
-            }
+            
+            draw[s[j]:(k-1)] <- draw[(s[j]+1):k]
+            saveT[s[j]:(k-1)] <- saveT[(s[j]+1):k]
+            stepsize[s[j]:(k-1)] <- stepsize[(s[j]+1):k]
+            accept[s[j]:(k-1)] <- accept[(s[j]+1):k]
+            
             draw[[k]] <- temp
             save[[k]] <- tempSave
             stepsize[k] <- ss
             accept[k] <- acc
+            
             s[s > s[j]] <- s[s > s[j]] - 1
             s[j] <- k
-            saveT[[k+1]] <- NULL
           }
           # remove the group
           k <- k - 1
@@ -787,9 +805,8 @@ NoGaps2 <- function(data, reps, draw, hyper, thin = 1, k = 10, stepsizeStart = 0
           k <- k + 1
           draw[[k+1]] <- c(mvtnorm::rmvnorm(1, hyper$mean, hyper$var))
           saveT[[k+1]] <- matrix(0, nSave, dim)
-          accept[k+1] <- 0
-          stepsize[k+1] <- stepsizeStart
-          
+          accept <- c(accept, 0)
+          stepsize <- c(stepsize, stepsizeStart)
         } else {
           # add to the count of thew newly assigned group
           n[s[j]] <- n[s[j]] + 1
@@ -797,6 +814,7 @@ NoGaps2 <- function(data, reps, draw, hyper, thin = 1, k = 10, stepsizeStart = 0
       }
     }
     n <- n[1:k]
+    saveT <- saveT[1:k]
     accept <- accept[1:k]
     stepsize <- stepsize[1:k]
   
@@ -815,12 +833,13 @@ NoGaps2 <- function(data, reps, draw, hyper, thin = 1, k = 10, stepsizeStart = 0
     }
     # print progress
     if(iter %% 1000 == 0){
-      mins <-  (reps - iter) * timePerIter[1] / 60
-      if(mins > 120){
-        print(paste0('Iteration: ', iter, '. Est. Time Remaining: ', round(mins / 60, 2), ' hours.'))
-      } else {
-        print(paste0('Iteration: ', iter, '. Est. Time Remaining: ', round(mins, 2), ' minutes.'))
-      }
+      time <- as.numeric((reps - iter) * timePerIter[1])
+      hours <- floor(time / 3600)
+      mins <- floor(time %% 3600 / 60)
+      secs <- floor(time %% 60)
+
+      print(paste0('Iteration: ', iter, '/', reps, '. Time Remaining: ', hours, ':', mins, ':', secs))
+      
     }
   }
   

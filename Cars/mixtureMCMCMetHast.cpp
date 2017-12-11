@@ -79,7 +79,7 @@ List NoGapsMH (List data, List draw, vec stepsize, vec accept, double stepsizeCo
       stepsize(i) -= stepsizeCons * stepsize(i) * 0.234 / (28 + iter);
     }
   }
-  return List::Create(Named("Draws") = draws,
+  return List::create(Named("Draws") = draw,
                       Named("Stepsize") = stepsize,
                       Named("Accept") = accept);
 }
