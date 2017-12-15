@@ -217,116 +217,106 @@ Rcpp::List arUpdater(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec me
 }
 
 // [[Rcpp::export]]
-mat evalMCMCDens (mat data, int M, int H, vec asup, vec dsup, mat MCMCdraws){   //}Rcpp::List MCMC){
-  int N = asup.n_elem;
-  //int K = MCMC.length();
-  mat densities (N * H, 2, fill::zeros); //, K, fill::zeros);
+cube evalMCMCDens (mat data, int N, int H, mat grid, mat MCMCdraws){
+  cube densities (N, N, H, fill::zeros);
   boost::math::normal_distribution<> Zdist(0, 1);
-  //for(int k = 0; k < K; ++k){
-  //  mat MCMCdraws = MCMC(k);
-    for(int m = 0; m < M; ++m){
-      double afc1 = data(1, 0), afc2 = data(0, 0), dfc1 = data(1, 1), dfc2 = data(0, 1), afc, dfc;
-      vec draws = MCMCdraws.row(1000 + 4 * m).t();
-      for(int h = 0; h < H; ++h){
-        afc = afc1 * draws(2) + afc2 * draws(3);
-        dfc = dfc1 * draws(4) + dfc2 * draws(5);
-        for(int n = 0; n < N; ++n){
-          densities(N*h + n, 0) += pdf(Zdist, (asup(n) - afc) / sqrt(std::exp(draws(0)))) / M;
-          densities(N*h + n, 1) += pdf(Zdist, (dsup(n) - dfc) / sqrt(std::exp(draws(1)))) / M;
+
+  for(int m = 0; m < 1000; ++m){
+    double afc1 = data(1, 0), afc2 = data(0, 0), dfc1 = data(1, 1), dfc2 = data(0, 1), afc, dfc, vfc;
+    vec draws = MCMCdraws.row(1000 + 4 * m).t();
+    double sigV = std::sqrt(std::exp(draws(0)));
+    double sigD = std::sqrt(std::exp(draws(1)));
+    for(int h = 0; h < H; ++h){
+      afc = afc1 * draws(2) + afc2 * draws(3);
+      dfc = dfc1 * draws(4) + dfc2 * draws(5);
+      vfc = afc + data(2 + h, 2);
+      // Iterate densities over the grid
+      for(int i = 0; i < N; ++i){
+        for(int j = 0; j < N; ++j){
+          // Transform delta x / delta y to velocity and angle
+          double v = std::sqrt(
+            std::pow(grid(i*N + j, 0), 2) +
+              std::pow(grid(i*N + j, 1), 2)
+          );
+          double del = std::atan2(
+            grid(i*N + j, 1),
+            grid(i*N + j, 0)
+          ) - 1.570796;
+          // p(x, y) = p(v) * p(d) / sqrt(dx^2 + dy^2)
+          densities(i, j, h) += (pdf(Zdist, (v - vfc) / sigV) / sigV) *
+            (pdf(Zdist, (del - dfc) / sigD) / sigD) / (v * 1000);
         }
-        afc2 = afc1;
-        afc1 = afc;
-        dfc2 = dfc1;
-        dfc1 = dfc;
       }
+      afc2 = afc1;
+      afc1 = afc;
+      dfc2 = dfc1;
+      dfc1 = dfc;
     }
-  //}
+  }
   return densities;
 }
 
 // [[Rcpp::export]]
-cube evalVBDens (mat data, Rcpp::List means, Rcpp::List L, vec weights, int M, int H, vec asup, vec dsup){
-  int N = asup.n_elem;
-  int K = means.length();
-  cube densities (N * H, 2, K, fill::zeros);
+cube evalVBDens (mat data, vec mean, mat L, vec weights, int N, int H, mat grid, bool mix){
+  cube densities (N, N, H, fill::zeros);
   boost::math::normal_distribution<> Zdist(0, 1);
-  for(int k = 0; k < K; ++k){
-    // Take a draw from the VB posterior
-    vec submean = means(k);
-    mat subL = L(k);
-    
-    if(k < K - 1){
-      for(int m = 0; m < M; ++m){
-        double afc1 = data(1, 0), afc2 = data(0, 0), dfc1 = data(1, 1), dfc2 = data(0, 1), afc, dfc;
-        vec draws = submean + subL * randn<vec>(6);
-        // VB forecast densities
-        for(int h = 0; h < H; ++h){
-          afc = afc1 * draws(2) + afc2 * draws(3);
-          dfc = dfc1 * draws(4) + dfc2 * draws(5);
-          for(int n = 0; n < N; ++n){
-            densities(N*h + n, 0, k) += pdf(Zdist, (asup(n) - afc) / sqrt(std::exp(draws(0)))) / M;
-            densities(N*h + n, 1, k) += pdf(Zdist, (dsup(n) - dfc) / sqrt(std::exp(draws(1)))) / M;
-          }
-          afc2 = afc1;
-          afc1 = afc;
-          dfc2 = dfc1;
-          dfc1 = dfc;
-        }
-      }
+  
+  for(int m = 0; m < 1000; ++m){
+    // Set up lags of predicted means, starting with the true data
+    double afc1 = data(1, 0), afc2 = data(0, 0), dfc1 = data(1, 1), dfc2 = data(0, 1), afc, dfc, vfc;
+    vec draws(6);
+    if(!mix){
+      // If not a mixture, draws = mu + L * eps
+      draws = mean + L * randn<vec>(6);
     } else {
-      for(int m = 0; m < 0.1*M; ++m){
-        for(int i = 0; i < 6; ++i){
-          double afc1 = data(1, 0), afc2 = data(0, 0), dfc1 = data(1, 1), dfc2 = data(0, 1), afc, dfc;
-          vec submean2 = submean.rows(i*6, (i+1)*6 - 1);
-          mat subL2 = subL.rows(i*6, (i+1)*6-1);
-          vec draws = submean2 + subL2 * randn<vec>(6);
-          for(int h = 0; h < H; ++h){
-            afc = afc1 * draws(2) + afc2 * draws(3);
-            dfc = dfc1 * draws(4) + dfc2 * draws(5);
-            for(int n = 0; n < N; ++n){
-              densities(N*h + n, 0, k) += weights(i) * pdf(Zdist, (asup(n) - afc) / sqrt(std::exp(draws(0)))) / (M * 0.1);
-              densities(N*h + n, 1, k) += weights(i) * pdf(Zdist, (dsup(n) - dfc) / sqrt(std::exp(draws(1)))) / (M * 0.1);
-            }
-            afc2 = afc1;
-            afc1 = afc;
-            dfc2 = dfc1;
-            dfc1 = dfc;
-          }
+      // If it is a mixture distribution choose one via inverse CDF weights sampling, then do mu_component + L_component * eps
+      double u = randu<double>();
+      int comp;
+      for(int i = 0; i < 6; ++i){
+        if(u < weights(i)){
+          comp = i;
+          break;
         }
       }
+      vec submean = mean.rows(comp*6, (comp+1)*6 - 1);
+      mat subL = L.rows(comp*6, (comp+1)*6-1);
+      draws = submean + subL * randn<vec>(6);
     }
-  }
-  return densities;
-}
-
-// [[Rcpp::export]]
-mat evalVBMix (mat data, mat means, cube L, vec weights, int M, int H, vec asup, vec dsup){
-  int N = asup.n_elem;
-  mat densities (N * H, 2, fill::zeros);
-  boost::math::normal_distribution<> Zdist(0, 1);
-  for(int m = 0; m < M; ++m){
-    for(int i = 0; i < 6; ++i){
-      double afc1 = data(1, 0), afc2 = data(0, 0), dfc1 = data(1, 1), dfc2 = data(0, 1), afc, dfc;
-      vec draws = means.col(i) + L.slice(i) * randn<vec>(6);
-      for(int h = 0; h < H; ++h){
-        afc = afc1 * draws(2) + afc2 * draws(3);
-        dfc = dfc1 * draws(4) + dfc2 * draws(5);
-        for(int n = 0; n < N; ++n){
-          densities(N*h + n, 0) += weights(i) * pdf(Zdist, (asup(n) - afc) / sqrt(std::exp(draws(0)))) / M;
-          densities(N*h + n, 1) += weights(i) * pdf(Zdist, (dsup(n) - dfc) / sqrt(std::exp(draws(1)))) / M;
+    double sigV = std::sqrt(std::exp(draws(0)));
+    double sigD = std::sqrt(std::exp(draws(1)));
+    for(int h = 0; h < H; ++h){
+      // Step afc and dfc means forward, vfc = afc + lagged velocity
+      afc = afc1 * draws(2) + afc2 * draws(3);
+      dfc = dfc1 * draws(4) + dfc2 * draws(5);
+      vfc = afc + data(2 + h, 2);
+      // Iterate densities over the grid
+      for(int i = 0; i < N; ++i){
+        for(int j = 0; j < N; ++j){
+          // Transform delta x / delta y to velocity and angle
+          double v = std::sqrt(
+            std::pow(grid(i*N + j, 0), 2) +
+            std::pow(grid(i*N + j, 1), 2)
+          );
+          double del = std::atan2(
+            grid(i*N + j, 1),
+            grid(i*N + j, 0)
+            ) - 1.570796;
+          // p(x, y) = p(v) * p(d) / sqrt(dx^2 + dy^2)
+          densities(i, j, h) += (pdf(Zdist, (v - vfc) / sigV) / sigV) *
+                                (pdf(Zdist, (del - dfc) / sigD) / sigD) / (v * 1000);
         }
-        afc2 = afc1;
-        afc1 = afc;
-        dfc2 = dfc1;
-        dfc1 = dfc;
       }
+      // lag acceleration and angle
+      afc2 = afc1;
+      afc1 = afc;
+      dfc2 = dfc1;
+      dfc1 = dfc;
     }
   }
-
-  return densities;
+    
+  return densities;    
 }
-
-
+    
 // [[Rcpp::export]]
 double nlogDensity (mat data, vec theta, vec mu, mat varInv){
   int T = data.n_rows;
@@ -370,8 +360,8 @@ struct scoreMixNormal {
     
     Matrix<T, Dynamic, 1> dets(K);
     for(int k = 0; k < K; ++k){
-      dets(k) = 1;
-      for(int i = 0; i < 6; ++i){
+      dets(k) = fabs(lambda(6*k + 36*k));
+      for(int i = 1; i < 6; ++i){
         dets(k) *= fabs(lambda(6*K + 36*k + 7*i));
       }
     }
@@ -391,18 +381,16 @@ struct scoreMixNormal {
     }
     
     Matrix<T, Dynamic, 1> pi(6);
-    T sumez = 0;
-    for(int k = 0; k < 6; ++k){
-      sumez += exp(lambda(42*K + k));
+    T sumExpZ = 0;
+    for(int k = 0; k < K; ++k){
+      pi(k) = exp(lambda(42*K + k));
+      sumExpZ += pi(k);
     }
-    for(int k = 0; k < 6; ++k){
-      pi(k) = exp(lambda(42*K + k)) / sumez;
-    }
-    
+    pi /= sumExpZ;
     
     T density = 0;
     for(int k = 0; k < K; ++k){
-      density += pi(k)* dets(k) * exp(-0.5 * exponents(k));
+      density += pi(k) * dets(k) * pow(6.383185, -3) *  exp(-0.5 * exponents(k));
     }
     T logDens = log(density);
     
@@ -421,7 +409,7 @@ double pLogDensMix(mat data, vec theta, mat mean, cube Linv, vec dets, vec weigh
   double prior = 0;
   for(int k = 0; k < K; ++k){
     mat SigInv = Linv.slice(k) * Linv.slice(k).t();
-    prior += weights(k) * dets(k) * exp(-0.5 * as_scalar((theta - mean.col(k)).t() * SigInv * (theta - mean.col(k))));
+    prior += weights(k) * pow(6.283185, -3) * dets(k) * exp(-0.5 * as_scalar((theta - mean.col(k)).t() * SigInv * (theta - mean.col(k))));
   }
   
   // Evaluate log likelihood

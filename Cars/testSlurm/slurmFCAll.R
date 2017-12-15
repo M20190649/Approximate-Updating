@@ -1,19 +1,19 @@
 rm(list=ls())
 repenv <- Sys.getenv("SLURM_ARRAY_TASK_ID")
-i <- as.numeric(repenv)
+i <- 5#as.numeric(repenv)
 set.seed(1000 + i)
 
-library(Rcpp, lib.loc = 'packages')
-library(RcppArmadillo, lib.loc = 'packages')
-library(RcppEigen, lib.loc = 'packages')
-library(rstan, lib.loc = 'packages')
+library(Rcpp)#, lib.loc = 'packages')
+library(RcppArmadillo)#, lib.loc = 'packages')
+library(RcppEigen)#, lib.loc = 'packages')
+library(rstan)#, lib.loc = 'packages')
 source('slurmRFuns.R')
 sourceCpp('slurmCppFuns.cpp')
 
 id <- readRDS('carsID.RDS')
 datafc <- readRDS('ForecastData.RDS')
 prior <- readRDS('prior.RDS')
-H <- 30
+H <- 10
 S <- 10
 maxT <- 300
 
@@ -45,134 +45,103 @@ weights <- exp(weights) / sum(exp(weights))
 hyper[[3]] <- list(mean = mean, varInv = varinv, weights = weights)
 
 # Extract Data
-for(iter in 1:3){
-i <- sample(873, 1)
-  
 data <- datafc[[i]]
 
 # Set forcast supports
-aLower <- min(data[,1])
-if(aLower < 0){
-  aLower <- 1.5 * aLower
+xLower <- min(data[,4])
+if(xLower < 0){
+  xLower <- 2 * xLower
 } else {
-  aLower <- 0.5 * aLower
+  xLower <- xLower - 0.5
 }
-dLower <- min(data[,2])
-if(dLower < 0){
-  dLower <- 1.5 * dLower
+yLower <- min(data[,5])
+if(yLower < 0){
+  yLower <- 1.5 * yLower
 } else {
-  dLower <- 0.5 * dLower
+  yLower <- 0.5 * yLower
 }
 
-asup <- seq(aLower, 1.5*max(data[,1]), length.out=1000)
-dsup <- seq(dLower, 1.5*max(data[,2]), length.out=1000)
+xsup <- seq(min(xLower, -2), max(2, 2*max(data[,4])), length.out=300)
+ysup <- seq(yLower, 1.5*max(data[,5]), length.out=300)
+grid <- as.matrix(expand.grid(xsup, ysup))
 
 # Incrementally add data to VB fits
-for(s in 1:15){
+for(s in seq_along(sSeq)){
   if(sSeq[s] > nrow(data)){
     break
   }
   # Get data for stream
-  if(s == 1){
-    dataSub <- data[1:sSeq[s],]
-  } else {
-    dataSub <- data[(sSeq[s-1]+1):sSeq[s],]
+  if(s > 1){
+    dataSub <- data[(sSeq[s-1]-1):sSeq[s], 1:2]
   }
   # Update posterior approximations - Or re-estimate new ones from scratch for streaming data
   if(s == 1){
-    meanPrior <- matrix(prior[[3]][1:36], 6)
-    linvPrior <- array(0, dim = c(6, 6, 6))
-    detsPrior <- NULL
-    for(k in 1:6){
-      uinv <- matrix(prior[[3]][k*36 + 1:36], 6)
-      linvPrior[,,k] <- t(uinv)
-      detsPrior <- c(detsPrior, prod(diag(uinv)))
-    }
-    weightsPrior <- prior[[3]][253:258]
-    weightsPrior <- exp(weightsPrior) / sum(exp(weightsPrior))
-    fitOnline <- carsVBMixScore(dataSub, starting[[2]],
-                                   priorMix = list(mean = meanPrior, linv = linvPrior, dets = detsPrior, weights = weightsPrior),
-                                   S = 100, maxIter = 10000, threshold = 0.02)$lambda
-
-  } else {
-    fitOnline <- carsVBMixScore(dataSub, fitOnline,
-                                priorMix = list(mean = meanOn, linv = linvOn, dets = detsOn, weights = weightsOn),
-                                S = 100, maxIter = 10000, threshold = 0.05)$lambda
-  }
-
-  # Get offline VB posteriors
-  if(s == 1){
+    fitOnline <- fitCarMods(data[1:sSeq[s], 1:2], prior, starting)
     fitOffline <- fitOnline
   } else {
-    fitOffline <- carsVBMixScore(data[1:sSeq[s],], fitOffline,
-                                 priorMix = list(mean = meanPrior, linv = linvPrior, dets = detsPrior, weights = weightsPrior),
-                                 S = 100, maxIter = 10000, threshold = 0.02)$lambda
+    fitOnline <- fitCarMods(dataSub, fitOnline, list(fitOnline[[1]], fitOnline[[3]]))
+    fitOffline <- fitCarMods(data[1:sSeq[s], 1:2], prior, list(fitOffline[[1]], fitOffline[[3]]))
   }
   
   # Get MCMC posteriors
-  MCMC <- singleMCMCallMH(data[1:sSeq[s],], 5000, c(-5, -5, 0, 0, 0, 0), hyper[[3]],
-                                 stepsize = 0.05, mix = TRUE)$draws
-  
-  # Extract Lower Triangular Matrices from VB
-  LOn <-  array(0, dim = c(6, 6, 6))
-  linvOn <- array(0, dim = c(6, 6, 6))
-  meanOn <- matrix(fitOnline[1:36], 6)
-  detsOn <- NULL
-  for(k in 1:6){
-    uinv <- matrix(fitOnline[36*k + 1:36], 6)
-    l <- invertTri(uinv, lower = FALSE)
-    linvOn[,,k] <- t(uinv)
-    LOn[,,k] <- l
-    detsOn <- c(detsOn, prod(diag(uinv)))
+  MCMC <- list()
+  for(k in 1:3){
+    MCMC[[k]] <- singleMCMCallMH(data[1:sSeq[s],1:2], 5000, c(-5, -5, 0, 0, 0, 0), hyper[[k]],
+                                 stepsize = 0.05, mix = (k == 3))$draws
   }
-  weightsOn <- exp(fitOnline[253:258]) / sum(exp(fitOnline[253:258]))
-  densitiesOnline <- evalVBMix(data[(sSeq[s]-1):sSeq[s], ], meanOn, LOn, weightsOn, 200, H, asup, dsup)
   
-  # Repeat for offline
+ 
+  # Evaluate predictive densities
+  start <- Sys.time()
+  densitiesOnline <- lapply(1:3, function(x) VBDens(data = data[(sSeq[s]-1):(sSeq[s] + H), ],
+                                                    fit = fitOnline[[x]],
+                                                    grid = grid, 
+                                                    H = H,
+                                                    mix = (x == 3)))
   if(s == 1){
     densitiesOffline <- densitiesOnline
   } else {
-    LOff <- array(0, dim = c(6, 6, 6))
-    meanOff <- matrix(fitOffline[1:36], 6)
-    for(k in 1:6){
-      uinv <- matrix(fitOffline[36*k + 1:36], 6)
-      l <- invertTri(uinv, lower = FALSE)
-      LOff[,,k] <- l
-    }
-    weightsOff <- exp(fitOffline[253:258]) / sum(exp(fitOffline[253:258]))
-    densitiesOffline <- evalVBMix(data[(sSeq[s]-1):sSeq[s], ], meanOff, LOff, weightsOff, 200, H, asup, dsup)
+    densitiesOffline <- lapply(1:3, function(x) VBDens(data = data[(sSeq[s]-1):(sSeq[s] + H), ],
+                                                       fit = fitOffline[[x]],
+                                                       grid = grid, 
+                                                       H = H,
+                                                       mix = (x == 3)))
   }
-  # Finally MCMC
-  densitiesMCMC <- evalMCMCDens(data[(sSeq[s]-1):sSeq[s], ], 1000, H, asup, dsup, MCMC)
-  
- 
+  densitiesMCMC <- lapply(MCMC, function(x) evalMCMCDens(data = data[(sSeq[s]-1):(sSeq[s] + H), ],
+                                                     N = sqrt(nrow(grid)),
+                                                     H = H,
+                                                     grid = grid,
+                                                     MCMCdraws = x))
   # Grab logscores for each method, h, and variable.
-  #for(k in 1:2){
+  for(k in 1:3){
     for(h in 1:H){
-      aindex <- min(which(asup > data[sSeq[s]+h,1]))
-      dindex <- min(which(dsup > data[sSeq[s]+h,2]))
+      xindex <- min(which(xsup > data[sSeq[s]+h,4]))
+      yindex <- min(which(ysup > data[sSeq[s]+h,5]))
       
-      densVBOff <- densitiesOffline[(h-1)*1000 + aindex, 1]  *  densitiesOffline[(h-1)*1000 + dindex, 2]  /  data[sSeq[s]+h, 3]
-      densVBOn <- densitiesOnline[(h-1)*1000 + aindex, 1]  *  densitiesOnline[(h-1)*1000 + dindex, 2]  /  data[sSeq[s]+h, 3]
-      densMCMC <- densitiesMCMC[(h-1)*1000 + aindex, 1]  *  densitiesMCMC[(h-1)*1000 + dindex, 2]  /  data[sSeq[s]+h, 3]
-        
-     
+      scoreVBOff <- densitiesOffline[[k]][yindex, xindex, h]
+      scoreVBOn <- densitiesOnline[[k]][yindex, xindex, h]
+      scoreMCMC <- densitiesMCMC[[k]][yindex, xindex, h]
+      
+      offCDF <- sum(densitiesOffline[[k]][,1:xindex,h]) * (xsup[2] - xsup[1]) * (ysup[2] - ysup[1])
+      onCDF <- sum(densitiesOnline[[k]][,1:xindex,h]) * (xsup[2] - xsup[1]) * (ysup[2] - ysup[1])
+      MCMCCDF <- sum(densitiesMCMC[[k]][,1:xindex,h]) * (xsup[2] - xsup[1]) * (ysup[2] - ysup[1])
+   
+      
     # Attach results
       results <- rbind(results, 
-                       data.frame(logscore = c(log(densVBOff), log(densVBOn), log(densMCMC)),
+                       data.frame(logscore = c(log(scoreVBOff), log(scoreVBOn), log(scoreMCMC)),
+                                  xCDF = c(offCDF, onCDF, MCMCCDF),
                                   method = c('VB-Offline', 'VB-Stream', 'MCMC'),
-                                  prior = 'Finite Mixture',#methods[k],
+                                  prior = methods[k],
                                   S = sSeq[s],
                                   h = h,
                                   id = id$idfc[i]))
     }
-  #}
+  }
   print(paste(i, s))
 }
-}
-
-results %>%
-  filter(logscore > -8) %>% 
-  ggplot() + geom_boxplot(aes(x = factor(ceiling(S/30)), y = logscore, colour = method)) + facet_wrap(~variable, scales = 'free')
 
 write.csv(results, paste0('eval/car', id$idfc[[i]], '.csv'), row.names=FALSE)
+
+
+

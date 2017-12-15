@@ -233,4 +233,63 @@ fitCarMods <- function(data, prior, starting, S = 10, mixComps = 6){
   results
 }
 
+MCMCDens <- function(data, N, H, grid, MCMCdraws){
+  densities <- array(0, dim = c(N, N, H))
+  
+  for(m in 1:1000){
+    afc1 = data[2, 1]
+    afc2 = data[1, 1]
+    dfc1 = data[2, 2]
+    dfc2 = data[1, 2]
+    draws <- MCMCdraws[1000 + 4*m,]
+    sigV <- sqrt(exp(draws[1]))
+    sigD <- sqrt(exp(draws[2]))
+    for(h in 1:H){
+      afc = afc1 * draws[3] + afc2 * draws[4]
+      dfc = dfc1 * draws[5] + dfc2 * draws[6]
+      vfc = afc + data[2 + h, 3];
+      for(i in 1:N){
+        for(j in 1:N){
+          v <- sqrt(grid[(i-1)*N + j, 1]^2 + grid[(i-1)*N + j, 2]^2)
+          del <- atan2(grid[(i-1)*N+j, 2], grid[(i-1)*N+j, 1]) - pi/2
+          densities[i, j, h] <- dnorm(v, vfc, sigV) * dnorm(del, dfc, sigD) / v
+        }
+      }
+      afc2 = afc1
+      afc1 = afc
+      dfc2 = dfc1
+      dfc1 = dfc
+    }
+  }
+  densities
+}
+
+
+
+
+
+
+VBDens <- function(data, fit, grid, H, mix){
+  N <- sqrt(nrow(grid))
+  if(!mix){
+    mean <- fit[1:6]
+    L <- t(matrix(fit[7:42], 6))
+    weights <- rep(1, 6)
+  } else {
+    z <- fit[253:258]
+    pi <- exp(z) / sum(exp(z))
+    weights <- cumsum(pi)
+    mean <- fit[1:36]
+    L <- matrix(0, 36, 6)
+    for(k in 1:6){
+      uinv <- matrix(fit[(k-1)*36 + 1:36], 6)
+      u <- solve(uinv)
+      L[1:6 + (k-1)*6, ] <- t(u)
+    }
+  }
+  
+  evalVBDens(data, mean, L, weights, N, H, grid, mix)
+}
+
+
 

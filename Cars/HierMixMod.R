@@ -513,96 +513,17 @@ for(i in seq_along(id$idfc)){
   mutate(n = seq_along(v),
          vl = ifelse(n == 1, 0, lag(v)),
          a = v - lag(v),
-         d = delta - pi/2) %>%
+         d = delta - pi/2,
+         xl = ifelse(n == 1, 0, lag(x)),
+         yl = ifelse(n == 1, 0, lag(y)),
+         dx = x - xl,
+         dy = y - yl) %>%
   filter(n > 1 & n <= 501) %>% 
-  select(a , d) %>%
+  select(a, d, vl, dx, dy) %>%
   as.matrix() -> datafc[[i]]
 }
 saveRDS(datafc, 'ForecastData.RDS')
 datafc <- readRDS('ForecastData.RDS')
-
-for(i in seq_along(id$idfc)){
-  
-  # Extract Data
-  data <- datafc[[i]]
-  
-  # Set forcast supports
-  aLower <- min(data[,1])
-  if(aLower < 0){
-    aLower <- 1.5 * aLower
-  } else {
-    aLower <- 0.5 * aLower
-  }
-  dLower <- min(data[,2])
-  if(dLower < 0){
-    dLower <- 1.5 * dLower
-  } else {
-    dLower <- 0.5 * dLower
-  }
-  
-  asup <- seq(aLower, 1.5*max(data[,1]), length.out=1000)
-  dsup <- seq(dLower, 1.5*max(data[,2]), length.out=1000)
-    
-  # Incrementally add data to VB fits
-  for(s in seq_along(sSeq)){
-    if(sSeq[s] > nrow(data)){
-      break
-    }
-    if(s == 1 | !increment){
-      dat <- data[1:sSeq[s],]
-    } else {
-      dat <- data[(sSeq[s-1]+1):sSeq[s],]
-    }
-    # Update posterior approximations - Or re-estimate new ones from scratch
-    if(increment){
-      fit <- fitCarMods(dat, fit, increment, NULL)
-    } else {
-      fit <- fitCarMods(dat, prior, increment, starting)
-    }
-    # Run MCMC for each method
-    MCMC <- list()
-    for(k in 1:2){
-      MCMC[[k]] <- singleMCMCallMH(dat, 5000, c(-5, -5, 0, 0, 0, 0), hyper[[k]],
-                                   stepsize = ifelse(k == 1, 0.1, 0.01))$draws
-    }
-    
-    
-    # Extract Lower Triangular Matrices from VB
-    L <- NULL
-    for(k in 1:2){
-      L <- rbind(L, t(matrix(fit[[k]][7:42], 6)))
-    }
-    means <- cbind(fit[[1]][1:6],
-                   fit[[2]][1:6])
-                   #fit[[3]][1:6]) 
-    
-    
-    densities <- evalFcDens(data[(sSeq[s]-1):sSeq[s], ], means, L, 1000, S, asup, dsup, MCMC)
-    
-    # Grab logscores for each method, h, and variable.
-    for(k in 1:2){
-      for(h in 1:S){
-        aindex <- min(which(asup > data[sSeq[s]+h,1]))
-        alogscoreVB <- log(densities[(h-1)*1000 + aindex, 1, k])
-        alogscoreMCMC <- log(densities[(h-1)*1000 + aindex, 3, k])
-        dindex <- min(which(dsup > data[sSeq[s]+h,2]))
-        dlogscoreVB <- log(densities[(h-1)*1000 + dindex, 2, k])
-        dlogscoreMCMC <- log(densities[(h-1)*1000 + dindex, 4, k])
-        # Attach results
-        results <- rbind(results, 
-                        data.frame(logscore = c(alogscoreVB, alogscoreMCMC, dlogscoreVB, dlogscoreMCMC),
-                                   variable = c('a', 'a', 'd', 'd'),
-                                   method = c('VB', 'MCMC', 'VB', 'MCMC'),
-                                   prior = methods[k],
-                                   S = sSeq[s],
-                                   h = h,
-                                   id = id$idfc[i]))
-      }
-    }
-  }
-  print(i)
-}
-  
 
 
 }
@@ -683,7 +604,6 @@ results %>%
 
 noGapsSampler {
   set.seed(1)
-<<<<<<< HEAD
   N <- 500
   idSubset <- sample(id$idSubset, N)
   data <- list()
@@ -716,9 +636,7 @@ noGapsSampler {
     draws[[i+1]] <- list(theta = c(mvtnorm::rmvnorm(1, hyper$mean, solve(hyper$varInv))))
   }
   noGapDraws <- NoGaps(data, reps, draws, hyper, thin, startK, 0.01)
-=======
   data <- readRDS('MCMCData.RDS')
->>>>>>> c5acdb096e8bb10943437842d30d097d91be66ac
   
   reps <- 75000
   thin <- 10
