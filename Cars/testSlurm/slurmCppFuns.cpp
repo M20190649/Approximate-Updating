@@ -440,3 +440,78 @@ Rcpp::List scoreDeriv(mat data, Rcpp::NumericMatrix lambdaIn, vec theta, int K, 
   return Rcpp::List::create(Rcpp::Named("grad") = grad,
                             Rcpp::Named("val") = elbo);
 }
+
+
+// [[Rcpp::export]]
+cube evalVBDensIndep (mat data, vec mean, mat L, vec weights, int N, int H, mat grid, bool mix){
+  cube densities (N, 2, H, fill::zeros);
+  boost::math::normal_distribution<> Zdist(0, 1);
+  
+  for(int m = 0; m < 1000; ++m){
+    // Set up lags of predicted means, starting with the true data
+    double afc1 = data(1, 0), afc2 = data(0, 0), dfc1 = data(1, 1), dfc2 = data(0, 1), afc, dfc, vfc;
+    vec draws(6);
+    if(!mix){
+      // If not a mixture, draws = mu + L * eps
+      draws = mean + L * randn<vec>(6);
+    } else {
+      // If it is a mixture distribution choose one via inverse CDF weights sampling, then do mu_component + L_component * eps
+      double u = randu<double>();
+      int comp;
+      for(int i = 0; i < 6; ++i){
+        if(u < weights(i)){
+          comp = i;
+          break;
+        }
+      }
+      vec submean = mean.rows(comp*6, (comp+1)*6 - 1);
+      mat subL = L.rows(comp*6, (comp+1)*6-1);
+      draws = submean + subL * randn<vec>(6);
+    }
+    double sigV = std::sqrt(std::exp(draws(0)));
+    double sigD = std::sqrt(std::exp(draws(1)));
+    for(int h = 0; h < H; ++h){
+      // Step afc and dfc means forward, vfc = afc + lagged velocity
+      afc = afc1 * draws(2) + afc2 * draws(3);
+      dfc = dfc1 * draws(4) + dfc2 * draws(5);
+      // Iterate densities
+      for(int i = 0; i < N; ++i){
+        densities(i, 0, h) += pdf(Zdist, (grid(i, 0) - afc) / sigV) / (1000 * sigV);
+        densities(i, 1, h) += pdf(Zdist, (grid(i, 1) - dfc) / sigD) / (1000 * sigD);
+      }
+      // lag acceleration and angle
+      afc2 = afc1;
+      afc1 = afc;
+      dfc2 = dfc1;
+      dfc1 = dfc;
+    }
+  }
+  return densities;    
+}
+
+// [[Rcpp::export]]
+cube evalMCMCDensIndep (mat data, int N, int H, mat grid, mat MCMCdraws){
+  cube densities (N, N, H, fill::zeros);
+  boost::math::normal_distribution<> Zdist(0, 1);
+  
+  for(int m = 0; m < 1000; ++m){
+    double afc1 = data(1, 0), afc2 = data(0, 0), dfc1 = data(1, 1), dfc2 = data(0, 1), afc, dfc, vfc;
+    vec draws = MCMCdraws.row(1000 + 4 * m).t();
+    double sigV = std::sqrt(std::exp(draws(0)));
+    double sigD = std::sqrt(std::exp(draws(1)));
+    for(int h = 0; h < H; ++h){
+      afc = afc1 * draws(2) + afc2 * draws(3);
+      dfc = dfc1 * draws(4) + dfc2 * draws(5);
+      // Iterate densities over the grid
+      for(int i = 0; i < N; ++i){
+        densities(i, 0, h) += pdf(Zdist, (grid(i, 0) - afc) / sigV) / (1000 * sigV);
+        densities(i, 1, h) += pdf(Zdist, (grid(i, 1) - dfc) / sigD) / (1000 * sigD);
+      }
+      afc2 = afc1;
+      afc1 = afc;
+      dfc2 = dfc1;
+      dfc1 = dfc;
+    }
+  }
+  return densities;
+}

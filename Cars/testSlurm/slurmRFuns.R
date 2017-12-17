@@ -234,43 +234,32 @@ fitCarMods <- function(data, prior, starting, S = 10, mixComps = 6){
 }
 
 MCMCDens <- function(data, N, H, grid, MCMCdraws){
-  densities <- array(0, dim = c(N, N, H))
-  
-  for(m in 1:1000){
-    afc1 = data[2, 1]
-    afc2 = data[1, 1]
-    dfc1 = data[2, 2]
-    dfc2 = data[1, 2]
-    draws <- MCMCdraws[1000 + 4*m,]
-    sigV <- sqrt(exp(draws[1]))
-    sigD <- sqrt(exp(draws[2]))
-    for(h in 1:H){
-      afc = afc1 * draws[3] + afc2 * draws[4]
-      dfc = dfc1 * draws[5] + dfc2 * draws[6]
-      vfc = afc + data[2 + h, 3];
-      for(i in 1:N){
-        for(j in 1:N){
-          v <- sqrt(grid[(i-1)*N + j, 1]^2 + grid[(i-1)*N + j, 2]^2)
-          del <- atan2(grid[(i-1)*N+j, 2], grid[(i-1)*N+j, 1]) - pi/2
-          densities[i, j, h] <- dnorm(v, vfc, sigV) * dnorm(del, dfc, sigD) / v
-        }
-      }
-      afc2 = afc1
-      afc1 = afc
-      dfc2 = dfc1
-      dfc1 = dfc
-    }
+  adDens <-  evalMCMCDensIndep(data, N, H, grid, MCMCdraws)
+
+  results <- data.frame()
+  adGrid <- expand.grid(a = grid[,1], d = grid[,2])
+
+  for(h in 1:H){
+    fullGrid <- cbind(adGrid, expand.grid(aD = adDens[,1,h], dD = adDens[,2,h]))    
+    fullGrid$v <- fullGrid$a + data[2 +	h, 3]
+    fullGrid$dens <- fullGrid$aD * fullGrid$dD / fullGrid$v
+    fullGrid$x <- fullGrid$v * cos(fullGrid$d + 3.141598/2)
+    fullGrid$y <- fullGrid$v * sin(fullGrid$d + 3.141598/2)
+    fullGrid$dist <- sqrt((fullGrid$x - data[2 + h, 4])^2 + (fullGrid$y - data[2 + h, 5])^2)
+
+
+    cons <- sum(fullGrid$dens)
+    xCDF <- sum(fullGrid$dens[fullGrid$x < data[2 + h, 4]]) / cons
+    logscore <- log(fullGrid$dens[which.min(fullGrid$dist)])
+	
+    results <- rbind(results, data.frame(h = h, xCDF = xCDF, logscore = logscore))
+
   }
-  densities
+  results
 }
 
-
-
-
-
-
 VBDens <- function(data, fit, grid, H, mix){
-  N <- sqrt(nrow(grid))
+  N <- nrow(grid)
   if(!mix){
     mean <- fit[1:6]
     L <- t(matrix(fit[7:42], 6))
@@ -288,7 +277,27 @@ VBDens <- function(data, fit, grid, H, mix){
     }
   }
   
-  evalVBDens(data, mean, L, weights, N, H, grid, mix)
+  adDens <- evalVBDensIndep(data, mean, L, weights, N, H, grid, mix)
+  results <- data.frame()
+  adGrid <- expand.grid(a = grid[,1], d = grid[,2])
+  
+  for(h in 1:H){
+    fullGrid <- cbind(adGrid, expand.grid(aD = adDens[,1,h], dD = adDens[,2,h]))
+    fullGrid$v <- fullGrid$a + data[2 + h, 3]
+    fullGrid$dens <- fullGrid$aD * fullGrid$dD / fullGrid$v
+    fullGrid$x <- fullGrid$v * cos(fullGrid$d + 3.141598/2)
+    fullGrid$y <- fullGrid$v * sin(fullGrid$d + 3.141598/2) 
+    fullGrid$dist <- sqrt((fullGrid$x - data[2 + h, 4])^2 + (fullGrid$y - data[2 + h, 5])^2)    
+
+
+    cons <- sum(fullGrid$dens)
+    xCDF <- sum(fullGrid$dens[fullGrid$x < data[2 + h, 4]]) / cons
+    logscore <- log(fullGrid$dens[which.min(fullGrid$dist)])
+	
+    results <- rbind(results, data.frame(h = h, xCDF = xCDF, logscore = logscore))
+    
+  }
+  results
 }
 
 

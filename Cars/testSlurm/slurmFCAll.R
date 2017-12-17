@@ -1,12 +1,12 @@
 rm(list=ls())
 repenv <- Sys.getenv("SLURM_ARRAY_TASK_ID")
-i <- 5#as.numeric(repenv)
+i <- as.numeric(repenv)
 set.seed(1000 + i)
 
-library(Rcpp)#, lib.loc = 'packages')
-library(RcppArmadillo)#, lib.loc = 'packages')
-library(RcppEigen)#, lib.loc = 'packages')
-library(rstan)#, lib.loc = 'packages')
+library(Rcpp, lib.loc = 'packages')
+library(RcppArmadillo, lib.loc = 'packages')
+library(RcppEigen, lib.loc = 'packages')
+library(rstan, lib.loc = 'packages')
 source('slurmRFuns.R')
 sourceCpp('slurmCppFuns.cpp')
 
@@ -48,22 +48,22 @@ hyper[[3]] <- list(mean = mean, varInv = varinv, weights = weights)
 data <- datafc[[i]]
 
 # Set forcast supports
-xLower <- min(data[,4])
-if(xLower < 0){
-  xLower <- 2 * xLower
+aLower <- min(data[,1])
+if(aLower < 0){
+  aLower <- 2 * aLower
 } else {
-  xLower <- xLower - 0.5
+  aLower <- aLower - 0.5
 }
-yLower <- min(data[,5])
-if(yLower < 0){
-  yLower <- 1.5 * yLower
+dLower <- min(data[,2])
+if(dLower < 0){
+  dLower <- 2 * dLower
 } else {
-  yLower <- 0.5 * yLower
+  dLower <- 0.5 * dLower
 }
 
-xsup <- seq(min(xLower, -2), max(2, 2*max(data[,4])), length.out=300)
-ysup <- seq(yLower, 1.5*max(data[,5]), length.out=300)
-grid <- as.matrix(expand.grid(xsup, ysup))
+asup <- seq(aLower, 2*max(data[,1]), length.out = 200)
+dsup <- seq(dLower, 2*max(data[,2]), length.out=200)
+grid <- cbind(asup, dsup)
 
 # Incrementally add data to VB fits
 for(s in seq_along(sSeq)){
@@ -90,58 +90,42 @@ for(s in seq_along(sSeq)){
                                  stepsize = 0.05, mix = (k == 3))$draws
   }
   
- 
   # Evaluate predictive densities
-  start <- Sys.time()
-  densitiesOnline <- lapply(1:3, function(x) VBDens(data = data[(sSeq[s]-1):(sSeq[s] + H), ],
+  resultsOnline <- lapply(1:3, function(x) VBDens(data = data[(sSeq[s]-1):(sSeq[s] + H), ],
                                                     fit = fitOnline[[x]],
                                                     grid = grid, 
                                                     H = H,
                                                     mix = (x == 3)))
   if(s == 1){
-    densitiesOffline <- densitiesOnline
+    resultsOffline <- resultsOnline
   } else {
-    densitiesOffline <- lapply(1:3, function(x) VBDens(data = data[(sSeq[s]-1):(sSeq[s] + H), ],
+    resultsOffline <- lapply(1:3, function(x) VBDens(data = data[(sSeq[s]-1):(sSeq[s] + H), ],
                                                        fit = fitOffline[[x]],
                                                        grid = grid, 
                                                        H = H,
                                                        mix = (x == 3)))
   }
-  densitiesMCMC <- lapply(MCMC, function(x) evalMCMCDens(data = data[(sSeq[s]-1):(sSeq[s] + H), ],
-                                                     N = sqrt(nrow(grid)),
+  resultsMCMC <- lapply(MCMC, function(x) MCMCDens(data = data[(sSeq[s]-1):(sSeq[s] + H), ],
+                                                     N = 200,
                                                      H = H,
                                                      grid = grid,
                                                      MCMCdraws = x))
   # Grab logscores for each method, h, and variable.
   for(k in 1:3){
-    for(h in 1:H){
-      xindex <- min(which(xsup > data[sSeq[s]+h,4]))
-      yindex <- min(which(ysup > data[sSeq[s]+h,5]))
-      
-      scoreVBOff <- densitiesOffline[[k]][yindex, xindex, h]
-      scoreVBOn <- densitiesOnline[[k]][yindex, xindex, h]
-      scoreMCMC <- densitiesMCMC[[k]][yindex, xindex, h]
-      
-      offCDF <- sum(densitiesOffline[[k]][,1:xindex,h]) * (xsup[2] - xsup[1]) * (ysup[2] - ysup[1])
-      onCDF <- sum(densitiesOnline[[k]][,1:xindex,h]) * (xsup[2] - xsup[1]) * (ysup[2] - ysup[1])
-      MCMCCDF <- sum(densitiesMCMC[[k]][,1:xindex,h]) * (xsup[2] - xsup[1]) * (ysup[2] - ysup[1])
-   
-      
-    # Attach results
-      results <- rbind(results, 
-                       data.frame(logscore = c(log(scoreVBOff), log(scoreVBOn), log(scoreMCMC)),
-                                  xCDF = c(offCDF, onCDF, MCMCCDF),
-                                  method = c('VB-Offline', 'VB-Stream', 'MCMC'),
-                                  prior = methods[k],
-                                  S = sSeq[s],
-                                  h = h,
-                                  id = id$idfc[i]))
-    }
+    results <- rbind(results,
+                     data.frame(logscore = c(resultsOnline[[k]]$logscore, resultsOffline[[k]]$logscore, resultsMCMC[[k]]$logscore),
+                                xCDF = c(resultsOnline[[k]]$xCDF, resultsOffline[[k]]$xCDF, resultsMCMC[[k]]$xCDF),
+                                h = rep(1:H, 3),
+                                prior = methods[k],
+                                method = rep(c('VB-Offline', 'VB-Stream', 'MCMC'), rep(H, 3)),
+                                S = sSeq[s],
+                                id = id$idfc[i]))
   }
   print(paste(i, s))
 }
 
-write.csv(results, paste0('eval/car', id$idfc[[i]], '.csv'), row.names=FALSE)
+
+#write.csv(results, paste0('eval/car', id$idfc[[i]], '.csv'), row.names=FALSE)
 
 
 
