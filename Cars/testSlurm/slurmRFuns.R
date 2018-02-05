@@ -208,6 +208,87 @@ carsVBMixScore <- function(data, lambda, priorMix, K = 6, S = 250, maxIter = 500
   return(list(lambda=lambda, LB = LB[1:min(iter-1, maxIter)], iter = min(maxIter, iter-1)))
 }
 
+
+carsVBMixScoreDiag <- function(data, lambda, priorMix, S = 250, maxIter = 5000, alpha = 0.01, beta1 = 0.9, beta2 = 0.99, threshold = 0.01){
+  
+  dimLambda <- nrow(lambda)
+  sobol <- sobol_points(100+6*S, 6)
+  diff <- threshold + 1
+  iter <- 1
+  LB <- numeric(maxIter)
+  M <- rep(0, dimLambda)
+  V <- rep(0, dimLambda)
+  e <- 1e-8
+  meanLB <- 0
+  oldMeanLB <- 0
+  while(diff > threshold | iter < 100){
+    if(iter > maxIter){
+      break
+    }
+    #if(any(is.na(lambda))){
+    #  break
+    #}
+    grad <- matrix(0, dimLambda, S)
+    eval <- numeric(S)
+    z <- lambda[73:78]
+    pi <- exp(z) / sum(exp(z))
+    unif <- shuffle(sobol)
+    s <- 0
+    try <- 0
+    epsilon <- qnorm(unif[101:(100+6*S), ])
+    epsilon[epsilon < -3] = -3
+    epsilon[epsilon > 3] = 3
+    while(s < S){
+      k <- sample(1:6, 1, prob=pi)
+      Qmean <- lambda[(k-1)*6 + 1:6]
+      Qsd <- exp(lambda[6*6 + (k-1)*6 + 1:6])
+      theta <- c(Qmean + Qsd * epsilon[try+1,])
+      derivs <- scoreDerivDiag(data, lambda, theta, priorMix$mean, priorMix$SigInv, priorMix$dets, priorMix$weights)
+      if(all(is.finite(derivs$grad)) & all(!is.na(derivs$grad)) & is.finite(derivs$val) & !is.na(derivs$val)){
+        s <- s + 1
+        eval[s] <- derivs$val
+        grad[,s] <- derivs$grad
+        if(s == S){
+          gradient <- rowMeans(grad, na.rm = TRUE)
+          gradientSq <- rowMeans(grad^2, na.rm = TRUE)
+          LB[iter] <- mean(eval, na.rm = TRUE)
+          break
+        }
+      }
+      try <- try + 1
+      if(try > 5*S){
+        if(s > 1){
+          gradient <- rowMeans(grad[,1:s], na.rm = TRUE)
+          gradientSq <- rowMeans(grad[,1:s]^2, na.rm = TRUE)
+          LB[iter] <- mean(eval[1:s], na.rm = TRUE)
+        } else {
+          LB[iter] <- LB[iter-1] - 1
+        }
+        break
+      }
+    }
+    
+    M <- beta1 * M + (1 - beta1) * gradient
+    V <- beta2 * V + (1 - beta2) * gradientSq
+    Mst <- M / (1 - beta1^iter)
+    Vst <- V / (1 - beta2^iter)
+    if(any(is.na(alpha * Mst / sqrt(Vst + e)))){
+      print('Break')
+      break
+    }
+    lambda <- lambda + alpha * Mst / sqrt(Vst + e)
+    if(iter %% 5 == 0){
+      oldMeanLB <- meanLB
+      meanLB <- mean(LB[iter:(iter-4)])
+      diff <- abs(meanLB - oldMeanLB)
+    } 
+    iter <- iter + 1
+  }
+  print(paste0('iter: ', min(iter-1, maxIter), ' ELBO: ', LB[min(iter-1, maxIter)]))
+  return(list(lambda=lambda, LB = LB[1:min(iter-1, maxIter)], iter = min(maxIter, iter-1)))
+}
+
+
 fitCarMods <- function(data, prior, starting, S = 10, mixComps = 6){
   results <- list()
   K <- 3
@@ -217,18 +298,20 @@ fitCarMods <- function(data, prior, starting, S = 10, mixComps = 6){
     linv <- solve(t(u))
     results[[k]] <- carsVB(data, starting[[1]], lags = 2, model = arUpdater, mean = mean, Linv = linv, dimTheta = 6)$lambda
   }
+  
   mean <- matrix(prior[[3]][1:(6*mixComps)], 6)
-  linv <- array(0, dim = c(6, 6, 6))
+  siginv <- array(0, dim = c(6, 6, 6))
   dets <- NULL
   for(k in 1:mixComps){
-    uinv <- matrix(prior[[K]][6*mixComps + (k-1)*36 + 1:36], 6)
-    linv[,,k] <- t(uinv)
-    dets <- c(dets, prod(diag(uinv)))
+    sd <- exp(prior[[K]][6*mixComps + (k-1)*6 + 1:6])
+    var <- diag(sd^2)
+    siginv[,,k] <- solve(var)
+    dets <- c(dets, 1 / prod(sd))
   }
-  weights <- prior[[K]][6*7*mixComps + 1:6]
+  weights <- prior[[K]][73:78]
   weights <- exp(weights) / sum(exp(weights))
-  results[[K]] <- carsVBMixScore(data, starting[[2]],
-                                 priorMix = list(mean = mean, linv = linv, dets = dets, weights = weights),
+  results[[K]] <- carsVBMixScoreDiag(data, starting[[2]],
+                                 priorMix = list(mean = mean, SigInv = siginv, dets = dets, weights = weights),
                                  S = 50, maxIter = 10000, threshold = 0.05)$lambda
   results
 }
@@ -239,6 +322,8 @@ MCMCDens <- function(data, N, H, grid, MCMCdraws){
   results <- data.frame()
   adGrid <- expand.grid(a = grid[,1], d = grid[,2])
 
+  mapX <- 0
+  mapY <- 0
   for(h in 1:H){
     fullGrid <- cbind(adGrid, expand.grid(aD = adDens[,1,h], dD = adDens[,2,h]))    
     fullGrid$v <- fullGrid$a + data[2 +	h, 3]
@@ -251,8 +336,13 @@ MCMCDens <- function(data, N, H, grid, MCMCdraws){
     cons <- sum(fullGrid$dens)
     xCDF <- sum(fullGrid$dens[fullGrid$x < data[2 + h, 4]]) / cons
     logscore <- log(fullGrid$dens[which.min(fullGrid$dist)])
-	
-    results <- rbind(results, data.frame(h = h, xCDF = xCDF, logscore = logscore))
+    mapX <- mapX + fullGrid$x[which.max(fullGrid$dens)]
+    mapY <- mapY + fullGrid$y[which.max(fullGrid$dens)]
+    
+    mapDist <- sqrt((mapX - sum(data[2+1:h, 4]))^2 + (mapY - sum(data[2 + 1:h, 5]))^2)
+    
+    
+    results <- rbind(results, data.frame(h = h, xCDF = xCDF, logscore = logscore, mapDist = mapDist))
 
   }
   results
@@ -265,15 +355,14 @@ VBDens <- function(data, fit, grid, H, mix){
     L <- t(matrix(fit[7:42], 6))
     weights <- rep(1, 6)
   } else {
-    z <- fit[253:258]
+    z <- fit[73:78]
     pi <- exp(z) / sum(exp(z))
     weights <- cumsum(pi)
     mean <- fit[1:36]
     L <- matrix(0, 36, 6)
     for(k in 1:6){
-      uinv <- matrix(fit[(k-1)*36 + 1:36], 6)
-      u <- solve(uinv)
-      L[1:6 + (k-1)*6, ] <- t(u)
+      sd <- exp(fit[36 + (k-1)*6 + 1:6])
+      L[1:6 + (k-1)*6, ] <- diag(sd)
     }
   }
   
@@ -281,6 +370,8 @@ VBDens <- function(data, fit, grid, H, mix){
   results <- data.frame()
   adGrid <- expand.grid(a = grid[,1], d = grid[,2])
   
+  mapX <- 0
+  mapY <- 0
   for(h in 1:H){
     fullGrid <- cbind(adGrid, expand.grid(aD = adDens[,1,h], dD = adDens[,2,h]))
     fullGrid$v <- fullGrid$a + data[2 + h, 3]
@@ -293,12 +384,18 @@ VBDens <- function(data, fit, grid, H, mix){
     cons <- sum(fullGrid$dens)
     xCDF <- sum(fullGrid$dens[fullGrid$x < data[2 + h, 4]]) / cons
     logscore <- log(fullGrid$dens[which.min(fullGrid$dist)])
+    
+    mapX <- mapX + fullGrid$x[which.max(fullGrid$dens)]
+    mapY <- mapY + fullGrid$y[which.max(fullGrid$dens)]
+    
+    mapDist <- sqrt((mapX - sum(data[2+1:h, 4]))^2 + (mapY - sum(data[2 + 1:h, 5]))^2)
 	
-    results <- rbind(results, data.frame(h = h, xCDF = xCDF, logscore = logscore))
+    results <- rbind(results, data.frame(h = h, xCDF = xCDF, logscore = logscore, mapDist = mapDist))
     
   }
   results
 }
+
 
 
 

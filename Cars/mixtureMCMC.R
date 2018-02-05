@@ -813,12 +813,8 @@ NoGaps2 <- function(data, reps, draw, hyper, thin = 1, k = 10, stepsizeStart = 0
         }
       }
     }
-<<<<<<< HEAD
-    n <- n[1:k]
     saveT <- saveT[1:k]
-=======
-    n <- table(s)
->>>>>>> c5acdb096e8bb10943437842d30d097d91be66ac
+    n <- n[1:k]
     accept <- accept[1:k]
     stepsize <- stepsize[1:k]
     draw <- draw[1:k]

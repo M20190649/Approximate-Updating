@@ -77,14 +77,10 @@ vbDensity <- function(fit, transform, names, supports = NULL){
   mu = fit$mean
   if(length(fit$U) == n^2){
     u = matrix(fit$U, n)
+    sigma = sqrt(diag(t(u) %*% u))
   } else {
-    u = NULL
-    for(i in 1:n){
-      u = c(u, fit$U[sum(0:(i-1))+1:i], rep(0, n - i))
-    }
-    u = matrix(u, n)
+    sigma = fit$U
   }
-  sigma = sqrt(diag(t(u) %*% u))
   dens = data.frame()
   for(i in 1:n){
     if(transform[i] == 'exp'){
@@ -308,3 +304,4 @@ fitCarMods <- function(data, prevFit, increment, starting){
   }
   results
 }
+

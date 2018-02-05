@@ -80,15 +80,9 @@ Rcpp::List NoGapsMH (Rcpp::List data, Rcpp::List draw, vec stepsize, vec accept,
       stepsize(i) -= stepsizeCons * stepsize(i) * 0.234 / (28 + iter);
     }
   }
-<<<<<<< HEAD
-  return List::create(Named("Draws") = draw,
-                      Named("Stepsize") = stepsize,
-                      Named("Accept") = accept);
-=======
   return Rcpp::List::create(Rcpp::Named("draws") = draw,
                             Rcpp::Named("stepsize") = stepsize,
                             Rcpp::Named("accept") = accept);
->>>>>>> c5acdb096e8bb10943437842d30d097d91be66ac
 }
   
 

@@ -29,6 +29,38 @@ carsAug %>%
   .$ID %>%
   unique() -> noStop
 
+read.csv('carsChanged.csv') %>%
+  select(ID, relX, dist, relv, reldelta) %>%
+  ungroup() -> carsChanged
+colnames(carsChanged) <- c('ID', 'x', 'y', 'v', 'delta')
+
+carsChanged %>% 
+  group_by(ID) %>%
+  filter(min(v) != 0) %>%
+  .$ID %>%
+  unique() -> noStopChanged
+
+dataChanged <- list()
+for(i in 1:500){
+  carsChanged %>%
+    filter(ID == noStopChanged[i]) %>%
+    mutate(n = seq_along(v),
+           vl = ifelse(n == 1, 0, lag(v)),
+           a = v - lag(v),
+           d = delta - pi/2,
+           xl = ifelse(n == 1, 0, lag(x)),
+           dx = x - xl,
+           yl = ifelse(n == 1, 0, lag(y)),
+           dy = y - yl) %>%
+    filter(n > 1 & n <= 501) %>% 
+    select(a , d, vl, dx, dy) %>%
+    as.matrix() -> dataChanged[[i]]
+}
+dataChanged[[501]] <- noStopChanged
+saveRDS(dataChanged, 'fcDataChanged.RDS')
+
+
+
 HierMixMod{
 
 set.seed(1)
@@ -141,9 +173,10 @@ support <- data.frame(seq(exp(-13), exp(-4.5), length.out = 1000),
                       seq(0, 2, length.out = 1000),
                       seq(-1, 0.5, length.out = 1000))
 vars <- c('sigSq_eps', 'sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2')
+index <- (burn*reps/thin+1):(reps/thin)
 for(k in 1:K){
   mat <- matrix(0, 1000, 6)
-  for(i in (burn*reps/thin+1):(reps/thin)){
+  for(i in seq_along(index)){
     meanvec <- mixDraws$draws[[1]][[k]]$mean[i,]
     sdvec <- sqrt(diag(solve(mixDraws$draws[[1]][[k]]$varInv[,,i])))
     w <- 0
@@ -151,10 +184,10 @@ for(k in 1:K){
       w <- w + mixDraws$draws[[j+1]]$pi[i, k] / N
     }
     for(j in 1:2){
-      mat[,j] <- mat[,j] + w * dlnorm(support[,j], meanvec[j], sdvec[j]) / (reps / (2 * thin)) 
+      mat[,j] <- mat[,j] + w * dlnorm(support[,j], meanvec[j], sdvec[j]) / length(index) 
     } 
     for(j in 3:6){
-      mat[,j] <- mat[,j] + w * dnorm(support[,j], meanvec[j], sdvec[j]) / (reps / (2 * thin)) 
+      mat[,j] <- mat[,j] + w * dnorm(support[,j], meanvec[j], sdvec[j]) / length(index) 
     }
   }
   densities <- rbind(densities,
@@ -171,12 +204,13 @@ densities %>%
   mutate(var = factor(var, levels = c('sigSq_eps', 'phi1', 'phi2',
                                       'sigSq_eta', 'gamma1', 'gamma2'))) %>%
   group_by(var, support) %>%
-  summarise(dens = sum(dens)) %>%
-  ggplot() + geom_line(aes(support, dens)) +
+  summarise(dens = sum(dens)) -> densMixMod
+
+  ggplot(densMixMod) + geom_line(aes(support, dens)) +
   geom_line(data=densities, aes(support, dens, colour = factor(group))) +
-  facet_wrap(~var, scales = 'free', ncol = 1) + 
-  labs(title = 'Hierarchical Model') + 
-  theme(legend.position = 'none')
+  facet_wrap(~var, scales = 'free', ncol = 6) + 
+  labs(title = 'Hierarchical Model Prior', x = NULL, y = NULL) + 
+  theme(legend.position = 'none', axis.text.x = element_text(angle = 45, hjust = 1)) -> p1
 
   means <- rep(0, 6*6)
   varinv <- matrix(0, 6*6, 6)
@@ -379,9 +413,7 @@ IndepMCMC{
   
 N <- 2000
 posMeans <- NULL
-posAC <- NULL
 vars <- c('sigSq_eps', 'sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2') 
-measures <- c('ac1a', 'ac2a', 'ac1d', 'ac2d', 'siga', 'sigd')
 for(i in 1:N){
   carsAug %>%
     filter(ID == id$idSubset[i]) %>%
@@ -393,54 +425,38 @@ for(i in 1:N){
     select(a , d) %>%
     as.matrix() -> data
   
-  x <- rlnorm(1000000, -5, sqrt(5))
-  a <- mean(x)^2 / var(x) + 2
-  b <- mean(x) * (mean(x)^2 / var(x) + 1)
-  hyper <- c(a, b, a, b, 0, 10, 0, 10, 0, 10, 0, 10)
-
+  draw <- c(-5, -5, 0, 0, 0, 0)
+  hyper <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(10, 6)))
   
-  MCMC <- ARVD_MCMC(data, hyper, 10000, 2)
-  mean <- colMeans(MCMC[5001:10000,])
-  ac <- rep(0, 6)
-  for(l in 5001:10000){
-    ac[1] <- ac[1] + MCMC[l, 3] / (1 - MCMC[l, 4])
-    ac[2] <- ac[2] + (MCMC[l, 3]^2 / (1 - MCMC[l, 4]) + MCMC[l, 4])
-    ac[3] <- ac[3] + MCMC[l, 5] / (1 - MCMC[l, 6])
-    ac[4] <- ac[4] + (MCMC[l, 5]^2 / (1 - MCMC[l, 6]) + MCMC[l, 6])
-    ac[5] <- ac[5] + sqrt((1-MCMC[l, 4]) * MCMC[l, 1] / ((1+MCMC[l, 4])*(1-MCMC[l, 3]-MCMC[l, 4])*(1+MCMC[l, 3]-MCMC[l, 4])))
-    ac[6] <- ac[6] + sqrt((1-MCMC[l, 6]) * MCMC[l, 2] / ((1+MCMC[l, 6])*(1-MCMC[l, 5]-MCMC[l, 6])*(1+MCMC[l, 5]-MCMC[l, 6])))
-  }
-  if(any(is.na(ac))){
-    print(paste('NA', i))
-  }
+  MCMC <- singleMCMCallMH(data, 10000, draw, hyper)$draws
+  mean <- c(colMeans(exp(MCMC[5001:10000,1:2])), colMeans(MCMC[5001:10000, 3:6]))
+  
   posMeans <- rbind(posMeans, data.frame(mean = mean, var = vars, ID = id$idSubset[i]))
-  posAC <- rbind(posAC, data.frame(ac = ac/5000, var = measures, ID = id$idSubset[i]))
   if(i %% 50 == 0){
     print(i)
   }
 }
 
-posAC %>%
-  spread(var, ac) %>%
-  mutate(pac2a = (ac2a - ac1a^2) / (1 - ac1a^2),
-         pac2d = (ac2d - ac1d^2) / (1 - ac1d^2)) %>%
-  select(ID, ac1a, pac2a, ac1d, pac2d, siga, sigd) %>%
-  rename(pac1a = ac1a, pac1d = ac1d) -> autocorrels
-
-autocorrels %>%
-  filter(siga < 0.5) %>%
-  ggpairs(columns = c(6, 2, 3, 7, 4, 5))
-
-
+# Fill in densMixMod and p1 from the Hierarchical Model results above (crtl-f 'densMixMod')
 
 posMeans %>%
   mutate(var = as.character(var),
          var = ifelse(var == 'log_sigSq_eps', 'sigSq_eps', 
                       ifelse(var == 'log_sigSq_eta', 'sigSq_eta', var)),
          var = factor(var, levels = c('sigSq_eps', 'phi1', 'phi2', 'sigSq_eta', 'gamma1', 'gamma2'))) %>%
+  filter((var == 'sigSq_eps' & mean > exp(-13) & mean < exp(-4.5)) |
+         (var == 'sigSq_eta' & mean > exp(-15) & mean < exp(-7.6)) | 
+         (var == 'phi1' & mean > -0.5 & mean < 2) |
+         (var == 'phi2' & mean > -1 & mean < 0.8) | 
+         (var == 'gamma1' & mean > 0 & mean < 2) | 
+         (var == 'gamma2' & mean > -1 & mean < 0.5)) %>%
   ggplot() + geom_density(aes(mean)) + 
-  facet_wrap(~var, scales = 'free', ncol = 1) +
-  labs(title = 'Single Model Means (Kernel Density Estimate)')
+  geom_blank(data = densMixMod, aes(x = support)) + 
+  facet_wrap(~var, scales = 'free', ncol = 6) +
+  labs(title = 'Single Model Means (Kernel Density Estimate)', x = NULL, y = NULL) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))-> p2
+
+gridExtra::grid.arrange(p2, p1, ncol = 1)
 }
 
 sliceSampler{
@@ -478,69 +494,49 @@ sliceSampler{
   sliceDraws <- sliceSampler(data, reps, draws, hyper, thin, 10, 'gaussian', 0.01)
 }
 
-forecasts{
-  # This should be parallelised and put onto slurm.
-increment <- FALSE
-S <- 10
-maxT <- 300
-sSeq <- seq(S, maxT, S)
-results <- data.frame()
-methods <- c('None', 'Hierarchy')
-starting <- matrix(c(-5, -5, rep(0, 4), c(chol(diag(0.5, 6)))), ncol = 1)
-
-prior <- list()
-prior[[1]] <- matrix(c(-5, -5, rep(0, 4), c(chol(diag(c(5, 5, 10, 10, 10, 10))))), ncol = 1)
-#prior[[2]] <- matrix(noHierLam, ncol = 1)
-prior[[2]] <- matrix(noMixLam, ncol = 1)
-saveRDS(prior, 'prior.RDS')
-
-prior <- readRDS('prior.RDS')
-prior <- list(prior[[1]], prior[[3]])
-fit <- prior
-
-hyper <- list()
-for(k in 1:2){
-  hyper[[k]] <- list()
-  hyper[[k]]$mean <- prior[[k]][1:6]
-  uinv <- solve(matrix(prior[[k]][7:42], 6))
-  hyper[[k]]$varInv <- t(uinv) %*% uinv
-}
-
-datafc <- list()
-for(i in seq_along(id$idfc)){
-  carsAug %>%
-  filter(ID == id$idfc[i]) %>%
-  mutate(n = seq_along(v),
-         vl = ifelse(n == 1, 0, lag(v)),
-         a = v - lag(v),
-         d = delta - pi/2,
-         xl = ifelse(n == 1, 0, lag(x)),
-         yl = ifelse(n == 1, 0, lag(y)),
-         dx = x - xl,
-         dy = y - yl) %>%
-  filter(n > 1 & n <= 501) %>% 
-  select(a, d, vl, dx, dy) %>%
-  as.matrix() -> datafc[[i]]
-}
-saveRDS(datafc, 'ForecastData.RDS')
-datafc <- readRDS('ForecastData.RDS')
-
-
-}
-
 results {
 
 results <- NULL
 for(i in seq_along(id$idfc)){
-  tmp <- read.csv(paste0('eval/car', id$idfc[i], '.csv'))
-  results <- rbind(results, tmp)
-  #try(assign('results',
-  #           rbind(results,
-  #                 read.csv(paste0('evalAll/car', id$idfc[i], '.csv')))))
+  #tmp <- read.csv(paste0('evals/car', id$idfc[i], '.csv'))
+  #results <- rbind(results, tmp)
+  try(assign('results',
+             rbind(results,
+                   read.csv(paste0('eval/car', id$idfc[i], '.csv')))))
   if(i %% 100 == 0){
     print(i)
   }
 }
+
+
+results %>% 
+  mutate(group = factor(ceiling(S / 30)),
+         method = ifelse(method == 'VB-Stream', 'VB-Update', as.character(method))) %>% 
+  ggplot() + geom_boxplot(aes(x = group, y = logscore, colour = method)) + 
+  facet_wrap(~prior, ncol = 1) + 
+  ylim(-10, 10)  +
+  labs(x = 'T Range', y = 'Predictive Logscore') + 
+  scale_x_discrete(labels = c('10-30', '40-60', '70-90', '100-120', '130-150', 
+                              '160-180', '190-210', '220-240', '250-270', '280-300'))  
+
+results %>%
+  filter(h %in% c(10, 20, 30) & method == 'VB-Stream' & prior == 'Finite Mixture') %>% 
+  mutate(horizon = paste(h / 10, ifelse(h == 10, 'second', 'seconds'), 'ahead')) %>%  
+  group_by(S, horizon) %>%
+  summarise(`Mixture/VB Update Model Predictive MAP` = mean(mapDist),
+            `Constant Velocity and Angle` = mean(consDist)) %>%
+  ungroup() %>%
+  gather(Predictor, meanDist, -horizon, -S) %>%
+  ggplot() + geom_line(aes(x = S, y = meanDist, colour = Predictor)) + 
+  facet_wrap(~horizon) + 
+  labs(x = 'T', y = 'Mean Euclidean Error')
+
+results %>% group_by(method, prior) %>% filter(is.finite(logscore)) %>% summarise(med = median(logscore, na.rm = TRUE)) %>% arrange(med)
+
+results %>% filter(h == 30 & method == 'VB-Stream' & prior == 'Finite Mixture') %>% 
+  summarise(meanMAP = mean(mapDist), meanConst = mean(consDist))
+  
+
   
 results %>%
   #filter(method == 'MCMC' & prior == 'None') %>%
@@ -566,13 +562,19 @@ reverselog_trans <- function(base = exp(1)) {
             domain = c(1e-100, Inf))
 }
 
-results[results$method == 'VB-Stream',] %>% 
-  group_by(id, method, prior, S, h) %>%
-  summarise(ls = -sum(logscore)) %>%
-  ungroup() %>%
-  #mutate(T = ceiling(S / 30)) %>%
-  ggplot() + geom_boxplot(aes(factor(S), ls)) + facet_wrap(~prior) +   
-  scale_y_continuous(trans = reverselog_trans(base=10),
+results %>% 
+  mutate(T = factor(ceiling(S / 30)),
+         priorInfo = factor(prior, levels = c('None', 'Single Hierarchy', 'Finite Mixture')),
+         method = ifelse(method == 'VB-Offline', 'VB-Standard', 
+                         ifelse(method == 'VB-Stream', 'VB-Updating', 'MCMC'))) %>%
+  ggplot() + geom_boxplot(aes(T, logscore, colour = priorInfo)) +
+  facet_wrap(~method, ncol = 1) + ylim(-10, 15)  +
+  labs(x = 'T Range', y = 'X/Y Logscore') + 
+  scale_x_discrete(labels = c('10-30', '40-60', '70-90', '100-120', '130-150', 
+                              '160-180', '190-210', '220-240', '250-270', '280-300'))  
+  
+
+scale_y_continuous(trans = reverselog_trans(base=10),
                      labels=trans_format("identity", function(x) -x)) 
   geom_boxplot(aes(factor(T), ls, colour = method)) + 
   facet_wrap(~prior, ncol = 1) +
@@ -599,7 +601,11 @@ results %>%
             u50 = quantile(ls, 0.75),
             u95 = quantile(ls, 0.975),
             n = n())
-  
+ 
+results[results$xCDF >= 0 & results$xCDF <= 1,] %>%
+  filter(!is.na(prior)) %>%
+  ggplot() + geom_density(aes(xCDF, colour = prior)) + facet_wrap(~method, ncol = 1)
+ 
 }
 
 noGapsSampler {

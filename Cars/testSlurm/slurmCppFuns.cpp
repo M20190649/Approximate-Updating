@@ -211,7 +211,7 @@ Rcpp::List arUpdater(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec me
   arUpdate p(data, epsilon, mean, Linv, lags);
   stan::math::set_zero_all_adjoints();
   stan::math::gradient(p, lambda, eval, grad);
- 
+  
   return Rcpp::List::create(Rcpp::Named("grad") = grad,
                             Rcpp::Named("val") = eval);
 }
@@ -220,7 +220,7 @@ Rcpp::List arUpdater(mat data, Rcpp::NumericMatrix lambdaIn, vec epsilon, vec me
 cube evalMCMCDens (mat data, int N, int H, mat grid, mat MCMCdraws){
   cube densities (N, N, H, fill::zeros);
   boost::math::normal_distribution<> Zdist(0, 1);
-
+  
   for(int m = 0; m < 1000; ++m){
     double afc1 = data(1, 0), afc2 = data(0, 0), dfc1 = data(1, 1), dfc2 = data(0, 1), afc, dfc, vfc;
     vec draws = MCMCdraws.row(1000 + 4 * m).t();
@@ -295,15 +295,15 @@ cube evalVBDens (mat data, vec mean, mat L, vec weights, int N, int H, mat grid,
           // Transform delta x / delta y to velocity and angle
           double v = std::sqrt(
             std::pow(grid(i*N + j, 0), 2) +
-            std::pow(grid(i*N + j, 1), 2)
+              std::pow(grid(i*N + j, 1), 2)
           );
           double del = std::atan2(
             grid(i*N + j, 1),
             grid(i*N + j, 0)
-            ) - 1.570796;
+          ) - 1.570796;
           // p(x, y) = p(v) * p(d) / sqrt(dx^2 + dy^2)
           densities(i, j, h) += (pdf(Zdist, (v - vfc) / sigV) / sigV) *
-                                (pdf(Zdist, (del - dfc) / sigD) / sigD) / (v * 1000);
+            (pdf(Zdist, (del - dfc) / sigD) / sigD) / (v * 1000);
         }
       }
       // lag acceleration and angle
@@ -313,10 +313,10 @@ cube evalVBDens (mat data, vec mean, mat L, vec weights, int N, int H, mat grid,
       dfc1 = dfc;
     }
   }
-    
+  
   return densities;    
 }
-    
+
 // [[Rcpp::export]]
 double nlogDensity (mat data, vec theta, vec mu, mat varInv){
   int T = data.n_rows;
@@ -390,7 +390,7 @@ struct scoreMixNormal {
     
     T density = 0;
     for(int k = 0; k < K; ++k){
-      density += pi(k) * dets(k) * pow(6.383185, -3) *  exp(-0.5 * exponents(k));
+      density += pi(k) * dets(k) * pow(6.283185, -3) *  exp(-0.5 * exponents(k));
     }
     T logDens = log(density);
     
@@ -404,11 +404,9 @@ double pLogDensMix(mat data, vec theta, mat mean, cube Linv, vec dets, vec weigh
   // Constrained Positive
   double sigSqV = exp(theta(0)), sigSqD = exp(theta(1));
   // Evaluate log(p(theta)), start by evaluative the quadratic in the MVN exponents
-  mat kernel(6, K, fill::zeros);
-  vec exponents(K, fill::zeros);
   double prior = 0;
   for(int k = 0; k < K; ++k){
-    mat SigInv = Linv.slice(k) * Linv.slice(k).t();
+    mat SigInv = Linv.slice(k).t() * Linv.slice(k);
     prior += weights(k) * pow(6.283185, -3) * dets(k) * exp(-0.5 * as_scalar((theta - mean.col(k)).t() * SigInv * (theta - mean.col(k))));
   }
   
@@ -440,7 +438,6 @@ Rcpp::List scoreDeriv(mat data, Rcpp::NumericMatrix lambdaIn, vec theta, int K, 
   return Rcpp::List::create(Rcpp::Named("grad") = grad,
                             Rcpp::Named("val") = elbo);
 }
-
 
 // [[Rcpp::export]]
 cube evalVBDensIndep (mat data, vec mean, mat L, vec weights, int N, int H, mat grid, bool mix){
@@ -515,3 +512,89 @@ cube evalMCMCDensIndep (mat data, int N, int H, mat grid, mat MCMCdraws){
   }
   return densities;
 }
+
+struct scoreMixNormalDiag {
+  const vec theta;
+  scoreMixNormalDiag(const vec& thetaIn) :
+    theta(thetaIn) {}
+  template <typename T> //
+  T operator ()(const Matrix<T, Dynamic, 1>& lambda)
+    const{
+    using std::log; using std::exp; using std::pow; using std::sqrt;
+    
+    Matrix<T, Dynamic, 1> dets(6);
+    for(int k = 0; k < 6; ++k){
+      dets(k) = exp(lambda(6*k + 36));
+      for(int i = 1; i < 6; ++i){
+        dets(k) *= exp(lambda(36 + 6*k + i));
+      }
+      dets(k) = 1.0 / dets(k);
+    }
+    
+    Matrix<T, Dynamic, 1> kernel(6);
+    kernel.fill(0);
+    
+    for(int k = 0; k < 6; ++k){
+      for(int i = 0; i < 6; ++i){
+        kernel(k) += pow((theta(i) - lambda(k*6 + i)) / exp(lambda(36 + 6*k + i)), 2);
+      }
+    }
+    
+    Matrix<T, Dynamic, 1> pi(6);
+    T sumExpZ = 0;
+    for(int k = 0; k < 6; ++k){
+      pi(k) = exp(lambda(72 + k));
+      sumExpZ += pi(k);
+    }
+    pi /= sumExpZ;
+    
+    T density = 0;
+    for(int k = 0; k < 6; ++k){
+      density += pi(k) * dets(k) * pow(6.283185, -3) *  exp(-0.5 * kernel(k));
+    }
+    
+    return log(density);
+  }
+};
+
+double pLogDensMixDiag(mat data, vec theta, mat mean, cube SigInv, vec dets, vec weights){
+  int N = data.n_rows;
+  // Constrained Positive
+  double sigSqV = exp(theta(0)), sigSqD = exp(theta(1));
+  // Evaluate log(p(theta)), start by evaluative the quadratic in the MVN exponents
+  double prior = 0;
+  for(int k = 0; k < 6; ++k){
+    prior += weights(k) * pow(6.283185, -3) * dets(k) * exp(-0.5 * as_scalar((theta - mean.col(k)).t() * SigInv.slice(k) * (theta - mean.col(k))));
+  }
+  
+  // Evaluate log likelihood
+  double logLik = 0;
+  for(int t = 2; t < N; ++t){
+    logLik += - 0.5 * (theta(0) + theta(1)) - pow(data(t, 0) - theta(2) * data(t-1, 0) - theta(3) * data(t-2, 0), 2) / (2 * sigSqV) -
+      pow(data(t, 1) - theta(4) * data(t-1, 1) - theta(5) * data(t-2, 1), 2) / (2 * sigSqD);
+  }
+  return log(prior) + logLik;
+}
+
+// This model is parameterised by the mean and log standard deviations
+// [[Rcpp::export]]
+Rcpp::List scoreDerivDiag(mat data, Rcpp::NumericMatrix lambdaIn, vec theta, mat mean, cube SigInv, vec dets, vec weights){
+  Map<MatrixXd> lambda(Rcpp::as<Map<MatrixXd> >(lambdaIn));
+  double qEval;
+  Matrix<double, Dynamic, 1> grad(13*6);
+  
+  scoreMixNormalDiag logQ(theta);
+  stan::math::set_zero_all_adjoints();
+  stan::math::gradient(logQ, lambda, qEval, grad);
+  
+  double logp = pLogDensMixDiag(data, theta, mean, SigInv, dets, weights);
+  double elbo = logp - qEval;
+  
+  for(int i = 0; i < 13*6; ++i){
+    grad(i) *= elbo;
+  }
+  return Rcpp::List::create(Rcpp::Named("grad") = grad,
+                            Rcpp::Named("val") = elbo);
+}
+
+

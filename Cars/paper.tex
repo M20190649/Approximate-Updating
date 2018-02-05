@@ -1,4 +1,4 @@
-\documentclass[12pt,a4paper]{article}\usepackage[]{graphicx}\usepackage[]{color}
+  \documentclass[12pt,a4paper]{article}\usepackage[]{graphicx}\usepackage[]{color}
 %% maxwidth is the original width if it is less than linewidth
 %% otherwise use linewidth (to make sure the graphics do not exceed the margin)
 \makeatletter
@@ -100,23 +100,33 @@
 \section{Introduction}
 
 \begin{itemize}
-\item Self driving cars becoming more common
-\item Cars can perform complex maneuvers on their own, and are capable of detecting the location of cars around them
-\item Cars need to improve their ability to detect the movement of cars around them
-\item Wide range of unconditional variances and first two partial autocorrelations observed while fitting each model individually - evidence of heterogeneity
-\item Forecasts of car movement could be improved by building a hierarchical model that shares information between cars while allowing each driver to have their own parameter vector
-\item As new cars are observed we need to make parameter estimates as quickly as possible
-\item Strong prior information from the hierarchical model can be a substitute for the lack of data in the first few seconds of observing a new car
-\item As time passes this original estimation needs to be updated as the stream of data becomes large enough for the prior impact to be reduced
-\item We would like to be able to do this using only the newly observed data, instead of re-estimating a model re-using the old data.
-\item The aim of this paper is to make efficient forecasts by:
+\item Self driving Cars are becoming more common, eg Waymo, Tesla, GM.
+\item The naviation systems used to drive involve predicting the movement of the surrounding traffic to find the safest path for the Self Driving Car.
+\item These models use deep neural networks (DNN) to extract the properties of surrounding vehicles from sensors (eg. Cameras and LiDAR), such as their position, velocity, and steering angle (Woo et al. 2016a; Tian, Pei, Jana, and Ray 2017).
+\item The Self Driving Car forecasts point estimates of the future trajectory of these surrounding vehicles based on the DNN results.
+\item These can assume the surrounding vehicles will maintain their current angle and velocity (Gindele, Brechtel, Dillmann 2010; Waymo Safety Report 2017; Bautista 2017), but interest has developed in more advanced predictive models such as Neural Networks, Hidden Markov Models, and Support Vector Machines (Woo et al. 201b6; Tomar, Verma, and Tomar 2014; Woo et al. 2017; Geng et al. 2017).
+\item This paper takes a statistical approach, fitting time series models to two extracted variables, velocity and steering angle, of vehicles in the Next Generation Simulation (NGSIM) US Highway 101 Dataset.
+\item It then uses Bayesian methods to forecast the distribution of the future velocity and steering angle, which can be transformed into a trajectory forecast.
+\item These time series models (In this case a bivariate AR2) fit a parameter vector to capture the driver behaviour, which can be very different from driver to driver (Chen 2017).
+\item A hierarchical model is employed to allow heterogeneity between different drivers, where each vehicle is given its own parameter vector with a shared prior distribution.
+\item This model implies that any new vehicle observed by the self driving car has its own parameter vector, related to previously observed vehicles through the shared prior.
+\item The self driving car is constantly observing additional information about the vehicles around it. Forecasts where the parameter vector is conditioned on this additional data should outperform forecasts conditioned on less data.
+\item A three step strategy is employed to forecast the future trajectory of newly observed vehicles:
 \begin{enumerate}
-\item Using prior information when available
-\item Update the posterior as new data is observed fast enough to be viable
+\item Fit a hierarchical model with a large amount of vehicles to obtain the posterior distribution of each vehicles individual parameter vector and the shared distribution. This can occur before the self driving car is on the road.
+\item When a new vehicle is observed use the information in this shared distribution to model the associated new parameter vector. 
+\item Update the parameter vector and all forecasts at short intervals.
 \end{enumerate}
-\item We expect that the prior information will make a significant difference early on in the sample, but there will be a significant gain in forecast accuracy as more data increases. At this point the hierarchical prior isn't too useful, but we need to be able to fit the model in time!
-\item At the end of the day we will have a lot of forecast evaluations from MCMC, VB and a new VB stream method, a non mean-field adaption of {\v S}m{\'i}dl 2006
-\item We can compare the performance of different levels of prior information, and different levels of approximation error in the forecasts
+\item This paper introduces a Variational Bayes updating method for the third step, where the posterior distribution of the new vehicles parameter vector is approximated, then this approximation is updated.
+\item This only uses the data observed in-between updates, allowing the previously observed history of that vehicle to be discarded.
+\item This is important for two reasons:
+\begin{enumerate}
+\item The model can be updated faster as less data must be processed, so forecasts can be made using as much recent data as possible.
+\item Self driving cars take in up to 1GB of data a second (several websites report this as quotes from different people eg. Tech CEO, but I don't know if that's good enough for an academic citaiton), so discarding old data is useful.
+\end{enumerate}
+\item Compare Bayes MAP point estimates to a neural network and constant acceleration / angle model.
+\item Error Metric: Euclidean Distance from predicted position to actual position
+\item Compare log scores from streaming and standard VB forecast densities to see how the updating method compares to standard VB. I am also using MCMC, so we can compare either VB method to this, theoretically MCMC > VB Standard > VB Updating
 \end{itemize}
 
 \section{Data processing}
@@ -135,16 +145,17 @@
 \item Use models to get $\hat{x}_{i, t}$ and $\hat{y}_{i, t}$ as estimates of the midpoint of the lane after travelling a distance $d_{i, t}$.
 \item Define new coordinates 
 \begin{align}
-x^*_{i, t} &= \mbox{sign}(x_{i, t} - \hat{x}_{i, t})\sqrt{(x_{i, t}-\hat{x}_{i, t})^2 + (y_{i, t} - \hat{y}_{i, t})^2)} \label{xRel} \\
+x^*_{i, t} &= \mbox{sign}\left(\tan^{-1}\left(\frac{\hat{y}_{i, t} - y_{i, t}}{\hat{x}_{i, t} - x_{i, t}} \right) - \tan^{-1}\left(\frac{g'(d_{i, t}) }{f'(d_{i, t})}\right)\right)\sqrt{(x_{i, t}-\hat{x}_{i, t})^2 + (y_{i, t} - \hat{y}_{i, t})^2)} \label{xRel} \\
 y^*_{i, t} &= d_{i, t} \label{yRel}
 \end{align}
 \end{enumerate}
-\item These cars are not used for any further modelling, leaving 2873 cars travelling on a straightened out road with no noticable systematic curvature. (ie. no patterns in many cars turning at the same spot)
+\item (\ref{xRel}) \textit{really} needs a diagram.
+\item These cars are not used for any further modelling, leaving 2873 cars travelling on a straightened out road with no noticable systematic curvature.
 \end{itemize}
 
 \section{Hierarchical Motion Model}
 
-The position of any vehicle at time $t$ can be fully determined by its inital position, $\{x^*_{i, 0}, y^*_{i, 0}\}$ and the history of the driver's inputs: the cars velocity $v_{i, t}$ and steering angle, $\delta_{i, t}$ by
+The position of any vehicle at time $t$ can be fully determined by its initial position, $\{x^*_{i, 0}, y^*_{i, 0}\}$ and the history of the driver's inputs: the vehicle's velocity $v_{i, t}$ and steering angle, $\delta_{i, t}$ by
 \begin{align}
 x^*_{t} &= x^*_{t-1} + v_{t} \cos(\delta_{t}) \label{xEq} \\
 y^*_{t} &= y^*_{t-1} + v_{t} \sin(\delta_{t}). \label{yEq},
@@ -163,63 +174,99 @@ Auto-regressive processes of orders $p$ and $q$ for $a_t$ and  $\delta_t$ are us
 a_{t} &= \sum_{j = 1}^p \phi_{j} a_{t-j} + \sigma_{\epsilon} \epsilon_{t} \label{aAR} \\
 \delta_{t} &= \pi/2 + \sum_{j = 1}^q \gamma_{j} (\delta_{t-j} - \pi/2) + \sigma_{\eta} \eta_{t} \label{dAR}
 \end{align}
-where $\epsilon_{t}$ and $\eta_t$ are independently and identically distributed according to a standard normal distribution. The parameter vector to be estimated is collected as 
+where $\epsilon_{t}$ and $\eta_t$ are independently and identically distributed according to a standard normal distribution. The unconditional means of $a_t$ and $\delta_t$ are set to zero and $\pi/2$ respectively, corresponding to forward motion at constant velocity. The parameter vector to be estimated is collected as 
 \begin{equation*}
 \label{thetaVec}
 \theta = \{\phi_{1}, \dots, \phi_{p}, \gamma_{1}, \dots, \gamma_{q}, \log(\sigma^{2}_{\epsilon}), \log(\sigma^{2}_{\eta})\} \in \mathbb{R}^{p + q + 2}.
 \end{equation*}
 
-Multiple groups of differing driver behaviour can be allowed while still retaining heterogeneity with each group by jointly estimating each vehicle driver's individual parameter vector, $\theta_i$, as part of a heirarchical model, independently drawing $\theta_i$ from a $K$ component mixture of multivariate normal distributions, augmenting each $\theta_i$ with a mixture component $k_i = 1, \dots, K$ such that 
+Multiple groups of differing driver behaviour can be allowed while still retaining heterogeneity within each group by jointly estimating each vehicle driver's individual parameter vector, $\theta_i$, as part of a heirarchical model. In this case each $\theta_i$ is treated as an independent draw from a $K$ component mixture of multivariate normal distributions, augmenting each $\theta_i$ with a mixture component $k_i = 1, \dots, K$ such that 
 \begin{equation}
 \theta_i | k_i = j \sim N(\mu_j, \Sigma_j).
 \end{equation}
-For each $j = 1, \dots, K$, multivariate normal priors are chosen for $\mu_j$ with mean $\bar{\mu}_j$ and variance matrix $\Omega_j$, Inverse Wishart priors are chosen for $\Sigma_j$ with degrees of freedom $\tau_j$ and scale matrix $\Psi_j$. $k_{i}$ has a multinomial distribution with mixture probabilities $\boldsymbol{\pi_i} = \{\pi_{1, i}, \dots, \pi_{K, i}\}$, where $\boldsymbol{\pi_i}$ has a Dirichlet prior with parameters $\alpha_1, \alpha_2, \dots, \alpha_K$. Defining $\beta = \{\mu_i, \Sigma_i, i = 1, \dots, K\}$, $y_{i, 1:T} = \{\delta_{i, s}, a_{i, s} | s = 1, \dots, T\}$ and $y_{1:N} = \{y_{i, 1:T} | i = 1, \dots, N\}$ the posterior distribution $p(\theta_1, \dots, \theta_N, \beta | y_{1:N})$ can be estimated with MCMC methods.
+For each $j = 1, \dots, K$, multivariate normal priors are chosen for $\mu_j$ with fixed mean $\bar{\mu}_j$ and variance matrix $\Omega_j$, Inverse Wishart priors are chosen for $\Sigma_j$ with fixed degrees of freedom $\tau_j$ and scale matrix $\Psi_j$. $k_{i}$ has a multinomial distribution with mixture probabilities $\boldsymbol{\pi_i} = \{\pi_{1, i}, \dots, \pi_{K, i}\}$, where $\boldsymbol{\pi_i}$ has a Dirichlet prior with fixed hyperparameters $\alpha_1, \alpha_2, \dots, \alpha_K$. Defining $\beta = \{\mu_i, \Sigma_i, i = 1, \dots, K\}$, $z_{i, 1:T} = \{x^*_{i, s}, y^*_{i, s} | s = 1, \dots, T\}$ and $z_{1:N} = \{z_{i, 1:T} | i = 1, \dots, N\}$ the posterior distribution $p(\theta_1, \dots, \theta_N, \beta | z_{1:N})$ can be estimated with MCMC methods.
 
+\section{Variational Bayes}
 
-\begin{itemize}
-\item This model is fit to 2000 cars in the sample, leaving 873 for forecasting.
-\item To do: Add a Dirichlet Process Prior to make this an infinite mixture
-\item I've been trying this but I get results where all of the component indicator variables in the MCMC go to one component instead of the mixture assigning as many clusters as possible as Tas suggested would happen. I assume I'm doing something wrong but I haven't figured out what yet.
-\end{itemize}
+\subsection{Background}
 
-\section{Streaming Data Process}
+Variational Bayes approximates a distribution $p(\theta | z)$ with a family $q(\theta)$, choosing the member of that family that minimises $KL(q(\theta) || p(\theta | z)$, where
+\begin{equation}
+\label{KL-div}
+KL(q(\theta) || p(\theta | z) = \int_{\theta} q(\theta) \left(\log(q(\theta)) - \log(p(\theta | z))\right) d\theta.
+\end{equation}
+As $p(\theta | z)$ is typically intractable, VB maximises $\mathcal{L}(q)$ where
+\begin{equation}
+\label{ELBO}
+\mathcal{L}(q) = \int_{\theta} q(\theta) \left(\log(p(\theta, z)) - \log(q(\theta))\right) d\theta
+\end{equation}
+which is equivalent to minimising (\ref{KL-div}).
+This is done with stochastic gradient ascent, taking Monte Carlo estimates of $d\mathcal{L}(q) / d \lambda$ where $\lambda$ is the parameter vector of $q(\theta)$.
+There are two Monte Carlo estimators of $d\mathcal{L}(q) / d \lambda$, the Score Estimator, 
+\begin{equation}
+\label{scoreDeriv}
+\frac{d\mathcal{L}(q)}{d \lambda} \approx \sum_{i = 1}^L \frac{d \log(q(\theta_i))}{d \lambda} \left(\log(p(\theta_i, z)) - \log(q(\theta_i)) \right), \mbox{ where } \theta_i \sim q(\theta),
+\end{equation}
+and the Reparameterised Estimator,
+\begin{equation}
+\label{rpDeriv}
+\frac{d\mathcal{L}(q)}{d \lambda} \approx \sum_{i = 1}^M \frac{d f(\lambda, \epsilon_i)}{d \lambda} \frac{d \log(p(\theta_i, z))}{d \theta_i} + \frac{d J(\lambda, \epsilon_i)}{d \lambda}, \mbox{ where } \epsilon_i \sim r(\epsilon)
+\end{equation}
+where $r(\epsilon)$ is some distribution without any free parameters (eg. Uniform, Standard Normal), $f(\lambda, \epsilon)$ is some differentiable function that transforms $\epsilon$ to $\theta$, and $J(\lambda, \epsilon)$ is the Jacobian Matrix of this function. (\ref{rpDeriv}) typically has significantly lower variance than (\ref{scoreDeriv}), allowing $M$ to be set lower than $L$ which improves the speed of the algorithm; however the requirement for $f$ to exist restricts the class of approximating distributions $q(\theta)$ that can be used.
+Notably, a differentiable $f(\lambda, \epsilon)$ does not exist when $q(\theta)$ is a mixture model and the derivative estimator (\ref{scoreDeriv}) must be used. To reduce $L$ and thus the computational cost of the algorithm, following Gunawan, Tran, and Kohn (2017), Randomised Quasi Monte Carlo (RQMC) is used, where numbers in the unit hypercube are generated according to a Sobol Sequence (Sobol 1967), then these are randomised using the scrambled net method (Matousek 1998), and transformed into a draw of $\theta$ using the inverse-CDF of $q(\theta)$. Using RQMC allows (\ref{scoreDeriv}) to converge to the true derivative at a rate $O(L)$ compared to $O(\sqrt{L})$ in standard Monte Carlo. 
+
+\subsection{Updating VB Process}
 
 \begin{itemize}
 \item While on the road a self driving car may wish to make posterior inferences on the parameter set of cars around them. They may be interested in the degree of erraticness / variance of their actions.
 \item The posterior for car $N+1$ is given by 
 \begin{equation}
-p(\theta_{N+1} | y_{1:N+1}) \propto p(y_{N+1} | \theta_{N+1}) p(\theta_{N+1} | \beta) p (\beta | y_{1:N})
+\label{originalPost}
+p(\theta_{N+1} z_{N+1} | z_{1:N}) \propto p(z_{N+1} | \theta_{N+1}) \int_{\beta} p(\theta_{N+1} | \beta) p (\beta | z_{1:N}) d\beta
 \end{equation}
-\item As N is large $p (\beta | y_{1:N})$ is fairly precise, so replace $ p(\theta_{N+1} | \beta) p (\beta | y_{1:N})$ with $ p(\theta_{N+1} | \hat{\beta})$ where $\hat{\beta}$ is the posterior mean of $\beta$. This approximation gives us a closed form for $ p(\theta_{N+1} | \hat{\beta})$.
-\item Subsequently fitting $p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S})  \propto p(y_{N+1} | \theta_{N+1}) p(\theta_{N+1} | \hat{\beta})$ is fairly easy with MCMC / VB etc.
+\item As N is large $p (\beta | z_{1:N})$ is fairly precise, so we can replace $\int_{\beta} p(\theta_{N+1} | \beta) p (\beta | z_{1:N}) d\beta$ with $ p(\theta_{N+1} | \hat{\beta})$ where $\hat{\beta}$ is the posterior mean of $p(\beta | z_{1:N})$. This approximation gives us a closed form for $ p(\theta_{N+1} | \hat{\beta})$.
+\item Subsequently fitting $p(\theta_{N+1} | z_{1:N}, z_{N+1, 1:S})  \propto p(z_{N+1} | \theta_{N+1}) p(\theta_{N+1} | \hat{\beta})$ is fairly easy with MCMC / VB etc.
 \item When $S$ is small, the information in the prior will dominate the individual information.
-\item However, for some $T > S$ the information in the car's individual movements should become more relevant and forecasts could be improved by updating the distribution to $p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:T})$.
-\item This update takes the form of
+\item However, for some $T > S$ the information in the car's individual movements should become more relevant and forecasts could be improved by updating the distribution to $p(\theta_{N+1} | z_{1:N}, z_{N+1, 1:T})$.
+\item This updated posterior is given by
 \begin{equation}
-p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:T}) \propto p(y_{N+1, S+1:T} | \theta_{N+1}) p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S})
+\label{updatePost}
+p(\theta_{N+1} | z_{N+1, 1:T}, z_{1:N}) \propto p(z_{N+1, S+1:T} | \theta_{N+1})p(\theta_{N+1} | z_{1:N}, z_{N+1, 1:S})
 \end{equation}
-\item To perform this update only using the data from $y_{N+1, S+1:T}$ we would need a closed form form expression for $p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S})$. With MCMC methods we only have a sample from this distribution so in reality the distribution isn't updated, instead we re-run the MCMC using the complete dataset using the prior $p(\theta_{N+1} | \hat{\beta})$.
-\item Due to the demands of driving, the car wants the update carried out as soon as possible, and ideally should be able to discard this previously used information and use only $y_{N+1, S+1:T}$, reducing the time and memory complexity from $O(T)$ to $O(T-S)$. 
-\item Defining $q(\theta_{N+1} | y_{N+1, 1:S})$ as the Variational Bayes approximation of $p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S})$, an online method is proposed to update $q(\theta_{N+1} | y_{N+1, 1:S})$ to $q(\theta_{N+1} | y_{N+1, 1:T})$:
-\begin{enumerate}
-\item Observe $y_{N+1, 1:S}$, fit VB $q(\theta_{N+1} | y_{N+1, 1:S}) \approx p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:S})$
-\item Observe $y_{N+1, S+1:T}$, in this case the model becomes
+\item Both $\mathcal{L}(q)$ derivative estimators, (\ref{scoreDeriv}) and (\ref{rpDeriv}), need to evaluate \newline $\log(p(\theta_{N+1}, z_{N+1, S+1:T} | z_{1:N}, z_{N+1, 1:S}))$, which takes the form
+\begin{align}
+\log(p(\theta_{N+1}, z_{N+1, S+1:T} | z_{1:N}, z_{N+1, 1:S})) &= \log(p(z_{N+1, S+1:T} | \theta_{N+1})) \nonumber \\
+&+ \log(p(\theta_{N+1} | z_{1:N}, z_{N+1, 1:S})) \label{updateEq}
+\end{align}
+\item To perform this update only using the data from $z_{N+1, S+1:T}$ we would need a closed form form expression for $p(\theta_{N+1} | z_{1:N}, z_{N+1, 1:S})$ to replace the role of the prior. Without this closed form we would need to re-fit the VB model using the original prior $p(\theta_{N+1} | \hat{\beta})$ and the whole observed sequence $z_{N+1, 1:T}$.
+\item Due to the demands of driving, the car wants the update carried out as soon as possible, and ideally should be able to discard the previously used information $z_{N+1, 1:S}$. 
+\item Defining $q(\theta_{N+1} | z_{N+1, 1:S})$ as the Variational Bayes approximation of $p(\theta_{N+1} | z_{1:N}, z_{N+1, 1:S})$, a new method is proposed to update $q(\theta_{N+1} | z_{N+1, 1:S})$ to $q(\theta_{N+1} | z_{N+1, 1:T})$ after observing $z_{N_1, S+1:T}$.
+\item By replacing $p(\theta_{N+1} | z_{1:N}, z_{N+1, 1:S})$ in (\ref{updateEq}) with the previously fit $q(\theta_{N+1} | z_{N+1, 1:S})$ we get an approximation to (\ref{updateEq}):
 \begin{equation}
-p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:T}) \propto p(y_{N+1, S+1:T} | \theta_{N+1})p(\theta_{N+1} |  y_{1:N}, y_{N+1, 1:S})
+\label{updateEqApprox}
+\log(p(\theta_{N+1}, z_{N+1, 1:T} | z_{1:N})) \approx \log(p(z_{N+1, S+1:T} | \theta_{N+1})) + \log(q(\theta_{N+1} | z_{N+1, 1:S}))
 \end{equation}
-\item Set $p(\theta_{N+1} |  y_{1:N}, y_{N+1, 1:S}) = q(\theta_{N+1} | y_{N+1, 1:S})$
-\item Fit VB  $q(\theta_{N+1} | y_{N+1, 1:T}) \approx p(\theta_{N+1} | y_{1:N}, y_{N+1, 1:T})$
-\item Repeat as new data is observed
-\end{enumerate}
-\item The performance of this approach should be similar to (but probably slightly lower than) the regular VB fit but it is faster as $T$ increases relative to $T - S$.
+\item Substituting (\ref{updateEqApprox}) into (\ref{scoreDeriv}) gives the Score Estimator for updating Variational Bayes, 
+\begin{align}
+\label{scoreUpdate}
+\frac{d\mathcal{L}(q)}{d \lambda} \approx \sum_{i = 1}^L \frac{d \log(q(\theta_{N+1} | z_{N+1, 1:T}))}{d \lambda} &\left(\log(q(\theta_{N+1} | z_{N+1, 1:S}) - \log(q(\theta_{N+1} | z_{N+1, 1:T})) \right), \nonumber \\
+& \mbox{ where } \theta_i \sim q(\theta_{N+1} | z_{N+1, 1:T}).
+\end{align}
+\item Similarly, substituting (\ref{updateEqApprox}) into (\ref{rpDeriv}) gives the Reparameterised Estimator for updating Variational Bayes,
+\begin{equation}
+\label{rpUpdate}
+\frac{d\mathcal{L}(q)}{d \lambda} \approx \sum_{i = 1}^M \frac{d f(\lambda, \epsilon_i)}{d \lambda} \frac{d \log(q(\theta_{N+1} | z_{N+1, 1:S}))}{d \theta_i} + \frac{d J(\lambda, \epsilon_i)}{d \lambda}, \mbox{ where } \epsilon_i \sim r(\epsilon)
+\end{equation}
+where $f(\lambda, \epsilon)$ transforms a draw of $\epsilon$ into a draw from $q(\theta_{N+1} | z_{N+1, 1:T})$.
+\item This process can be repeated as neccessary, and is $O(1)$ instead of $O(T)$ assuming $S$ grows at the same rate as $T$.
 \end{itemize}
 
 \section{Empirical}
 
-\begin{figure}[h]
+\begin{figure}[ht]
 \centering
 \includegraphics[width = 0.8\textwidth]{HierSingleKDE.png}
-\caption{Left: $p(\theta_i | \beta, y_{1:N})$ for a hierarchical mixture model with K = 6 and N = 2000. Right: Kernel Density Estimate of the posterior means from the same cars modelled individually. The hierarchical model has captured the bimodality and skewness present in the individual posterior means.}
+\caption{Top: A Kernel Density Estimate of the distribution of posterior means for each $\theta_i | z_i, i = 1, \dots, 2000$ modelled independently with no hierarchical structure. Bottom: $p(\theta_i | \beta, z_{1:2000})$ for a hierarchical mixture model with $K = 6$ using the same vehicles, with each component of the mixture denoted by the coloured densities. The hierarchical model has captured the bimodality and skewness present in the independent posterior means.}
 \label{fig:HierSingleKDE}
 \end{figure}
 
@@ -229,39 +276,81 @@ Models:
 \item Prior information from hierarchical model with one component
 \item Prior information from large mixture hierarchical model
 \end{enumerate}
+\begin{itemize}
+\item In each case the VB posterior approximation $q(\theta)$ has the same family as the prior $p(\theta)$, so either a multivariate normal or a mixture of multivariate normals. This is so we can replace the prior with the VB fit at each step of the updating method easier. 
+\item The Hierarchical model is fit for 2000 cars, leaving 873 for forecast evaluation.
+\end{itemize}
 
 Methods:
 \begin{enumerate}
 \item MCMC
 \item Regular VB (fit each update to the new sample)
-\item Streaming VB (fit to new data only)
+\item Updating VB (fit to new data using the previous VB fit as a prior)
 \end{enumerate}
+
+
+\begin{center}
+\begin{table}[h]
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{| l | c | c | c |}
+\hline
+& Non-Informative Prior & Simple Hierarchy & Finite Mixture Hierarchy \\
+\hline
+MCMC & \multicolumn{3}{c}{Random Walk Metropolis Hastings jointly drawing the entire $\theta$ vector using Garthwaite, Fan and Sisson (2015)} \\
+& \multicolumn{3}{c}{to control the variance matrix of the Multivariate Gaussian proposal distribution} \\
+\hline
+VB  & \multicolumn{2}{c|}{Variational Bayes using (\ref{rpDeriv}) to update parameters of a} & Variational Bayes using (\ref{scoreDeriv}) to update parameters of a six \\
+Standard & \multicolumn{2}{c|}{Multivariate Gaussian approximation with non-zero covariance} & component mixture of diagonal variance Multivariate Gaussians\\
+\hline
+VB & \multicolumn{2}{c|}{Variational Bayes using (\ref{rpUpdate}) to update parameters of a} &  Variational Bayes using (\ref{scoreUpdate}) to update parameters of a six \\
+Updating & \multicolumn{2}{c|}{Multivariate Gaussian approximation with non-zero covariance} & component mixture of diagonal variance Multivariate Gaussians\\ \\
+\hline
+\end{tabular}}
+\label{tableAlg}
+\caption{Details of the algorithms used to produce posterior distributions for each method and prior combination}
+\end{table}
+\end{center}
+
 
 Evaluation:
 \begin{itemize}
 \item Compare forecasts for different sample sizes and forecast horizons
-\item Strategy: Fit model for one car up time time $S = 10$ (one second), forecast from $S+1:S+30$ (three seconds seems to be a standard forecast horizon for driver reaction, though surely self driving cars have a faster reaction time).
+\item Strategy: Fit model for one car using data up to time $S = 10$ (one second), forecast from $S+1:S+30$ (three seconds seems to be a standard forecast horizon for driver reaction, though surely self driving cars have a faster reaction time).
 \item Fit model to $S = 20$, forecast next three seconds, repeat.
 \item Collect logscores for predictive densities marginalised over the posterior distributions.
+\item Use MAP of the predictive density to get a point estimate of the future position, compare to the constant velocity / angle model.
 \item Repeat for each of the 873 remaining cars.
 \end{itemize}
 
 \begin{figure}[ht]
 \centering
-\includegraphics[width = 0.95\textwidth]{logscoresByPrior.png}
-\caption{Predictive log-scores for $p(a_{T+1:T+10}, d_{T+1:T+10} | a_{1:T}, d_{1:T})$ for $T = \{10, 20, \dots, 300\}$ for each of the three levels of prior information fit by both MCMC and VB. Stronger prior information improves forecasts in small samples, but as $T$ increases there are clear benefits to refitting the model regardless of the level of prior information. There was a mixtake in the VB finite mixture code which has been corrected but I am still waiting for the fixed results.}
+\includegraphics[width = 0.95\textwidth]{CarsBoxplots.png}
+\caption{Predictive logscores for $p(z_{i, T+h} | z_{i, 1:T})$ for $h = 1, \dots, 30$ and $T = \{10, 20, \dots, 300\}$ for each of the three levels of prior information fit by MCMC, standard VB and updating VB. The median logscore across all time periods, forecast horizons, and priors for the updating VB algorithm is 3.28, compared to 3.43 for standard VB and 3.46 for MCMC.}
 \label{fig:MainResults}
 \end{figure}
 
+\begin{center}
+\begin{table}[h]
+\begin{tabular}{| l | c | c | c |}
+\hline
+& Non-Informative Prior & Simple Hierarchy & Finite Mixture Hierarchy \\
+\hline
+MCMC & 3.42 & 3.47 & 3.51 \\
+VB Standard & 3.35 & 3.46 & 3.48 \\
+VB Updating & 3.14 & 3.28 & 3.46 \\
+\hline
+\end{tabular}
+\label{tableMedian}
+\caption{Median predictive logscore for $p(z_{i, T+h} | z_{i, 1:T})$ for $h = 1, \dots, 30$ and $T = \{10, 20, \dots, 300\}$ for each prior and algorithm combination}
+\end{table}
+\end{center}
 
-Results:
-\begin{itemize}
-\item Models based on the strong prior information outperform no information models for first few seconds, where we see a significant improvement in the log scores. As the dataset increases to $> 100$ observations (10 seconds), the data dominates and the prior choice does not have much impact. The median logscore (and probably other quantiles, hard to see from the graph) at a larger value of T increases as expected, showing that it is important to re-estimate the model with an increased dataset. However it seems that this re-estimation could probably be done with a simpler prior structure than the full hierarchy without any big loss.
-\item Compare streaming data VB - Hoping it will be comparable to other methods, it technically may be a bit worse as it uses one more approximation than the standard VB, but I don't think this will have a very big impact. It certainly will be faster, so if the performance is roughly equal this is evidence in favour of the online method. 
-\item Compare VB and MCMC methods for the same models to get an idea of approximation error.
-\item Still waiting on the cluster for standard VB Finite Mixture Model and all VB streams.
-\item We will have multiple forecasts for each actual observation (eg. $p(y_{43} | y_{20}), p(y_{43} | y_{30})$ and $p(y_{43} | y_{40})$) which gives us another approach to look at the benefits of increased observed data.
-\end{itemize}
+\begin{figure}[ht]
+\centering
+\includegraphics[width = 0.95\textwidth]{PredictiveError.png}
+\caption{Mean Euclidian Error for car position predictions at a forecast horizon of one second, two seconds or three seconds for the Finite Mixture prior / VB Update Algorithm compared to the constant velocity and angle model. The average error at the three second forecast horizon is reduced from 7.16 feet to just 0.89 feet.}
+\label{fig:MainResults}
+\end{figure}
 
 \section{Conclusion}
 
