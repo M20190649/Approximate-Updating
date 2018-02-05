@@ -16,6 +16,8 @@ library(tidyverse)
 library(Rcpp)
 library(RcppArmadillo)
 library(GGally)
+
+setup {
 id <- readRDS('carsID.RDS')
 
 read.csv('carsAug.csv') %>%
@@ -58,8 +60,7 @@ for(i in 1:500){
 }
 dataChanged[[501]] <- noStopChanged
 saveRDS(dataChanged, 'fcDataChanged.RDS')
-
-
+}
 
 HierMixMod{
 
@@ -497,7 +498,7 @@ sliceSampler{
 results {
 
 results <- NULL
-for(i in seq_along(id$idfc)){
+for(i in 1:seq_along(id$idfc)){
   #tmp <- read.csv(paste0('evals/car', id$idfc[i], '.csv'))
   #results <- rbind(results, tmp)
   try(assign('results',
@@ -529,12 +530,24 @@ results %>%
   gather(Predictor, meanDist, -horizon, -S) %>%
   ggplot() + geom_line(aes(x = S, y = meanDist, colour = Predictor)) + 
   facet_wrap(~horizon) + 
-  labs(x = 'T', y = 'Mean Euclidean Error')
+  labs(x = 'T', y = 'Mean Euclidean Error') + 
+  theme(legend.position = 'bottom')
 
-results %>% group_by(method, prior) %>% filter(is.finite(logscore)) %>% summarise(med = median(logscore, na.rm = TRUE)) %>% arrange(med)
+results %>%
+  filter(h == 10) %>%
+  group_by(S, method, prior) %>%
+  summarise(meanDist = mean(mapDist)) %>%
+  ggplot() + geom_line(aes(S, meanDist, colour = method)) + facet_wrap(~prior)
 
-results %>% filter(h == 30 & method == 'VB-Stream' & prior == 'Finite Mixture') %>% 
-  summarise(meanMAP = mean(mapDist), meanConst = mean(consDist))
+results %>% 
+  group_by(method, prior) %>% 
+  filter(is.finite(logscore)) %>% 
+  summarise(med = median(logscore, na.rm = TRUE)) %>% 
+  arrange(med)
+
+results %>% 
+  filter(h == 30 & method == 'VB-Stream' & prior == 'Finite Mixture') %>% 
+  summarise(meanMAP = mean(mapDist), meanConst = mean(consDist)) 
   
 
   
@@ -660,6 +673,76 @@ noGapsSampler {
   
   noGapDraws <- NoGaps2(data, reps, draws, hyper, thin, startK, 0.01)
   
+}
+
+neuralNetwork {
+  
+library(tensorflow)
+library(keras)
+xset <- data.frame()
+yset <- data.frame()
+for(i in 1:20){
+  carsAug %>%
+    filter(ID == id$idSubset[i]) %>%
+    mutate(n = seq_along(v),
+           d = delta - pi/2) %>%
+    filter(n > 1 & n <= 501) %>% 
+    ungroup() %>%
+    select(x, y, v, d) -> carI
+  T <- nrow(carI)
+  for(t in 11:(T - 30)){
+    carsub <- carI[(t-10):(t+30),]
+    xset <- rbind(xset, unlist(carsub[1:10,]))  
+    yset <- rbind(yset, unlist(carsub[11:40, 1:2]))
+
+  }
+  if(i %% 5 == 0){
+    print(i)
+  }
+}
+
+K <- backend()
+euclideanLoss <- function(y_true, y_pred){
+  K$mean(K$sqrt(K$square(y_true[1:30] - y_pred[1:30]) + K$square(y_true[31:60] - y_pred[31:60])) + 1e-8)
+}
+
+train <- sample(1:nrow(xset), 0.8 * nrow(xset))
+x_train <- xset[train,] %>% as.matrix()
+x_test <- xset[-train,] %>% as.matrix()
+y_train <- yset[train,] %>% as.matrix()
+y_test <- yset[-train,] %>% as.matrix()
+
+
+model <- keras_model_sequential() 
+model %>% 
+  layer_dense(units = 64, input_shape = c(40)) %>% 
+  layer_activation('relu') %>% 
+  layer_dropout(rate = 0.25) %>% 
+  layer_dense(units = 64) %>% 
+  layer_activation('relu') %>%
+  layer_dropout(rate = 0.25) %>% 
+  layer_dense(units = 64) %>% 
+  layer_activation('relu') %>%
+  layer_dropout(rate = 0.25) %>% 
+  layer_dense(units = 60) %>%
+  layer_activation('linear')
+
+model %>% compile(
+  optimizer = 'adam',
+  loss = euclideanLoss
+)
+
+model %>% fit(x_train, y_train, epochs=100, batch_size=128)
+model %>% predict(x_test) -> y_pred
+
+error <- numeric(0)
+for(i in 1:30){
+  for(j in 1:nrow(y_test)){
+    error <- c(error, sqrt((y_pred[j, i] - y_test[j, i])^2 + (y_pred[j, i+30] - y_test[j, i+30])^2))
+  }
+}
+mean(error)
+
 }
 
 

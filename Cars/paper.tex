@@ -296,14 +296,14 @@ Methods:
 \hline
 & Non-Informative Prior & Simple Hierarchy & Finite Mixture Hierarchy \\
 \hline
-MCMC & \multicolumn{3}{c}{Random Walk Metropolis Hastings jointly drawing the entire $\theta$ vector using Garthwaite, Fan and Sisson (2015)} \\
-& \multicolumn{3}{c}{to control the variance matrix of the Multivariate Gaussian proposal distribution} \\
+MCMC & \multicolumn{3}{c|}{Random Walk Metropolis Hastings jointly drawing the entire $\theta$ vector using Garthwaite, Fan and Sisson (2015)} \\
+& \multicolumn{3}{c|}{to control the variance matrix of the Multivariate Gaussian proposal distribution} \\
 \hline
 VB  & \multicolumn{2}{c|}{Variational Bayes using (\ref{rpDeriv}) to update parameters of a} & Variational Bayes using (\ref{scoreDeriv}) to update parameters of a six \\
 Standard & \multicolumn{2}{c|}{Multivariate Gaussian approximation with non-zero covariance} & component mixture of diagonal variance Multivariate Gaussians\\
 \hline
 VB & \multicolumn{2}{c|}{Variational Bayes using (\ref{rpUpdate}) to update parameters of a} &  Variational Bayes using (\ref{scoreUpdate}) to update parameters of a six \\
-Updating & \multicolumn{2}{c|}{Multivariate Gaussian approximation with non-zero covariance} & component mixture of diagonal variance Multivariate Gaussians\\ \\
+Updating & \multicolumn{2}{c|}{Multivariate Gaussian approximation with non-zero covariance} & component mixture of diagonal variance Multivariate Gaussians\\ 
 \hline
 \end{tabular}}
 \label{tableAlg}
@@ -353,5 +353,11 @@ VB Updating & 3.14 & 3.28 & 3.46 \\
 \end{figure}
 
 \section{Conclusion}
+\begin{itemize}
+\item Fitting individual AR 2 models on each driver's velocity and steering angle drastically improves forecasts of the future trajectory compared to the constant model used in practice
+\item Strong prior information improves forecasts early on in the sample, but has a reduced impact after ~20 seconds of observation
+\item Constantly fitting individual models in this way can be made computationally feasible by updating previous Variational Bayes model fits, which incurs only a small performance hit relative to the more expensive standard VB and MCMC methods.
+\end{itemize}
+
 
 \end{document}
