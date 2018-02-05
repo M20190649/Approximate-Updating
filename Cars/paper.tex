@@ -345,6 +345,22 @@ VB Updating & 3.14 & 3.28 & 3.46 \\
 \end{table}
 \end{center}
 
+\begin{center}
+\begin{table}[h]
+\begin{tabular}{| l | c | c | c |}
+\hline
+& Non-Informative Prior & Simple Hierarchy & Finite Mixture Hierarchy \\
+\hline
+MCMC & 0.81 & 0.77 & 0.77 \\
+VB Standard & 0.79 & 0.77 & 0.77 \\
+VB Updating & 0.79 & 0.78 & 0.77 \\
+\hline
+\end{tabular}
+\label{tableError}
+\caption{Mean predictive Euclidean error in feet for $p(z_{i, T+h} | z_{i, 1:T})$ for $h = 1, \dots, 30$ and $T = \{10, 20, \dots, 300\}$ for each prior and algorithm combination. The mean predictive Euclidean error for the constant velocity / angle model is 3.26 feet.}
+\end{table}
+\end{center}
+
 \begin{figure}[ht]
 \centering
 \includegraphics[width = 0.95\textwidth]{PredictiveError.png}
@@ -355,7 +371,7 @@ VB Updating & 3.14 & 3.28 & 3.46 \\
 \section{Conclusion}
 \begin{itemize}
 \item Fitting individual AR 2 models on each driver's velocity and steering angle drastically improves forecasts of the future trajectory compared to the constant model used in practice
-\item Strong prior information improves forecasts early on in the sample, but has a reduced impact after ~20 seconds of observation
+\item Strong prior information improves forecasts early on in the sample, but has a reduced impact after ~20 seconds of observation.
 \item Constantly fitting individual models in this way can be made computationally feasible by updating previous Variational Bayes model fits, which incurs only a small performance hit relative to the more expensive standard VB and MCMC methods.
 \end{itemize}
 

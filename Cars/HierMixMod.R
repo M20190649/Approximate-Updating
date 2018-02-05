@@ -509,6 +509,12 @@ for(i in 1:seq_along(id$idfc)){
   }
 }
 
+mPerFoot <- 0.3048
+results %>% 
+  mutate(logscore = logscore + log(mPerFoot^2),
+         mapDist = mapDist * mPerFoot,
+         consDist = consDist * mPerFoot) -> results
+
 
 results %>% 
   mutate(group = factor(ceiling(S / 30)),
@@ -548,75 +554,15 @@ results %>%
 results %>% 
   filter(h == 30 & method == 'VB-Stream' & prior == 'Finite Mixture') %>% 
   summarise(meanMAP = mean(mapDist), meanConst = mean(consDist)) 
-  
-
-  
-results %>%
-  #filter(method == 'MCMC' & prior == 'None') %>%
-  mutate(T = S + h,
-         horizon = ceiling(h/10)) %>%
-  group_by(method, prior, S, h, T, horizon, id) %>%
-  summarise(ls = - sum(logscore)) %>%
-  ungroup() %>%
-  select(T, id, ls, horizon, method, prior) %>%
-  filter(T > 30) %>%
-  ggplot() + geom_boxplot(aes(factor(horizon), ls)) +
-  facet_grid(method ~ prior) + 
-  scale_y_continuous(trans = reverselog_trans(base=10),
-                     labels=trans_format("identity", function(x) -x))
-
-
-library(scales)
-reverselog_trans <- function(base = exp(1)) {
-  trans <- function(x) -log(x, base)
-  inv <- function(x) base^(-x)
-  trans_new(paste0("reverselog-", format(base)), trans, inv, 
-            log_breaks(base = base), 
-            domain = c(1e-100, Inf))
-}
-
-results %>% 
-  mutate(T = factor(ceiling(S / 30)),
-         priorInfo = factor(prior, levels = c('None', 'Single Hierarchy', 'Finite Mixture')),
-         method = ifelse(method == 'VB-Offline', 'VB-Standard', 
-                         ifelse(method == 'VB-Stream', 'VB-Updating', 'MCMC'))) %>%
-  ggplot() + geom_boxplot(aes(T, logscore, colour = priorInfo)) +
-  facet_wrap(~method, ncol = 1) + ylim(-10, 15)  +
-  labs(x = 'T Range', y = 'X/Y Logscore') + 
-  scale_x_discrete(labels = c('10-30', '40-60', '70-90', '100-120', '130-150', 
-                              '160-180', '190-210', '220-240', '250-270', '280-300'))  
-  
-
-scale_y_continuous(trans = reverselog_trans(base=10),
-                     labels=trans_format("identity", function(x) -x)) 
-  geom_boxplot(aes(factor(T), ls, colour = method)) + 
-  facet_wrap(~prior, ncol = 1) +
-  theme_bw() +
-  labs(x = 'T Range', y = 'Combined Logscore') + 
-  scale_x_discrete(labels = c('10-30', '40-60', '70-90', '100-120', '130-150', 
-                              '160-180', '190-210', '220-240', '250-270', '280-300')) + 
-  scale_y_continuous(trans = reverselog_trans(base=10),
-                     labels=trans_format("identity", function(x) -x)) + 
-  theme(legend.position = 'bottom')
 
 results %>%
-  group_by(id, method, prior, S) %>%
-  summarise(ls = sum(logscore)) %>%
-  filter(ls != -Inf) %>%
-  ungroup() %>%
-  group_by(prior, method) %>%
-  summarise(mean = mean(ls),
-            sd = sd(ls),
-            skew = moments::skewness(ls),
-            l95 = quantile(ls, 0.025),
-            l50 = quantile(ls, 0.25),
-            med = median(ls),
-            u50 = quantile(ls, 0.75),
-            u95 = quantile(ls, 0.975),
-            n = n())
+  group_by(method, prior) %>%
+  summarise(meanError = mean(mapDist))  %>%
+  arrange(meanError)
+  
+mean(results$consDist)
  
-results[results$xCDF >= 0 & results$xCDF <= 1,] %>%
-  filter(!is.na(prior)) %>%
+results[!is.na(results$xCDF),] %>%
   ggplot() + geom_density(aes(xCDF, colour = prior)) + facet_wrap(~method, ncol = 1)
  
 }
