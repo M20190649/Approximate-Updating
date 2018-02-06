@@ -1,16 +1,7 @@
 ########## TO DO #############
-# Replace K with a Direchlet Process & Slice Sampler in the MCMC
-
-# Consider new online implementations: 
-# add new data every 100ms or batches slightly more often 
-# Swap fit till converge, add more data, to add new data, switch prior asap.
-
-# For the supervisors:
 # Write more things.
-
-# Slurm stuff
-# Refit failed models
-# Refit mixture VB to all cars
+# Check lane change car results (ongoing on slurm)
+# Built the Neural Network (find why loss goes to nan)
 
 library(tidyverse)
 library(Rcpp)
@@ -62,7 +53,7 @@ dataChanged[[501]] <- noStopChanged
 saveRDS(dataChanged, 'fcDataChanged.RDS')
 }
 
-HierMixMod{
+hierMixtureModel{
 
 set.seed(1)
 N <- 2000
@@ -237,7 +228,7 @@ densities %>%
 
 }
 
-OtherMods{
+otherMCMCModels{
   data <- readRDS('MCMCData.RDS')
   reps <- 50000
   
@@ -319,7 +310,7 @@ OtherMods{
   
 }
 
-VB{
+VBSingleCar{
   
 lags <- 2
 dim <- 2 + 2 * lags
@@ -495,16 +486,14 @@ sliceSampler{
   sliceDraws <- sliceSampler(data, reps, draws, hyper, thin, 10, 'gaussian', 0.01)
 }
 
-results {
+forecastResults {
 
 results <- NULL
-for(i in 1:seq_along(id$idfc)){
-  #tmp <- read.csv(paste0('evals/car', id$idfc[i], '.csv'))
-  #results <- rbind(results, tmp)
+for(i in seq_along(id$idfc)){
   try(assign('results',
              rbind(results,
                    read.csv(paste0('eval/car', id$idfc[i], '.csv')))))
-  if(i %% 100 == 0){
+  if((i %% 100 == 0) | i == length(id$idfc)){
     print(i)
   }
 }
@@ -515,14 +504,23 @@ results %>%
          mapDist = mapDist * mPerFoot,
          consDist = consDist * mPerFoot) -> results
 
+results %>%
+  group_by(method, prior, h) %>%
+  summarise(meanDist = mean(mapDist)) %>%
+  mutate(model = paste(method, prior)) %>%
+  ggplot() + geom_line(aes(h, meanDist, colour = model)) + 
+  geom_line(data = results %>% group_by(h) %>% summarise(meanDist = mean(consDist)), aes(h, meanDist)) + 
+  labs(x = 'Forecast Horizon (seconds)', y = 'Mean Euclidean Error (metres)') + 
+  theme_bw() + 
+  scale_x_continuous(labels = c(1, 2, 3), breaks = c(10, 20, 30))
 
 results %>% 
   mutate(group = factor(ceiling(S / 30)),
          method = ifelse(method == 'VB-Stream', 'VB-Update', as.character(method))) %>% 
   ggplot() + geom_boxplot(aes(x = group, y = logscore, colour = method)) + 
   facet_wrap(~prior, ncol = 1) + 
-  ylim(-10, 10)  +
-  labs(x = 'T Range', y = 'Predictive Logscore') + 
+  ylim(-10, 5) +
+  labs(x = 'T', y = 'Predictive Logscore') + 
   scale_x_discrete(labels = c('10-30', '40-60', '70-90', '100-120', '130-150', 
                               '160-180', '190-210', '220-240', '250-270', '280-300'))  
 
@@ -536,8 +534,9 @@ results %>%
   gather(Predictor, meanDist, -horizon, -S) %>%
   ggplot() + geom_line(aes(x = S, y = meanDist, colour = Predictor)) + 
   facet_wrap(~horizon) + 
-  labs(x = 'T', y = 'Mean Euclidean Error') + 
-  theme(legend.position = 'bottom')
+  labs(x = 'T', y = 'Mean Euclidean Error (metres)') + 
+  theme_bw() +  
+  theme(legend.position = 'bottom') 
 
 results %>%
   filter(h == 10) %>%
