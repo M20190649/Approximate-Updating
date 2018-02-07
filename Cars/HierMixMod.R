@@ -1,7 +1,8 @@
 ########## TO DO #############
 # Write more things.
-# Check lane change car results (ongoing on slurm)
-# Built the Neural Network (find why loss goes to nan)
+# Build the Neural Network (find why loss goes to nan)
+# Add a constant (non-zero) acceleration naive model
+# Add a homogenous behaviour AR2 Model (estimate on 2000 car sample and apply to new cars)
 
 library(tidyverse)
 library(Rcpp)
@@ -488,12 +489,38 @@ sliceSampler{
 
 forecastResults {
 
+library(readr)
 results <- NULL
 for(i in seq_along(id$idfc)){
   try(assign('results',
              rbind(results,
-                   read.csv(paste0('eval/car', id$idfc[i], '.csv')))))
+                   read_csv(paste0('eval/vb/car', id$idfc[i], '.csv'), col_types = cols()))))
   if((i %% 100 == 0) | i == length(id$idfc)){
+    print(i)
+  }
+}
+for(i in 1:500){
+  try(assign('results',
+             rbind(results,
+                   read_csv(paste0('eval/vb/car', noStopChanged[i], '.csv'), col_types = cols()))))
+  if(i %% 100 == 0){
+    print(i)
+  }
+}
+naiveResults <- NULL
+for(i in seq_along(id$idfc)){
+  try(assign('naiveResults',
+             rbind(naiveResults,
+                   read_csv(paste0('eval/naive/car', id$idfc[i], '.csv'), col_types = cols()))))
+  if((i %% 100 == 0) | i == length(id$idfc)){
+    print(i)
+  }
+}
+for(i in 1:500){
+  try(assign('naiveResults',
+             rbind(naiveResults,
+                   read_csv(paste0('eval/naive/car', noStopChanged[i], '.csv'), col_types = cols()))))
+  if(i %% 100 == 0){
     print(i)
   }
 }
@@ -503,6 +530,33 @@ results %>%
   mutate(logscore = logscore + log(mPerFoot^2),
          mapDist = mapDist * mPerFoot,
          consDist = consDist * mPerFoot) -> results
+naiveResults[,1:6] <- naiveResults[,1:6] * mPerFoot
+
+naiveResults %>%
+  filter(id %in% unique(results$id)) %>%
+  gather(model, error, -h, -S, -id) %>%
+  rbind(results %>%
+          mutate(prior = ifelse(prior == 'None', 'Non-Informative', as.character(prior)),
+                 method = ifelse(method == 'VB-Stream', 'VB-Updating', as.character(method)),
+                 model = paste(prior, method)) %>%
+          rename(error = mapDist) %>%
+          select(h, S, id, model, error)) -> jointResults
+
+jointResults %>%
+  filter(h %in% c(10, 20, 30)) %>% 
+  mutate(horizon = paste(h / 10, ifelse(h == 10, 'second', 'seconds'), 'ahead'),
+         model = factor(model, levels = c('Naive 1', 'Naive 2', 'Naive 3', 'Naive 4', 'Naive 5', 'Naive 6',
+                                          'Non-Informative MCMC', 'Non-Informative VB-Standard', 'Non-Informative VB-Updating',
+                                          'Single Hierarchy MCMC', 'Single Hierarchy VB-Standard', 'Single Hierarchy VB-Updating',
+                                          'Finite Mixture MCMC', 'Finite Mixture VB-Standard', 'Finite Mixture VB-Updating'))) %>%  
+  group_by(S, horizon, model) %>%
+  summarise(meanError = mean(error)) %>%
+  ungroup() %>%
+  ggplot() + geom_line(aes(x = S, y = meanError, colour = model)) + 
+  facet_wrap(~horizon) + 
+  labs(x = 'T', y = 'Mean Euclidean Error (metres)') + 
+  theme_bw() +  
+  theme(legend.position = 'bottom') 
 
 results %>%
   group_by(method, prior, h) %>%
@@ -522,7 +576,29 @@ results %>%
   ylim(-10, 5) +
   labs(x = 'T', y = 'Predictive Logscore') + 
   scale_x_discrete(labels = c('10-30', '40-60', '70-90', '100-120', '130-150', 
-                              '160-180', '190-210', '220-240', '250-270', '280-300'))  
+                              '160-180', '190-210', '220-240', '250-270', '280-300'))
+
+results %>% 
+  select(logscore, h, prior, method, S, id) %>%
+  spread(method, logscore) %>%
+  mutate(difference = `VB-Stream` - `VB-Standard`) -> diffInLogscore
+diffInLogscore %>%
+  filter(S > 10) %>%
+  mutate(group = factor(ceiling(S / 30)),
+         prior = ifelse(prior == 'None', 'Non-Informative', as.character(prior))) %>%
+  ggplot() + geom_violin(aes(group, difference)) +
+  facet_wrap(~prior, ncol = 1) + ylim(-5, 5) + 
+  labs(x = 'T', y = 'Difference in Logscores (Updating - Standard)')  + 
+  scale_x_discrete(labels = c('20-30', '40-60', '70-90', '100-120', '130-150', 
+                              '160-180', '190-210', '220-240', '250-270', '280-300')) + 
+  theme_bw()
+
+diffInLogscore %>%
+  filter(S > 10) %>%
+  group_by(prior) %>%
+  filter(!is.na(difference) & is.finite(difference)) %>%
+  summarise(prop = sum(difference > -5 & difference < 5) / n())
+
 
 results %>%
   filter(h %in% c(10, 20, 30) & method == 'VB-Stream' & prior == 'Finite Mixture') %>% 
@@ -627,19 +703,14 @@ library(keras)
 xset <- data.frame()
 yset <- data.frame()
 for(i in 1:20){
-  carsAug %>%
-    filter(ID == id$idSubset[i]) %>%
-    mutate(n = seq_along(v),
-           d = delta - pi/2) %>%
-    filter(n > 1 & n <= 501) %>% 
-    ungroup() %>%
+  carsAug[carsAug$ID == id$idSubset[i],] %>%
+    mutate(d = delta - pi/2)[2:min(501, nrow(.)),] %>%
     select(x, y, v, d) -> carI
   T <- nrow(carI)
   for(t in 11:(T - 30)){
-    carsub <- carI[(t-10):(t+30),]
+    carsub <- carI[(t-10):(t+29),]
     xset <- rbind(xset, unlist(carsub[1:10,]))  
     yset <- rbind(yset, unlist(carsub[11:40, 1:2]))
-
   }
   if(i %% 5 == 0){
     print(i)
