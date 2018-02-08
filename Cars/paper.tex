@@ -350,9 +350,9 @@ $\hat{a}_t = 0$ & Naive 7 & Naive 8 & Naive 9 \\
 
 The homogenous time series model has the same bivariate AR(2) structure given by (\ref{aAr}) and (\ref{dAr}) as used by the heterogenous time series models with the additional restriction that each $\theta_i = \theta$, so each vehicle shares the same parameter vector. This model is estimated by MCMC to the 2000 training cars.
 
-\subsubsection{Neural Networks}
+\subsubsection{Recurrent Neural Networks}
 
-Following Ding et al. (2012), a Neural Network is constructed with inputs given by the ten most recent lags of vehicle position, angle, and velocity, and an output given by the next thirty values of the vehicle position. The network is trained with the Adam optimised with a mean Euclidean error loss function. 
+A Recurrent Neural Network is constructed with inputs given by the ten most recent lags of vehicle position, angle, and velocity, and an output given by the next thirty values of the vehicle position. The network is trained with the Adam optimiser and a mean Euclidean error loss function. 
 \subsection{Results}
 
 \begin{figure}[ht]
