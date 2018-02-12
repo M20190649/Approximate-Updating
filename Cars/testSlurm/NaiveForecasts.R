@@ -28,31 +28,28 @@ for(s in seq_along(sSeq)){
   }
   # Predict naive movements
   dConst <- data[sSeq[s], 2]
-  vConst <- data[sSeq[s] + 1, 3] # Velocity is lagged in the data
-  vAvg <- mean(data[-8:1 + sSeq[s], 3 ])
+  aConst <- data[sSeq[s] +1, 3] - data[sSeq[s] , 3]
+  aAvg <- 0.1 * (data[sSeq[s] + 1, 3] - data[sSeq[s] -9, 3])
   dAvg <- mean(data[-9:0 + sSeq[s], 2])
-  # Model 1: Const V, Const D
-  # Model 2: Const V, Zero D
-  # Model 3: Const V, Mean D
-  # Model 4: Mean V, Const D
-  # Model 5: Mean V, Zero D
-  # Model 6: Mean V, Mean D
-  dxdy <- matrix(0, 2, 6)
-  dxdy[,1] <- vConst * c(cos(pi/2 + dConst), sin(pi/2 + dConst))
-  dxdy[,2] <- vConst * c(cos(pi/2), sin(pi/2))
-  dxdy[,3] <- vConst * c(cos(pi/2 + dAvg), sin(pi/2) + dAvg)
-  dxdy[,4] <- vAvg * c(cos(pi/2 + dConst), sin(pi/2 + dConst))
-  dxdy[,5] <- vAvg * c(cos(pi/2), sin(pi/2))
-  dxdy[,6] <- vAvg * c(cos(pi/2 + dAvg), sin(pi/2 + dAvg))
-  
-  dist <- matrix(0, H, 6)
+  # Model 1: Past A, Const D
+  # Model 2: Past A, Zero D
+  # Model 3: Past A, Mean D
+  # Model 4: Mean A, Const D
+  # Model 5: Mean A, Zero D
+  # Model 6: Mean A, Mean D
+  # Model 7-9: Const V (Zero A)
+  x0 <- rep(data[sSeq[s], 4], 9)
+  y0 <- rep(data[sSeq[s], 5], 9)
+  v0 <- rep(data[sSeq[s] + 1, 3], 9) 
+  dist <- matrix(0, H, 9)
   for(h in 1:H){
-    for(j in 1:6){
-      dist[h, j] <- sqrt((h*dxdy[1, j] - sum(data[sSeq[s] + 1:h, 4]))^2 + (h*dxdy[2, j] - sum(data[sSeq[s] + 1:h, 5]))^2)
-    }
+    v0 <- v0 + c(rep(aConst, 3), rep(aAvg, 3), rep(0, 3))
+    x0 <- x0 + v0 * rep(c(cos(dConst + pi/2), cos(pi/2), cos(pi/2 + dAvg)), 3)
+    y0 <- y0 + v0 * rep(c(sin(dConst + pi/2), sin(pi/2), sin(pi/2 + dAvg)), 3)
+    dist[h, ] <- sqrt((x0 - sum(data[sSeq[s] + 1:h, 4]))^2 + (y0 - sum(data[sSeq[s] + 1:h, 5]))^2)
   }
   dist <- as.data.frame(dist)
-  colnames(dist) <- paste('Naive', 1:6)
+  colnames(dist) <- paste('Naive', 1:9)
   dist$h <- 1:H
   dist$S <- sSeq[s]
   dist$id <- id

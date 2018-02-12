@@ -520,9 +520,6 @@ for(i in 1:500){
   if(i %% 100 == 0){
     print(i)
   }
-}
-
-homogResults <- data.frame()
 for(i in seq_along(id$idfc)){
   homogResults<-  rbind(homogResults,
                          read_csv(paste0('eval/homog/car', id$idfc[i], '.csv'), col_types = cols()))
@@ -544,11 +541,15 @@ results %>%
   mutate(logscore = logscore + log(mPerFoot^2),
          mapDist = mapDist * mPerFoot,
          consDist = 0,
-         change = id %in% noStopChanged) -> results
+         change = id %in% noStopChanged,
+         prior = ifelse(prior == 'None', 'Non-Informative', as.character(prior)),
+         method = ifelse(method == 'VB-Stream', 'VB-Updating', as.character(method)),
+         model = ifelse(prior == 'Homogenous', 'Homogenous', paste(prior, method))) -> results
+write.csv(results, 'results.csv')
+results <- readr::read_csv('results.csv')
 
 results %>% 
   filter(h %in% c(10, 20, 30)) %>%
-  mutate(model = paste(prior, method)) %>%
   group_by(h, S, model) %>%
   summarise(mean = mean(mapDist)) %>%
   ungroup() %>%
@@ -561,9 +562,6 @@ naiveResults %>%
   filter(id %in% unique(results$id)) %>%
   gather(model, error, -h, -S, -id) %>%
   rbind(results %>%
-          mutate(prior = ifelse(prior == 'None', 'Non-Informative', as.character(prior)),
-                 method = ifelse(method == 'VB-Stream', 'VB-Updating', as.character(method)),
-                 model = paste(prior, method)) %>%
           rename(error = mapDist) %>%
           select(h, S, id, model, error)) -> jointResults
 write.csv(jointResults, 'jointResults.csv', row.names = FALSE)
@@ -596,14 +594,15 @@ results %>%
   scale_x_continuous(labels = c(1, 2, 3), breaks = c(10, 20, 30))
 
 results %>% 
-  mutate(group = factor(ceiling(S / 30)),
-         method = ifelse(method == 'VB-Stream', 'VB-Update', as.character(method))) %>% 
-  ggplot() + geom_boxplot(aes(x = group, y = logscore, colour = method)) + 
-  facet_wrap(~prior, ncol = 1) + 
-  ylim(-10, 5) +
-  labs(x = 'T', y = 'Predictive Logscore') + 
-  scale_x_discrete(labels = c('10-30', '40-60', '70-90', '100-120', '130-150', 
-                              '160-180', '190-210', '220-240', '250-270', '280-300'))
+  filter(h %in% c(10, 20, 30)) %>%
+  mutate(method = ifelse(method == 'VB-Stream', 'VB-Update', as.character(method)),
+         model = ifelse(method == 'Homogenous', 'Homogenous', paste(prior, method))) %>% 
+  ggplot() + geom_violin(aes(x = model, y = logscore)) + 
+  facet_wrap(~h, ncol = 1) + 
+  ylim(0, 5) +
+  labs(x = 'Model', y = 'Predictive Logscore')
+  #scale_x_discrete(labels = c('10-30', '40-60', '70-90', '100-120', '130-150', 
+  #                            '160-180', '190-210', '220-240', '250-270', '280-300'))
 
 results %>% 
   select(logscore, h, prior, method, S, id) %>%
@@ -667,6 +666,83 @@ mean(results$consDist)
 results[!is.na(results$xCDF),] %>%
   ggplot() + geom_density(aes(xCDF, colour = prior)) + facet_wrap(~method, ncol = 1)
  
+
+carsAug %>%
+  filter(ID %in% unique(results$id)) %>%
+  rbind(carsChanged %>% filter(ID %in% unique(results$id))) %>%
+  group_by(ID) %>%
+  mutate(n = seq_along(ID),
+         lx = ifelse(n == 1, 0, lag(x)), 
+         ly = ifelse(n == 1, 0, lag(y)),
+         lv = ifelse(n == 1, 0, lag(v)),
+         dx = x - lx,
+         dy = y - ly,
+         a = v - lv,
+         s = 10 * ceiling((n-1) / 10) - 10) %>%
+  filter(s > 0 & s < 330) %>%
+  mutate(h = seq_along(ID) %% 10,
+         h = ifelse(h == 0, 10, h),
+         h2 = 10 + h,
+         h3 = 20 + h) %>%
+  gather(window, h, h, h2, h3) %>%
+  mutate(s = ifelse(window == 'h2', s - 10, 
+                    ifelse(window == 'h3', s - 20, s))) %>%
+  select(ID, s, h, dx, dy, v, delta) %>%
+  rename(id = ID, S = s) %>%
+  right_join(results) -> resultsMove
+
+
+sumMovements <- cppFunction(depends = "RcppArmadillo",
+  'arma::mat output(arma::mat dataIn) {
+    int N = dataIn.n_rows;
+    arma::mat sums(N, 2, arma::fill::zeros);
+    for(int i = 0; i < N; ++i){
+      sums(i, 0) = arma::sum(dataIn(arma::span(i - dataIn(i, 2) + 1, i), 3));
+      sums(i, 1) = arma::sum(dataIn(arma::span(i - dataIn(i, 2) + 1, i), 4));
+    }
+    return sums;
+  }'
+)
+
+summove <- sumMovements(as.matrix(resultsMove[,1:5]))
+resultsMove$sumdx <- summove[,1]
+resultsMove$sumdy <- summove[,2]
+
+resultsMove %>%
+  filter(h == 30 & is.finite(logscore)) %>%
+  mutate(xMove = ceiling(abs(sumdx))) %>%
+  filter(xMove < 10) %>%
+  group_by(S, prior, change) %>%
+  summarise(med = mean(logscore), n = n()) %>%
+  filter(n > 200) %>%
+  ggplot() + geom_line(aes(S, med, colour = prior)) + facet_wrap(~change, scales = 'free')
+
+carsAug %>%
+  filter(ID %in% unique(results$id)) %>%
+  rbind(carsChanged %>% filter(ID %in% unique(results$id))) %>%
+  group_by(ID) %>%
+  mutate(n = seq_along(ID),
+         a = v - lag(v)) %>%
+  filter(n > 1) %>%
+  summarise(sda = sd(a),
+            sdd = sd(delta)) -> stDevs
+
+stDevs %>%
+  filter(sda > quantile(.$sda, 0.8)) %>%
+  .$ID -> highSdA
+stDevs %>%
+  filter(sdd > quantile(.$sdd, 0.8)) %>%
+  .$ID -> highSdD
+highSdJoint <- highSdA[highSdA %in% highSdD]
+
+results %>%
+  filter(id %in% highSdJoint & h == 30 & is.finite(logscore)) %>%
+  group_by(S, prior, change) %>%
+  summarise(med = median(logscore)) %>%
+  ggplot() + geom_line(aes(S, med, colour = prior)) + facet_wrap(~change, scales = 'free')
+
+
+
 }
 
 noGapsSampler {
@@ -723,149 +799,143 @@ noGapsSampler {
   
 }
 
-neuralNetwork {
+recurrentNeuralNetwork {
   
 library(tensorflow)
 library(keras)
-library(Rcpp)
-library(RcppArmadillo)
 sourceCpp('buildNNData.cpp')
 
 
-data <- matrix(0, 0, 5)
-size <- 0
+data <- list()
 for(i in 1:2000){
   carsAug[carsAug$ID == id$idSubset[i],] -> carI
   carI[2:min(501, nrow(carI)),] %>%
     mutate(d = delta - pi/2) %>%
     select(x, y, v, d) -> carI
-  carI$ID <- id$idSubset[i]
-  data <- rbind(data, carI)
-
+  data[[i]] <- carI
 }
-
-xset <- buildX(data, size)
-yset <- buildY(data, size)
 
 K <- backend()
 euclideanLoss <- function(y_true, y_pred){
-  mPerFoot * K$mean(K$sqrt(K$square(y_true[1:30] - y_pred[1:30]) + K$square(y_true[31:60] - y_pred[31:60]) + 1e-8))
+  mPerFoot * K$mean(
+                    K$sqrt(K$square(K$sum(y_true[,,1]) - K$sum(y_pred[,,1])) +
+                           K$square(K$sum(y_true[,,2]) - K$sum(y_pred[,,2]))
+                           + 1e-8
+                    )
+             )
 }
 
-# Original Position + Cumulative Sum of changes (eg change in x = v*cos(d)) = New Position
 eucLossVD <- function(y_true, y_pred){
-  mPerFoot * K$mean(K$sqrt(
-                           K$square(y_true[1] + K$cumsum(y_true[3:32]*K$cos(y_true[33:62] + pi/2)) -
-                                    y_pred[1] + K$cumsum(y_pred[3:32]*K$cos(y_pred[33:62] + pi/2))
-                                    ) + 
-                           K$square(y_true[2] + K$cumsum(y_true[3:32]*K$sin(y_true[33:62] + pi/2)) -
-                                    y_pred[2] + K$cumsum(y_pred[3:32]*K$sin(y_pred[33:62] + pi/2))
-                                    ) +
-                           1e-8)
+  mPerFoot * K$mean(
+                    K$sqrt(K$square(exp(y_true[,,1]) * cos(y_true[,,2] + pi/2) - 
+                                    exp(y_pred[,,1]) * cos(y_pred[,,2] + pi/2)) + 
+                           K$square(exp(y_true[,,1]) * sin(y_true[,,2] + pi/2) - 
+                                    exp(y_pred[,,1]) * sin(y_pred[,,2] + pi/2)) + 1e-8
+                           )
                     )
 }
 
-train <- sample(1:nrow(xset), 0.8 * nrow(xset))
-x_train <- xset[train,] %>% as.matrix()
-x_test <- xset[-train,] %>% as.matrix()
-y_train <- yset[train,] %>% as.matrix()
-y_test <- yset[-train,] %>% as.matrix()
-
-
-model <- keras_model_sequential() 
-model %>% 
-  layer_dense(units = 32, input_shape = c(40)) %>%
-  layer_activation('relu') %>% 
-  layer_dense(units = 64) %>%
-  layer_activation('relu') %>%
-  layer_dropout(rate = 0.5) %>% 
-  layer_dense(units = 64) %>%
-  layer_activation('relu') %>%
-  layer_dropout(rate = 0.5) %>% 
-  layer_dense(units = 60) %>%
-  layer_activation('linear')
-
-model %>% compile(
-  optimizer = 'adam',
-  loss = euclideanLoss
-)
-
-model %>% fit(x_train, y_train, 
-              validation_data = list(x_test, y_test),
-              epochs = 10,
-              batch_size = 128)
-
-
-
 generator <- function(data, numCars, batch_size = 128){
   i <- 1
-  idvec <- unique(data[,5])
   function(){
     samples <- array(0, dim = c(batch_size, 10, 4))
-    targets <- array(0, dim = c(batch_size, 60))
-    dataSub <- data[data[,5] == idvec[i],]
+    targets <- array(0, dim = c(batch_size, 10, 2))
+    dataSub <- data[[i]]
     if(i >= numCars){
       i <<- 1
     } else {
       i <<- i + 1
     }
-    t <- sample(10:(nrow(dataSub) - 30), batch_size)
+    t <- sample(30:(nrow(dataSub) - 5), batch_size)
     for(j in 1:batch_size){
       for(k in 1:4){
-        samples[j,,k] <- dataSub[(-9:0) + t[j], k]
+        samples[j, , k] <- dataSub[(-9:0) + t[j], k]
       }
-      targets[j, ] <- unlist(dataSub[1:30 + t[j], 1:2])
+      targets[j,,1] <- log(dataSub[(-8:1) + t[j], 3])
+      targets[j,,2] <- dataSub[(-8:1) + t[j], 4]
     }
     
     list(samples, targets)
   }
 }
 trainSet <- sample(1:2000, 1600)
-train_gen <- generator(data[data[,5] %in% id$idSubset[trainSet],], numCars = 1600)
-test_gen <- generator(data[!data[,5] %in% id$idSubset[trainSet],], numCars = 400)
+train_gen <- generator(data[trainSet], numCars = 1600)
+test_gen <- generator(data[-trainSet], numCars = 400)
 
 
 
 rnn <- keras_model_sequential()
 rnn %>%
-  layer_gru(units = 32, 
+  layer_gru(units = 128, 
             dropout = 0.1, 
             recurrent_dropout = 0.5,
             return_sequences = TRUE,
             input_shape = list(NULL, 4)) %>% 
-  layer_gru(units = 32, 
-            activation = "relu",
-            dropout = 0.1,
-            recurrent_dropout = 0.5,
-            return_sequences = TRUE) %>% 
-  layer_gru(units = 32, 
-            activation = "relu",
-            dropout = 0.1,
-            recurrent_dropout = 0.5) %>% 
-  layer_dense(units = 64,
-              activation = "relu") %>%
+  time_distributed(layer_dense(units = 128, 
+                               activation = "relu")) %>%
   layer_dropout(rate = 0.5) %>%
-  layer_dense(units = 64,
-              activation = "relu") %>%
-  layer_dense(units = 64,
-              activation = "relu") %>%
-  layer_dropout(rate = 0.5) %>%
-  layer_dense(units = 60)
+  time_distributed(layer_dense(units = 2))
 
 rnn %>% compile(
   optimizer = 'adam',
-  loss = euclideanLoss
+  loss = eucLossVD
 )
 
 history <- rnn %>% fit_generator(
   train_gen,
   steps_per_epoch = 50,
-  epochs = 50,
+  epochs = 25,
   validation_data = test_gen,
-  validation_steps = 100
+  validation_steps = 25
 )
 plot(history)
 
-va}
+a <- train_gen()
+pred <- predict(rnn, a[[1]])
+p <- rbind(exp(pred[1,,1]) * cos(pred[1,,2] + pi/2), exp(pred[1,,1]) * sin(pred[1,,2] + pi/2), 
+      exp(a[[2]][1,,1]) * cos(a[[2]][1,,2] + pi/2), exp(a[[2]][1,,1]) * sin(a[[2]][1,,2] + pi/2))
+apply(p, 2, function(x) sqrt((x[1] - x[3])^2 + (x[2] - x[4])^2)) %>% cumsum() %>% mean()
 
+dataFC <- list()
+for(i in 1:873){
+  carsAug[carsAug$ID == id$idfc[i],] -> carI
+  carI[2:min(501, nrow(carI)),] %>%
+    mutate(d = delta - pi/2) %>%
+    select(x, y, v, d) -> carI
+  dataFC[[i]] <- as.matrix(carI)
+}
+for(i in 1:500){
+  carsAug[carsAug$ID == noStopChanged[i],] -> carI
+  carI[2:min(501, nrow(carI)),] %>%
+    mutate(d = delta - pi/2) %>%
+    select(x, y, v, d) -> carI
+  dataFC[[i+873]] <- as.matrix(carI)
+}
+
+
+
+
+predictionData <- buildTestX(dataFC)
+RNNResults <- data.frame()
+for(i in 1:1373){
+  posForecast <- predict(rnn, predictionData[[i]])
+  if(i <= 873){
+    carID <- id$idfc[i]
+  } else {
+    carID <- noStopChanged[i]
+  }
+  for(s in 1:30){
+    true <- dataFC[[i]][10*s + 0:30, 1:2]
+    pred <- posForecast[s, ]
+    error <- mPerFoot * sqrt((true[2:31,1] - true[1:30, 1] - pred[1:30])^2 + (true[2:31,2] - true[1:30, 2] -  pred[31:60])^2)
+    RNNResults <- rbind(RNNResults,
+                        data.frame(h = 1:30,
+                                   S = s,
+                                   id = carID,
+                                   model = 'RNN',
+                                   error = error))
+  }
+}
+
+}
 

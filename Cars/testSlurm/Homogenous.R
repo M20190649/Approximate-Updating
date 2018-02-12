@@ -1,8 +1,23 @@
 rm(list=ls())
 repenv <- Sys.getenv("SLURM_ARRAY_TASK_ID")
-i <- as.numeric(repenv)
+iter <- as.numeric(repenv)
+
+library(Rcpp, lib.loc = 'packages')
+library(RcppArmadillo, lib.loc = 'packages')
+library(RcppEigen, lib.loc = 'packages')
+library(rstan, lib.loc = 'packages')
+source('slurmRFuns.R')
+sourceCpp('slurmCppFuns.cpp')
+
 
 ids <- readRDS('carsID.RDS')
+
+for(j in 1:10){
+ results <- data.frame()
+ if(iter == 134 & j > 7){
+   break
+ }
+ i <- (iter-1)*10 + j
 
 if(i <= 873){
   datafc <- readRDS('ForecastData.RDS')
@@ -15,7 +30,6 @@ if(i <= 873){
 }
 
 draws <- readRDS('noHierN2000.RDS')$draws
-draws[,1:2] <- exp(draws[,1:2])
 
 H <- 30
 S <- 10
@@ -39,18 +53,30 @@ asup <- seq(aLower, 2*max(data[,1]), length.out = 200)
 dsup <- seq(dLower, 2*max(data[,2]), length.out=200)
 grid <- cbind(asup, dsup)
 
-results <- data.frame()
 
 # Incrementally add data
 for(s in seq_along(sSeq)){
   if((sSeq[s] + H) > nrow(data)){
     break
   }
-  MCMCDens(data = data[(sSeq[s]-1):(sSeq[s] + H), ],
+  output <-  MCMCDens(data = data[(sSeq[s]-1):(sSeq[s] + H), ],
            N = 200,
            H = H,
            grid = grid,
            MCMCdraws = draws)
+
+ results <- rbind(results,
+                 data.frame(logscore = output$logscore,
+                            xCDF = output$xCDF,
+                            mapDist = output$mapDist,
+                            consDist = NA,
+                            h = 1:H,
+                            prior = 'Homogenous',
+                            method = 'MCMC',
+                            S = sSeq[s],
+                            id = id))
 }
 
+
 write.csv(results, paste0('homog/car', id, '.csv'), row.names=FALSE)
+}

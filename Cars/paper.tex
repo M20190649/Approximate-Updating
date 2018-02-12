@@ -110,24 +110,28 @@
 \item These can assume the surrounding vehicles will maintain their current angle and velocity (Gindele, Brechtel, Dillmann 2010; Waymo Safety Report 2017; Bautista 2017), but interest has developed in more advanced predictive models such as Neural Networks, Hidden Markov Models, and Support Vector Machines (Woo et al. 201b6; Ding et al. 2012; Woo et al. 2017; Geng et al. 2017).
 \item This paper takes a statistical approach, fitting time series models to two extracted variables, velocity and steering angle, of vehicles in the Next Generation Simulation (NGSIM) US Highway 101 Dataset.
 \item It then uses Bayesian methods to forecast the distribution of the future velocity and steering angle, which can be transformed into a trajectory forecast.
-\item These time series models (In this case a bivariate AR2) fit a parameter vector to capture the driver behaviour, which can depend both on the be very different from driver to driver (Chen 2017) which may depend on a particular vehicle's position relative to surrounding traffic.
+\item A homogenous time series model shows a strong ability to predict the MAP trajectory
+\itme An important part of this modelling is to capture the uncertainty of car trajectories, as the self-driving car must react to the possibility of collision even when that possibility is relatively small.
+\item There are many sources of heterogeneity in drivers, from their individual driving styles to the conditions of traffic directly around them.
+\item Including heterogeneity in the model will allow more dangerous vehicles to be identified, for example, 'lead-footed' drivers can have a larger variance on their acceleration.
 \item A hierarchical model is employed to allow heterogeneity between different drivers, where each vehicle is given its own parameter vector with a shared prior distribution.
 \item This model implies that any new vehicle observed by the self driving car has its own parameter vector, related to previously observed vehicles through the shared prior.
-\item The self driving car is constantly observing additional information about the vehicles around it. Forecasts where the parameter vector is conditioned on this additional data should outperform forecasts conditioned on less data.
-\item A three step strategy is employed to forecast the future trajectory of newly observed vehicles:
+\item The self driving car must be able to estimate the parameter vector of newly observed cars, and update this parameter vector as it observes additional data.
+\item Forecasts where the parameter vector is conditioned on this additional data should outperform forecasts conditioned on less data.
+\item A three step strategy is employed to provide density forecasts for the future trajectory of newly observed vehicles:
 \begin{enumerate}
 \item Fit a hierarchical model with a large amount of vehicles to obtain the posterior distribution of each vehicles individual parameter vector and the shared distribution. This can occur before the self driving car is on the road.
 \item When a new vehicle is observed use the information in this shared distribution to model the associated new parameter vector. 
 \item Update the parameter vector and all forecasts at short intervals.
 \end{enumerate}
-\item This paper introduces a Variational Bayes updating method for the third step, where the posterior distribution of the new vehicles parameter vector is approximated, then this approximation is updated.
+\item This paper uses standard Variational Bayes for the second step, and introduces an updating method for the third step; the posterior distribution of the new vehicles parameter vector is approximated, then this approximation is updated.
 \item This only uses the data observed in-between updates, allowing the previously observed history of that vehicle to be discarded.
 \item This is important for two reasons:
 \begin{enumerate}
 \item The model can be updated faster as less data must be processed, so forecasts can be made using as much recent data as possible.
 \item Self driving cars take in up to 1GB of data a second (several websites report this as quotes from different people eg. Tech CEO, but I don't know if that's good enough for an academic citaiton), so discarding old data is useful.
 \end{enumerate}
-\item Compare Bayes MAP point estimates to a neural network and constant acceleration / angle model.
+\item Compare Bayes MAP point estimates to a neural network and naive models
 \item Error Metric: Euclidean Distance from predicted position to actual position
 \item Compare log scores from streaming and standard VB forecast densities to see how the updating method compares to standard VB. I am also using MCMC, so we can compare either VB method to this, theoretically MCMC $\geq$ VB Standard $\geq$ VB Updating
 \end{itemize}
@@ -410,8 +414,8 @@ VB Updating & 0.211 & 0.207 & \textbf{0.196} \\
 
 \section{Conclusion}
 \begin{itemize}
-\item Dynamic AR 2 models forecasting future acceleration and angles drastically improves forecasts of the future trajectory compared to the naive models.
-\item Treating vehicles as heterogenous allows behaviour specific to an individual driver to be learned, further improving forecasts.
+\item Dynamic AR 2 models forecasting future acceleration and angles drastically improves forecasts of the future trajectory compared to the competing models.
+\item Treating vehicles as heterogenous allows behaviour specific to an individual driver to be learned, improving logscores and forecast uncertainty.
 \item This requires constant models fits and updates, which can be made computationally feasible by updating previous Variational Bayes model fits, which incurs only a small performance hit relative to the more expensive standard VB and MCMC methods.
 \end{itemize}
 
