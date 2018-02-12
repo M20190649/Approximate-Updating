@@ -520,6 +520,7 @@ for(i in 1:500){
   if(i %% 100 == 0){
     print(i)
   }
+}
 for(i in seq_along(id$idfc)){
   homogResults<-  rbind(homogResults,
                          read_csv(paste0('eval/homog/car', id$idfc[i], '.csv'), col_types = cols()))
@@ -827,10 +828,10 @@ euclideanLoss <- function(y_true, y_pred){
 
 eucLossVD <- function(y_true, y_pred){
   mPerFoot * K$mean(
-                    K$sqrt(K$square(exp(y_true[,,1]) * cos(y_true[,,2] + pi/2) - 
-                                    exp(y_pred[,,1]) * cos(y_pred[,,2] + pi/2)) + 
-                           K$square(exp(y_true[,,1]) * sin(y_true[,,2] + pi/2) - 
-                                    exp(y_pred[,,1]) * sin(y_pred[,,2] + pi/2)) + 1e-8
+                    K$sqrt(K$square(K$sum(exp(y_true[,1:10,1]) * cos(y_true[,1:10,2] + pi/2)) - 
+                                    K$sum(exp(y_pred[,1:10,1]) * cos(y_pred[,1:10,2] + pi/2))) + 
+                           K$square(K$sum(exp(y_true[,1:10,1]) * sin(y_true[,1:10,2] + pi/2)) - 
+                                    K$sum(exp(y_pred[,1:10,1]) * sin(y_pred[,1:10,2] + pi/2))) + 1e-8
                            )
                     )
 }
@@ -851,8 +852,9 @@ generator <- function(data, numCars, batch_size = 128){
       for(k in 1:4){
         samples[j, , k] <- dataSub[(-9:0) + t[j], k]
       }
-      targets[j,,1] <- log(dataSub[(-8:1) + t[j], 3])
-      targets[j,,2] <- dataSub[(-8:1) + t[j], 4]
+      samples[j,,3] <- log(samples[j,,3])
+      targets[j,,1] <- log(dataSub[(1:10) + t[j], 3])
+      targets[j,,2] <- dataSub[(1:10) + t[j], 4]
     }
     
     list(samples, targets)
@@ -869,8 +871,13 @@ rnn %>%
   layer_gru(units = 128, 
             dropout = 0.1, 
             recurrent_dropout = 0.5,
-            return_sequences = TRUE,
+            return_sequences = FALSE,
             input_shape = list(NULL, 4)) %>% 
+  layer_repeat_vector(10) %>%
+  layer_gru(units = 128,
+            dropout = 0.1,
+            recurrent_dropout = 0.5,
+            return_sequences = TRUE) %>%
   time_distributed(layer_dense(units = 128, 
                                activation = "relu")) %>%
   layer_dropout(rate = 0.5) %>%
@@ -890,8 +897,75 @@ history <- rnn %>% fit_generator(
 )
 plot(history)
 
-a <- train_gen()
-pred <- predict(rnn, a[[1]])
+nn <- keras_model_sequential() 
+nn %>% 
+  layer_dense(256,
+              input_shape = 40,
+              activation = 'relu') %>%
+  layer_dropout(rate = 0.5) %>%
+  layer_dense(256,
+              activation = 'relu') %>%
+  layer_dropout(rate = 0.5) %>%
+  layer_dense(256,
+              activation = 'relu') %>%
+  layer_dropout(rate = 0.5) %>%
+  layer_dense(20)
+
+nnLoss <- function(y_true, y_pred) {
+  mPerFoot * K$mean(K$sqrt(K$square(K$sum(y_true[1:10]) - K$sum(y_pred[1:10])) +
+                           K$square(K$sum(y_true[11:20]) - K$sum(y_pred[11:20])) +
+                            1e-8
+                    )
+              )
+}
+nnGen <- function(data, numCars, batch_size = 128){
+  i <- 1
+  function(){
+    samples <- array(0, dim = c(batch_size, 40))
+    targets <- array(0, dim = c(batch_size, 20))
+    dataSub <- data[[i]]
+    if(i >= numCars){
+      i <<- 1
+    } else {
+      i <<- i + 1
+    }
+    t <- sample(10:(nrow(dataSub) - 10), batch_size)
+    for(j in 1:batch_size){
+      for(k in 1:2){
+        samples[j, (k-1)*10+1:10] <- dataSub[(-9:0) + t[j], k] -  dataSub[(-10:-1) + t[j], k]
+      }
+      for(k in 3:4){
+        samples[j, (k-1)*10+1:10] <- dataSub[(-9:0) + t[j], k] 
+      }
+      targets[j,1:10] <- dataSub[(1:10) + t[j], 1] - dataSub[(0:9) + t[j], 1]
+      targets[j,11:20] <- dataSub[(1:10) + t[j], 2] - dataSub[(0:9) + t[j], 2]
+    }
+    
+    list(samples, targets)
+  }
+}
+trainSet <- sample(1:2000, 1600)
+train_gen <- nnGen(data[trainSet], numCars = 1600)
+test_gen <- nnGen(data[-trainSet], numCars = 400)
+
+nn %>% compile(
+  optimizer = 'adam',
+  loss = 'mse'
+)
+
+history <- nn %>% fit_generator(
+  train_gen,
+  steps_per_epoch = 50,
+  epochs = 25,
+  validation_data = test_gen,
+  validation_steps = 25
+)
+plot(history)
+
+
+
+a <- test_gen()
+pred <- predict(nn, a[[1]])
 p <- rbind(exp(pred[1,,1]) * cos(pred[1,,2] + pi/2), exp(pred[1,,1]) * sin(pred[1,,2] + pi/2), 
       exp(a[[2]][1,,1]) * cos(a[[2]][1,,2] + pi/2), exp(a[[2]][1,,1]) * sin(a[[2]][1,,2] + pi/2))
 apply(p, 2, function(x) sqrt((x[1] - x[3])^2 + (x[2] - x[4])^2)) %>% cumsum() %>% mean()
