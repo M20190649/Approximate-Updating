@@ -61,7 +61,7 @@ carsVB <- function(data, lambda, S = 25, maxIter = 5000, alpha = 0.01, beta1 = 0
       diff <- abs(meanLB - oldMeanLB)
     } 
     if(iter %% 100 == 0){
-      print(paste0('Iteration: ', iter, ' ELBO: ', meanLB))
+      print(paste0('Iteration: ', iter, ' ELBO: ', LB[iter]))
     }
     iter <- iter + 1
   }

@@ -489,48 +489,23 @@ sliceSampler{
 
 forecastResults {
 
+  
+# Missing car 20771, car 20783, car 20813, changed 465 onwards
 library(readr)
 results <- NULL
 for(i in seq_along(id$idfc)){
-  try(assign('results',
-             rbind(results,
-                   read_csv(paste0('eval/vb/car', id$idfc[i], '.csv'), col_types = cols()))))
+  if(i %in% c(687, 690, 699)){
+    next
+  }
+  results <- rbind(results,
+                   read_csv(paste0('forecasts/car', id$idfc[i], '.csv'), col_types = cols()))
   if((i %% 100 == 0) | i == length(id$idfc)){
     print(i)
   }
 }
 for(i in 1:500){
   results <- rbind(results,
-                   read_csv(paste0('eval/vb/car', noStopChanged[i], '.csv'), col_types = cols()))
-  if(i %% 100 == 0){
-    print(i)
-  }
-}
-naiveResults <- NULL
-for(i in seq_along(id$idfc)){
-  naiveResults <-  rbind(naiveResults,
-                         read_csv(paste0('eval/naive/car', id$idfc[i], '.csv'), col_types = cols()))
-  if((i %% 100 == 0) | i == length(id$idfc)){
-    print(i)
-  }
-}
-for(i in 1:500){
-  naiveResults <- rbind(naiveResults,
-                        read_csv(paste0('eval/naive/car', noStopChanged[i], '.csv'), col_types = cols()))
-  if(i %% 100 == 0){
-    print(i)
-  }
-}
-for(i in seq_along(id$idfc)){
-  homogResults<-  rbind(homogResults,
-                         read_csv(paste0('eval/homog/car', id$idfc[i], '.csv'), col_types = cols()))
-  if((i %% 100 == 0) | i == length(id$idfc)){
-    print(i)
-  }
-}
-for(i in 1:500){
-  homogResults <- rbind(homogResults,
-                        read_csv(paste0('eval/homog/car', noStopChanged[i], '.csv'), col_types = cols()))
+                   read_csv(paste0('forecasts/car', noStopChanged[i], '.csv'), col_types = cols()))
   if(i %% 100 == 0){
     print(i)
   }
@@ -538,36 +513,18 @@ for(i in 1:500){
 
 mPerFoot <- 0.3048
 results %>% 
-  rbind(homogResults) %>%
   mutate(logscore = logscore + log(mPerFoot^2),
-         mapDist = mapDist * mPerFoot,
-         consDist = 0,
-         change = id %in% noStopChanged,
-         prior = ifelse(prior == 'None', 'Non-Informative', as.character(prior)),
-         method = ifelse(method == 'VB-Stream', 'VB-Updating', as.character(method)),
-         model = ifelse(prior == 'Homogenous', 'Homogenous', paste(prior, method))) -> results
+         dist = dist * mPerFoot) -> results
 write.csv(results, 'results.csv')
 results <- readr::read_csv('results.csv')
 
-results %>% 
-  filter(h %in% c(10, 20, 30)) %>%
+results[results$h %in% c(10, 20, 30),] %>%
   group_by(h, S, model) %>%
-  summarise(mean = mean(mapDist)) %>%
+  summarise(mean = mean(dist)) %>%
   ungroup() %>%
   ggplot() + geom_line(aes(S, mean, colour = model)) + facet_wrap(~h)
 
-naiveResults[,1:9] <- naiveResults[,1:9] * mPerFoot
-naiveResults$change = naiveResults$id %in% noStopChanged
-
-naiveResults %>%
-  filter(id %in% unique(results$id)) %>%
-  gather(model, error, -h, -S, -id) %>%
-  rbind(results %>%
-          rename(error = mapDist) %>%
-          select(h, S, id, model, error)) -> jointResults
-write.csv(jointResults, 'jointResults.csv', row.names = FALSE)
-
-jointResults %>%
+results[results$h %in% c(10, 20, 30),] %>%
   filter(h %in% c(10, 20, 30)) %>% 
   mutate(horizon = paste(h / 10, ifelse(h == 10, 'second', 'seconds'), 'ahead'),
          model = factor(model, levels = c('Naive 1', 'Naive 2', 'Naive 3', 'Naive 4', 'Naive 5', 
@@ -576,7 +533,7 @@ jointResults %>%
                                           'Single Hierarchy MCMC', 'Single Hierarchy VB-Standard', 'Single Hierarchy VB-Updating',
                                           'Finite Mixture MCMC', 'Finite Mixture VB-Standard', 'Finite Mixture VB-Updating'))) %>%  
   group_by(S, horizon, model) %>%
-  summarise(meanError = mean(error)) %>%
+  summarise(meanError = mean(dist)) %>%
   ungroup() %>%
   ggplot() + geom_line(aes(x = S, y = meanError, colour = model)) + 
   facet_wrap(~horizon) + 
@@ -584,26 +541,43 @@ jointResults %>%
   theme_bw() +  
   theme(legend.position = 'bottom') 
 
-results %>%
-  group_by(method, prior, h) %>%
-  summarise(meanDist = mean(mapDist)) %>%
-  mutate(model = paste(method, prior)) %>%
-  ggplot() + geom_line(aes(h, meanDist, colour = model)) + 
-  geom_line(data = results %>% group_by(h) %>% summarise(meanDist = mean(consDist)), aes(h, meanDist)) + 
-  labs(x = 'Forecast Horizon (seconds)', y = 'Mean Euclidean Error (metres)') + 
-  theme_bw() + 
-  scale_x_continuous(labels = c(1, 2, 3), breaks = c(10, 20, 30))
 
-results %>% 
-  filter(h %in% c(10, 20, 30)) %>%
-  mutate(method = ifelse(method == 'VB-Stream', 'VB-Update', as.character(method)),
-         model = ifelse(method == 'Homogenous', 'Homogenous', paste(prior, method))) %>% 
-  ggplot() + geom_violin(aes(x = model, y = logscore)) + 
-  facet_wrap(~h, ncol = 1) + 
-  ylim(0, 5) +
-  labs(x = 'Model', y = 'Predictive Logscore')
-  #scale_x_discrete(labels = c('10-30', '40-60', '70-90', '100-120', '130-150', 
-  #                            '160-180', '190-210', '220-240', '250-270', '280-300'))
+results[results$h %in% c(10, 20, 30) & !is.na(results$logscore),] %>%
+  group_by(h, S, model) %>%
+  summarise(mean = median(logscore)) %>%
+  ungroup() %>%
+  ggplot() + geom_line(aes(S, mean, colour = model)) + facet_wrap(~h)
+
+results[results$h == 30 & !is.na(results$logscore) &  is.finite(results$logscore), ] %>%
+  group_by(S, model) %>%
+  summarise(ls = median(logscore)) %>%
+  ungroup() %>%
+  ggplot() + geom_line(aes(S, ls, colour = model))
+
+results[!is.na(results$logscore) & 
+          is.finite(results$logscore) &
+          results$model %in% c('Finite Mixture MCMC', 'Finite Mixture VB-Standard', 'Finite Mixture VB-Updating', 'Homogenous MCMC'),] %>%
+  mutate(S = floor(S / 100)) %>%
+  group_by(S, h, model) %>%
+  summarise(ls = median(logscore)) %>%
+  ungroup() %>%
+  ggplot() + geom_line(aes(h, ls, colour = model)) + facet_wrap(~S, scales = 'free')
+
+results[!is.na(results$logscore) & 
+          is.finite(results$logscore) &
+          results$h %in% c(10, 20, 30) & 
+          results$model %in% c('Finite Mixture MCMC', 'Finite Mixture VB-Standard', 'Finite Mixture VB-Updating', 'Homogenous MCMC'),] %>%
+  select(model, logscore, S, h, id) %>%
+  mutate(group = factor(ceiling((S - 100) / 50))) %>%
+  filter(group != 0) %>%
+  spread(model, logscore) %>%
+  mutate(MCMC = `Finite Mixture MCMC` - `Homogenous MCMC`,
+         VBSt = `Finite Mixture VB-Standard` - `Homogenous MCMC`,
+         VBUp = `Finite Mixture VB-Updating` - `Homogenous MCMC`) %>%
+  gather(method, diff, MCMC, VBSt, VBUp) %>%
+  ggplot() + geom_violin(aes(group, diff)) + 
+  geom_hline(aes(yintercept = 0), colour = 'red') + facet_grid(method~h) + ylim(-1.5, 1.5)
+  
 
 results %>% 
   select(logscore, h, prior, method, S, id) %>%
@@ -620,52 +594,82 @@ diffInLogscore %>%
                               '160-180', '190-210', '220-240', '250-270', '280-300')) + 
   theme_bw()
 
-diffInLogscore %>%
-  filter(S > 10) %>%
-  group_by(prior) %>%
-  filter(!is.na(difference) & is.finite(difference)) %>%
-  summarise(prop = sum(difference > -5 & difference < 5) / n())
+
+results[!is.na(results$logscore) & is.finite(results$logscore) & results$h %in% c(10, 20, 30),] %>% 
+  group_by(model, h) %>% 
+  summarise(med = median(logscore, na.rm = TRUE)) %>%
+  spread(h, med) %>% View()
+
+results[!is.na(results$xCDF) & results$h == 30,] %>%
+  ggplot() + geom_density(aes(xCDF)) + facet_wrap(~model, ncol = 1) + xlim(0, 1)
 
 
-results %>%
-  filter(h %in% c(10, 20, 30) & method == 'VB-Stream' & prior == 'Finite Mixture') %>% 
-  mutate(horizon = paste(h / 10, ifelse(h == 10, 'second', 'seconds'), 'ahead')) %>%  
-  group_by(S, horizon) %>%
-  summarise(`Mixture/VB Update Model Predictive MAP` = mean(mapDist),
-            `Constant Velocity and Angle` = mean(consDist)) %>%
+sigma <- data.frame()
+for(i in seq_along(id$idfc)){
+  sigma <- rbind(sigma,
+                 readr::read_csv(paste0('sigma/car', id$idfc[i], '.csv'), col_types = cols()))
+}
+for(i in 1:500){
+  sigma <- rbind(sigma,
+                 readr::read_csv(paste0('sigma/car', noStopChanged[i], '.csv'), col_types = cols()))
+}
+write.csv(sigma, 'sigma.csv')
+
+homogDraws <- readRDS('noHierN2000.RDS')$draws
+homogMean = colMeans(exp(homogDraws[1001:5000, 1:2]))
+homogMeanDf <- data.frame(variable = c('a', 'd'), 
+                        posMean = colMeans(exp(homogDraws[1001:5000, 1:2])),
+                        prior = sigma %>% 
+                          filter(method == 'MCMC') %>%
+                          .$prior %>%
+                          unique() %>%
+                          rep(rep(2, 3)))
+
+
+sigma %>%
+  filter(method == 'MCMC' & prior == 'Finite Mixture') %>%
+  ggplot() + geom_density(aes(posMean)) +
+  geom_vline(data = homogMeanDf, aes(xintercept = posMean), colour = 'red') +
+  facet_wrap(~variable, scales = 'free', ncol = 2)
+
+sigma %>%
+  filter(method == 'MCMC' & prior == 'Finite Mixture' & variable == 'a') %>%
+  .$posMean %>%
+  quantile(seq(0.2, 1, 0.2)) -> aQuant
+
+sigma %>%
+  filter(method == 'MCMC' & prior == 'Finite Mixture' & variable == 'd') %>%
+  .$posMean %>%
+  quantile(seq(0.2, 1, 0.2)) -> dQuant
+
+
+sigma %>%
+  filter(method == 'MCMC' & prior == 'Finite Mixture') %>%
+  spread(variable, posMean) %>%
+  mutate(aVar = ifelse(a < aQuant[1], 1, ifelse(a < aQuant[2], 2, ifelse(a < aQuant[3], 3, ifelse(a < aQuant[4], 4, 5)))),
+         dVar = ifelse(d < dQuant[1], 1, ifelse(d < dQuant[2], 2, ifelse(d < dQuant[3], 3, ifelse(d < dQuant[4], 4, 5)))),
+         aVar = factor(aVar),
+         dVar = factor(dVar)) %>%
+  select(id, aVar, dVar) -> varianceCategory
+summary(varianceCategory)
+
+results[!is.na(results$logscore) &
+          results$h == 30 & 
+          results$id %in% unique(varianceCategory$id) & 
+          results$model %in% c('Finite Mixture VB-Updating', 'Finite Mixture MCMC', 'Homogenous MCMC') & 
+          results$S <= 400, ] %>%
+  left_join(varianceCategory) %>%
+  group_by(model, S, h, aVar, dVar) %>%
+  summarise(ls = median(logscore)) %>%
   ungroup() %>%
-  gather(Predictor, meanDist, -horizon, -S) %>%
-  ggplot() + geom_line(aes(x = S, y = meanDist, colour = Predictor)) + 
-  facet_wrap(~horizon) + 
-  labs(x = 'T', y = 'Mean Euclidean Error (metres)') + 
-  theme_bw() +  
-  theme(legend.position = 'bottom') 
-
-results %>%
-  filter(h == 10) %>%
-  group_by(S, method, prior) %>%
-  summarise(meanDist = mean(mapDist)) %>%
-  ggplot() + geom_line(aes(S, meanDist, colour = method)) + facet_wrap(~prior)
-
-results %>% 
-  group_by(method, prior) %>% 
-  filter(is.finite(logscore)) %>% 
-  summarise(med = median(logscore, na.rm = TRUE)) %>% 
-  arrange(med)
-
-results %>% 
-  filter(h == 30 & method == 'VB-Stream' & prior == 'Finite Mixture') %>% 
-  summarise(meanMAP = mean(mapDist), meanConst = mean(consDist)) 
-
-results %>%
-  group_by(method, prior) %>%
-  summarise(meanError = mean(mapDist))  %>%
-  arrange(meanError)
+  spread(model, ls) %>%
+  mutate(VB = `Finite Mixture VB-Updating` - `Homogenous MCMC`,
+         MCMC = `Finite Mixture MCMC` - `Homogenous MCMC`) %>%
+  gather(method, Difference, VB, MCMC) %>%
+  ggplot() + geom_line(aes(S, Difference, colour = method)) + 
+  geom_hline(aes(yintercept = 0), colour = 'black') + facet_grid(aVar ~ dVar) + 
+  labs(y = 'Difference in Three Second Forecast Logscore (Heterogenous - Homogenous', x = 'T')
   
-mean(results$consDist)
- 
-results[!is.na(results$xCDF),] %>%
-  ggplot() + geom_density(aes(xCDF, colour = prior)) + facet_wrap(~method, ncol = 1)
  
 
 carsAug %>%

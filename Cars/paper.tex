@@ -96,7 +96,7 @@
 \IfFileExists{upquote.sty}{\usepackage{upquote}}{}
 \IfFileExists{upquote.sty}{\usepackage{upquote}}{}
 
-\title{Online Updating of Variational Bayes for Forecasts of Vehicle Trajectory with Heterogeneous Driver Behaviour}
+\title{Online Updating of Variational Bayes for Heterogenous Forecasts of Vehicle Trajectory}
 \begin{document}
 \maketitle
 \section{Introduction}
@@ -113,7 +113,7 @@
 \item A homogenous time series model shows a strong ability to predict the MAP trajectory
 \itme An important part of this modelling is to capture the uncertainty of car trajectories, as the self-driving car must react to the possibility of collision even when that possibility is relatively small.
 \item There are many sources of heterogeneity in drivers, from their individual driving styles to the conditions of traffic directly around them.
-\item Including heterogeneity in the model will allow more dangerous vehicles to be identified, for example, 'lead-footed' drivers can have a larger variance on their acceleration.
+\item Including heterogeneity in the model will allow the model to better adapt to drivers with more extreme behaviours, for example 'lead-footed' drivers can be assigned a larger variance on their acceleration while forecasts for more consistent drivers will benefit from a low variance.
 \item A hierarchical model is employed to allow heterogeneity between different drivers, where each vehicle is given its own parameter vector with a shared prior distribution.
 \item This model implies that any new vehicle observed by the self driving car has its own parameter vector, related to previously observed vehicles through the shared prior.
 \item The self driving car must be able to estimate the parameter vector of newly observed cars, and update this parameter vector as it observes additional data.
@@ -131,9 +131,9 @@
 \item The model can be updated faster as less data must be processed, so forecasts can be made using as much recent data as possible.
 \item Self driving cars take in up to 1GB of data a second (several websites report this as quotes from different people eg. Tech CEO, but I don't know if that's good enough for an academic citaiton), so discarding old data is useful.
 \end{enumerate}
-\item Compare Bayes MAP point estimates to a neural network and naive models
-\item Error Metric: Euclidean Distance from predicted position to actual position
-\item Compare log scores from streaming and standard VB forecast densities to see how the updating method compares to standard VB. I am also using MCMC, so we can compare either VB method to this, theoretically MCMC $\geq$ VB Standard $\geq$ VB Updating
+\item Show that a homogenous time series model has strong predictive performance compared to constant models / neural networks while also providing density forecasts.
+\item Build a heterogenous version of the homogenous model, show that the density forecasts improve. 
+\item Show that the Updating VB required to implement the heterogenous model in real time is comparable to MCMC and standard VB.
 \end{itemize}
 
 \section{Data processing}
@@ -289,11 +289,30 @@ where $\lambda_T$ denotes the parameter vector of $q(\theta_{N+1} | z_{N+1, 1:T}
 
 \section{Forecast Evaluation}
 
+Summary:
 \begin{itemize}
-\item 4071 vehicles are available in the sample
+\item The homogenous time series model has a significantly lower MAP error than other models
+\item The heterogenous time series models have a similar MAP error to the homogenous model - the maximum of the forecast distribution is in a similar place.
+\item The logscores for the heterogenous models are generally greater than the homogenous model indicating there is less uncertainty in the forecast distribution
+ \item Updating VB has a similar logscore to MCMC across all priors
+ \item Priors don't really matter too much
+ \item The high precision in the homogenous posterior does make it better than the heterogenous models in small samples.
+ \item Performance between homogenous and heterogenous becomes a tradeoff between high precision / biased mean vs. low precision, more accurate mean in the posterior.
+ \item The heterogenous is sufficiently precise to outperform the homogenous model in terms of logscores after $T = 100$ (ten seconds).
+ \item Most of the differences are due to the posterior of the variance parameters
+ \item The homogenous model has a large variance for both variables, greater than $80\%$ and $92\%$ of heterogenous variances for acceleration and angle respectively.
+ \item This is likely caused by a few drivers with high variance skewing the results in the homogenous model.
+ \item The heterogenous model allows consistent drivers to have a low variance, and it performs very well in this case.
+ \item Heterogenous models being able to assign a high variance allows more erratic / risky drivers to be identified.
+ \end{itemize}
+
+
+
+\begin{itemize}
+\item 3873 vehicles are available in the sample
 \item 500 are used to estimate splines and straighten the road to relative coordinates as described in Section 2
 \item 2000 are used to train any models used
-\item 1571 are available for testing
+\item 1373 are available for testing
 \item Each second (10 observations) models are fit to the sample of $z_{N+1, 1:T}$ and forecasts of $z_{N+1, T+1:T+30}$ are made, corresponding to a three second forecast horizon
 \item Forecasts are compared in terms of predictive log-score (where a predictive density is available) and Euclidean error.
 \end{itemize}
