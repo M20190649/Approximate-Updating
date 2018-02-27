@@ -316,6 +316,57 @@ fitCarMods <- function(data, prior, starting, S = 10, mixComps = 6){
   results
 }
 
+timeModelFits <- function(data, prior, starting, method, T, TmS, id){
+  
+  mean <- prior[[1]][1:6]
+  u <- matrix(prior[[1]][7:42], 6)
+  linv <- solve(t(u))
+  start <- Sys.time()
+  fit <- carsVB(data, starting[[1]], lags = 2, model = arUpdater, mean = mean, Linv = linv, dimTheta = 6)$lambda
+  time <- Sys.time() - start
+  if(attr(time, 'units') == 'mins'){
+    time <- time * 60
+    attr(time, 'units') = 'secs'
+  }
+  class(time) <- 'numeric'
+  results <- data.frame(id = id,
+                        method = method,
+                        prior = 'Non-Informative',
+                        T = T,
+                        TmS = TmS,
+                        time = time[1])
+  
+  mean <- matrix(prior[[3]][1:36], 6)
+  siginv <- array(0, dim = c(6, 6, 6))
+  dets <- NULL
+  for(k in 1:6){
+    sd <- exp(prior[[3]][36 + (k-1)*6 + 1:6])
+    var <- diag(sd^2)
+    siginv[,,k] <- solve(var)
+    dets <- c(dets, 1 / prod(sd))
+  }
+  weights <- prior[[3]][73:78]
+  weights <- exp(weights) / sum(exp(weights))
+  start <- Sys.time()
+  fit <- carsVBMixScoreDiag(data, starting[[2]],
+                                     priorMix = list(mean = mean, SigInv = siginv, dets = dets, weights = weights),
+                                     S = 50, maxIter = 10000, threshold = 0.05)$lambda
+  time <- Sys.time() - start
+  if(attr(time, 'units') == 'mins'){
+    time <- time * 60
+    attr(time, 'units') = 'secs'
+  }
+  class(time) <- 'numeric'
+  results <- rbind(results, 
+                   data.frame(id = id,
+                              method = method,
+                              prior = 'Hierarchy',
+                              T = T,
+                              TmS = TmS,
+                              time = time[1]))
+  results
+}
+
 MCMCDens <- function(data, N, H, grid, MCMCdraws){
   adDens <-  evalMCMCDensIndep(data, N, H, grid, MCMCdraws)
 

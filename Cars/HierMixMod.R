@@ -81,7 +81,7 @@ burn <- 0.9
 draws <- list(list())
 hyper <- list()
 for(k in 1:K){
-  hyper[[k]] <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(c(5, 5, 10, 10, 10, 10))), v = 6, scale = diag(1, 6))
+  hyper[[k]] <- list(mean = c(-5, -5, rep(0, 4)), varInv = solve(diag(c(10, 10, 10, 10, 10, 10))), v = 6, scale = diag(1, 6))
   draws[[1]][[k]] <- list(mean = c(-5, -5, 0, 0, 0, 0), varInv = diag(10, 6))
 }
 draw[[1]]$pi <- rep(1/K, K)
@@ -302,6 +302,20 @@ otherMCMCModels{
     filter(iter > 100) %>%
     ggplot() + geom_line(aes(iter, draw)) + facet_wrap(~var, scales = 'free')
   
+  noHierDraws$draws %>%
+    as.data.frame() %>%
+    cbind(iter = 1:(reps/thin)) %>%
+    mutate(V1 = exp(V1), V2 = exp(V2)) %>%
+    rename(sigSq_eps = V1, sigSq_eta = V2, phi1 = V3, phi2 = V4, gamma1 = V5, gamma2 = V6) %>%
+    gather(var, draw, -iter) %>%
+    mutate(var = factor(var, levels = c('sigSq_eps', 'phi1', 'phi2', 'sigSq_eta', 'gamma1', 'gamma2'))) %>%
+    filter(iter > 1000) %>%
+    ggplot() + geom_density(aes(draw)) + facet_wrap(~var, scales = 'free', ncol = 6) + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle = 315, hjust = 0)) + 
+    labs(x = NULL, y = NULL)
+  
+  
   noHierMean <- rep(0, 6)
   noHierVar <- var(noHierDraws$draws[(reps/(2*thin)+1):(reps/thin),])
   for(i in (reps/(2*thin)+1):(reps/thin)){
@@ -489,8 +503,8 @@ sliceSampler{
 
 forecastResults {
 
-  
-# Missing car 20771, car 20783, car 20813, changed 465 onwards
+# Read in raw results, transform from ft to metres
+# Missing car 20771, car 20783, car 20813,
 library(readr)
 results <- NULL
 for(i in seq_along(id$idfc)){
@@ -515,23 +529,36 @@ mPerFoot <- 0.3048
 results %>% 
   mutate(logscore = logscore + log(mPerFoot^2),
          dist = dist * mPerFoot) -> results
-write.csv(results, 'results.csv')
+write.csv(results, 'results.csv', row.names = FALSE)
 results <- readr::read_csv('results.csv')
 
-results[results$h %in% c(10, 20, 30),] %>%
-  group_by(h, S, model) %>%
-  summarise(mean = mean(dist)) %>%
-  ungroup() %>%
-  ggplot() + geom_line(aes(S, mean, colour = model)) + facet_wrap(~h)
+# Plot updating vs standard logscores
 
-results[results$h %in% c(10, 20, 30),] %>%
-  filter(h %in% c(10, 20, 30)) %>% 
+results[!is.na(results$logscore) & 
+        results$model %in% c('Finite Mixture VB-Standard', 'Finite Mixture VB-Updating'),] %>%
+  select(model, logscore, h, S, id) %>%
+  spread(model, logscore) %>%
+  mutate(Hierarchy = `Finite Mixture VB-Updating` - `Finite Mixture VB-Standard`,
+         S = ceiling((S - 100) / 50)) %>%
+  filter(S > 0) %>%
+  select(S, id, Hierarchy) %>%
+  ggplot() + geom_boxplot(aes(factor(S), Hierarchy)) + 
+  labs(x = 'T (100 milliseconds)', y = 'Differences In Logscore (Updating Minus Standard)') + 
+  theme_bw() +
+  ylim(-0.5, 0.5) + 
+  scale_x_discrete(labels = c('110-150', '160-200', '210-250', '260-300', '310-350', '360-400', '410-450'))
+
+# Plot point estimate errors by model
+
+results[results$h %in% c(10, 20, 30) &
+        !results$model %in% c('Single Hierarchy MCMC', 'Single Hierarchy VB-Standard', 'Single Hierarchy VB-Updating'), ] %>%
   mutate(horizon = paste(h / 10, ifelse(h == 10, 'second', 'seconds'), 'ahead'),
+         model = sub('Non-Informative', 'Independent', model),
+         model = sub('Finite Mixture', 'Hierarchy', model),
          model = factor(model, levels = c('Naive 1', 'Naive 2', 'Naive 3', 'Naive 4', 'Naive 5', 
                                           'Naive 6', 'Naive 7', 'Naive 8', 'Naive 9', 'Homogenous MCMC', 
-                                          'Non-Informative MCMC', 'Non-Informative VB-Standard', 'Non-Informative VB-Updating',
-                                          'Single Hierarchy MCMC', 'Single Hierarchy VB-Standard', 'Single Hierarchy VB-Updating',
-                                          'Finite Mixture MCMC', 'Finite Mixture VB-Standard', 'Finite Mixture VB-Updating'))) %>%  
+                                          'Independent MCMC', 'Independent VB-Standard', 'Independent VB-Updating',
+                                          'Hierarchy MCMC', 'Hierarchy VB-Standard', 'Hierarchy VB-Updating'))) %>%  
   group_by(S, horizon, model) %>%
   summarise(meanError = mean(dist)) %>%
   ungroup() %>%
@@ -541,68 +568,27 @@ results[results$h %in% c(10, 20, 30),] %>%
   theme_bw() +  
   theme(legend.position = 'bottom') 
 
+# As above but exclude the naive models
 
-results[results$h %in% c(10, 20, 30) & !is.na(results$logscore),] %>%
-  group_by(h, S, model) %>%
-  summarise(mean = median(logscore)) %>%
+results[results$h %in% c(10, 20, 30) &
+        results$model %in% c('Homogenous MCMC', 'Non-Informative MCMC', 'Non-Informative VB-Standard', 'Non-Informative VB-Updating',
+                             'Finite Mixture MCMC', 'Finite Mixture VB-Standard', 'Finite Mixture VB-Updating'), ] %>%
+  mutate(horizon = paste(h / 10, ifelse(h == 10, 'second', 'seconds'), 'ahead'),
+         model = sub('Non-Informative', 'Independent', model),
+         model = sub('Finite Mixture', 'Hierarchy', model),
+         model = factor(model, levels = c('Homogenous MCMC', 
+                                          'Independent MCMC', 'Independent VB-Standard', 'Independent VB-Updating',
+                                          'Hierarchy MCMC', 'Hierarchy VB-Standard', 'Hierarchy VB-Updating'))) %>%  
+  group_by(S, horizon, model) %>%
+  summarise(meanError = mean(dist)) %>%
   ungroup() %>%
-  ggplot() + geom_line(aes(S, mean, colour = model)) + facet_wrap(~h)
+  ggplot() + geom_line(aes(x = S, y = meanError, colour = model)) + 
+  facet_wrap(~horizon) + 
+  labs(x = 'T', y = 'Mean Euclidean Error (metres)') + 
+  theme_bw() +  
+  theme(legend.position = 'bottom') 
 
-results[results$h == 30 & !is.na(results$logscore) &  is.finite(results$logscore), ] %>%
-  group_by(S, model) %>%
-  summarise(ls = median(logscore)) %>%
-  ungroup() %>%
-  ggplot() + geom_line(aes(S, ls, colour = model))
-
-results[!is.na(results$logscore) & 
-          is.finite(results$logscore) &
-          results$model %in% c('Finite Mixture MCMC', 'Finite Mixture VB-Standard', 'Finite Mixture VB-Updating', 'Homogenous MCMC'),] %>%
-  mutate(S = floor(S / 100)) %>%
-  group_by(S, h, model) %>%
-  summarise(ls = median(logscore)) %>%
-  ungroup() %>%
-  ggplot() + geom_line(aes(h, ls, colour = model)) + facet_wrap(~S, scales = 'free')
-
-results[!is.na(results$logscore) & 
-          is.finite(results$logscore) &
-          results$h %in% c(10, 20, 30) & 
-          results$model %in% c('Finite Mixture MCMC', 'Finite Mixture VB-Standard', 'Finite Mixture VB-Updating', 'Homogenous MCMC'),] %>%
-  select(model, logscore, S, h, id) %>%
-  mutate(group = factor(ceiling((S - 100) / 50))) %>%
-  filter(group != 0) %>%
-  spread(model, logscore) %>%
-  mutate(MCMC = `Finite Mixture MCMC` - `Homogenous MCMC`,
-         VBSt = `Finite Mixture VB-Standard` - `Homogenous MCMC`,
-         VBUp = `Finite Mixture VB-Updating` - `Homogenous MCMC`) %>%
-  gather(method, diff, MCMC, VBSt, VBUp) %>%
-  ggplot() + geom_violin(aes(group, diff)) + 
-  geom_hline(aes(yintercept = 0), colour = 'red') + facet_grid(method~h) + ylim(-1.5, 1.5)
-  
-
-results %>% 
-  select(logscore, h, prior, method, S, id) %>%
-  spread(method, logscore) %>%
-  mutate(difference = `VB-Stream` - `VB-Standard`) -> diffInLogscore
-diffInLogscore %>%
-  filter(S > 10) %>%
-  mutate(group = factor(ceiling(S / 30)),
-         prior = ifelse(prior == 'None', 'Non-Informative', as.character(prior))) %>%
-  ggplot() + geom_violin(aes(group, difference)) +
-  facet_wrap(~prior, ncol = 1) + ylim(-5, 5) + 
-  labs(x = 'T', y = 'Difference in Logscores (Updating - Standard)')  + 
-  scale_x_discrete(labels = c('20-30', '40-60', '70-90', '100-120', '130-150', 
-                              '160-180', '190-210', '220-240', '250-270', '280-300')) + 
-  theme_bw()
-
-
-results[!is.na(results$logscore) & is.finite(results$logscore) & results$h %in% c(10, 20, 30),] %>% 
-  group_by(model, h) %>% 
-  summarise(med = median(logscore, na.rm = TRUE)) %>%
-  spread(h, med) %>% View()
-
-results[!is.na(results$xCDF) & results$h == 30,] %>%
-  ggplot() + geom_density(aes(xCDF)) + facet_wrap(~model, ncol = 1) + xlim(0, 1)
-
+# Read in individual variances, plot against homogenous variances, and then split results by variance quintiles
 
 sigma <- data.frame()
 for(i in seq_along(id$idfc)){
@@ -614,23 +600,25 @@ for(i in 1:500){
                  readr::read_csv(paste0('sigma/car', noStopChanged[i], '.csv'), col_types = cols()))
 }
 write.csv(sigma, 'sigma.csv')
+sigma <- readr::read_csv('sigma.csv')
 
 homogDraws <- readRDS('noHierN2000.RDS')$draws
 homogMean = colMeans(exp(homogDraws[1001:5000, 1:2]))
-homogMeanDf <- data.frame(variable = c('a', 'd'), 
-                        posMean = colMeans(exp(homogDraws[1001:5000, 1:2])),
-                        prior = sigma %>% 
-                          filter(method == 'MCMC') %>%
-                          .$prior %>%
-                          unique() %>%
-                          rep(rep(2, 3)))
+homogMeanDf <- data.frame(variable = c('Acceleration', 'Angle'), 
+                        posMean = colMeans(exp(homogDraws[1001:5000, 1:2])))
 
 
 sigma %>%
   filter(method == 'MCMC' & prior == 'Finite Mixture') %>%
+  mutate(prior = 'Hierarchy',
+         variable = ifelse(variable == 'a', 'Acceleration', 'Angle')) %>%
+  group_by(variable) %>%
+  filter(posMean < quantile(posMean, 0.99)) %>%
   ggplot() + geom_density(aes(posMean)) +
   geom_vline(data = homogMeanDf, aes(xintercept = posMean), colour = 'red') +
-  facet_wrap(~variable, scales = 'free', ncol = 2)
+  facet_wrap(~variable, scales = 'free', ncol = 2) + 
+  theme_bw() + 
+  labs(x = 'Variance Posterior Mean', y = NULL)
 
 sigma %>%
   filter(method == 'MCMC' & prior == 'Finite Mixture' & variable == 'a') %>%
@@ -644,108 +632,99 @@ sigma %>%
 
 
 sigma %>%
+  select(-X1) %>%
   filter(method == 'MCMC' & prior == 'Finite Mixture') %>%
   spread(variable, posMean) %>%
   mutate(aVar = ifelse(a < aQuant[1], 1, ifelse(a < aQuant[2], 2, ifelse(a < aQuant[3], 3, ifelse(a < aQuant[4], 4, 5)))),
          dVar = ifelse(d < dQuant[1], 1, ifelse(d < dQuant[2], 2, ifelse(d < dQuant[3], 3, ifelse(d < dQuant[4], 4, 5)))),
          aVar = factor(aVar),
          dVar = factor(dVar)) %>%
-  select(id, aVar, dVar) -> varianceCategory
-summary(varianceCategory)
+  select(id, aVar, dVar) -> varianceCategoryMix
 
 results[!is.na(results$logscore) &
           results$h == 30 & 
-          results$id %in% unique(varianceCategory$id) & 
-          results$model %in% c('Finite Mixture VB-Updating', 'Finite Mixture MCMC', 'Homogenous MCMC') & 
+          results$id %in% unique(varianceCategoryMix$id) & 
+          results$model %in% c('Finite Mixture VB-Updating', 'Homogenous MCMC') & 
           results$S <= 400, ] %>%
-  left_join(varianceCategory) %>%
+  left_join(varianceCategoryMix) %>%
   group_by(model, S, h, aVar, dVar) %>%
   summarise(ls = median(logscore)) %>%
   ungroup() %>%
   spread(model, ls) %>%
-  mutate(VB = `Finite Mixture VB-Updating` - `Homogenous MCMC`,
-         MCMC = `Finite Mixture MCMC` - `Homogenous MCMC`) %>%
-  gather(method, Difference, VB, MCMC) %>%
-  ggplot() + geom_line(aes(S, Difference, colour = method)) + 
+  mutate(diff = `Finite Mixture VB-Updating` - `Homogenous MCMC`, 
+         Model = 'Hierarchy') %>%
+  select(S, aVar, dVar, diff, Model) -> hierarchyVarSplit
+
+hierarchyVarSplit %>%
+  ggplot() + geom_line(aes(S, diff)) +
+  geom_hline(aes(yintercept = 0), colour = 'red') + facet_grid(aVar ~ dVar) + 
+  labs(y = 'Median Difference in h = 30 Logscore (Hierarchical - Homogenous)', x = 'T (100 milliseconds)') + 
+  theme_bw() + 
+  theme(legend.position = 'bottom')
+
+
+sigma %>%
+  filter(method == 'MCMC' & prior == 'Non-Informative' & variable == 'a') %>%
+  .$posMean %>%
+  quantile(seq(0.2, 1, 0.2)) -> aQuantInd
+
+sigma %>%
+  filter(method == 'MCMC' & prior == 'Non-Informative' & variable == 'd') %>%
+  .$posMean %>%
+  quantile(seq(0.2, 1, 0.2)) -> dQuantInd
+
+
+sigma %>%
+  filter(method == 'MCMC' & prior == 'Non-Informative') %>%
+  spread(variable, posMean) %>%
+  mutate(aVar = ifelse(a < aQuant[1], 1, ifelse(a < aQuant[2], 2, ifelse(a < aQuant[3], 3, ifelse(a < aQuant[4], 4, 5)))),
+         dVar = ifelse(d < dQuant[1], 1, ifelse(d < dQuant[2], 2, ifelse(d < dQuant[3], 3, ifelse(d < dQuant[4], 4, 5)))),
+         aVar = factor(aVar),
+         dVar = factor(dVar)) %>%
+  select(id, aVar, dVar) -> varianceCategoryInd
+
+results[!is.na(results$logscore) &
+          results$h == 30 & 
+          results$id %in% unique(varianceCategoryInd$id) & 
+          results$model %in% c('Non-Informative VB-Updating', 'Homogenous MCMC') & 
+          results$S <= 400, ] %>%
+  left_join(varianceCategoryInd) %>%
+  group_by(model, S, h, aVar, dVar) %>%
+  summarise(ls = median(logscore)) %>%
+  ungroup() %>%
+  spread(model, ls) %>%
+  mutate(diff = `Non-Informative VB-Updating` - `Homogenous MCMC`, 
+         Model = 'Independent') %>%
+  select(S, aVar, dVar, diff, Model) -> independentVarSplit
+
+independentVarSplit %>%
+  rbind(hierarchyVarSplit) %>%
+  ggplot() + geom_line(aes(S, diff, colour = Model)) + 
   geom_hline(aes(yintercept = 0), colour = 'black') + facet_grid(aVar ~ dVar) + 
-  labs(y = 'Difference in Three Second Forecast Logscore (Heterogenous - Homogenous', x = 'T')
-  
+  labs(y = 'Median Difference in h = 30 Logscore (Heterogenous - Homogenous)', x = 'T (100 milliseconds)') + 
+  theme_bw() + 
+  theme(legend.position = 'bottom')
  
 
-carsAug %>%
-  filter(ID %in% unique(results$id)) %>%
-  rbind(carsChanged %>% filter(ID %in% unique(results$id))) %>%
-  group_by(ID) %>%
-  mutate(n = seq_along(ID),
-         lx = ifelse(n == 1, 0, lag(x)), 
-         ly = ifelse(n == 1, 0, lag(y)),
-         lv = ifelse(n == 1, 0, lag(v)),
-         dx = x - lx,
-         dy = y - ly,
-         a = v - lv,
-         s = 10 * ceiling((n-1) / 10) - 10) %>%
-  filter(s > 0 & s < 330) %>%
-  mutate(h = seq_along(ID) %% 10,
-         h = ifelse(h == 0, 10, h),
-         h2 = 10 + h,
-         h3 = 20 + h) %>%
-  gather(window, h, h, h2, h3) %>%
-  mutate(s = ifelse(window == 'h2', s - 10, 
-                    ifelse(window == 'h3', s - 20, s))) %>%
-  select(ID, s, h, dx, dy, v, delta) %>%
-  rename(id = ID, S = s) %>%
-  right_join(results) -> resultsMove
+# Read in timings
+timing <- data.frame()
+for(i in 1:500){
+  tmp <- readr::read_csv(paste0('timing/car', id$idfc[i], '.csv'), col_types = cols())
+  timing <- rbind(timing, tmp)
+}
 
+timing %>%
+  filter(prior == 'Hierarchy') %>% 
+  group_by(method, T, TmS) %>%
+  summarise(meanTime = mean(time)) %>%
+  ungroup() %>% 
+  mutate(`T - S` = factor(TmS)) -> meanTimings
 
-sumMovements <- cppFunction(depends = "RcppArmadillo",
-  'arma::mat output(arma::mat dataIn) {
-    int N = dataIn.n_rows;
-    arma::mat sums(N, 2, arma::fill::zeros);
-    for(int i = 0; i < N; ++i){
-      sums(i, 0) = arma::sum(dataIn(arma::span(i - dataIn(i, 2) + 1, i), 3));
-      sums(i, 1) = arma::sum(dataIn(arma::span(i - dataIn(i, 2) + 1, i), 4));
-    }
-    return sums;
-  }'
-)
-
-summove <- sumMovements(as.matrix(resultsMove[,1:5]))
-resultsMove$sumdx <- summove[,1]
-resultsMove$sumdy <- summove[,2]
-
-resultsMove %>%
-  filter(h == 30 & is.finite(logscore)) %>%
-  mutate(xMove = ceiling(abs(sumdx))) %>%
-  filter(xMove < 10) %>%
-  group_by(S, prior, change) %>%
-  summarise(med = mean(logscore), n = n()) %>%
-  filter(n > 200) %>%
-  ggplot() + geom_line(aes(S, med, colour = prior)) + facet_wrap(~change, scales = 'free')
-
-carsAug %>%
-  filter(ID %in% unique(results$id)) %>%
-  rbind(carsChanged %>% filter(ID %in% unique(results$id))) %>%
-  group_by(ID) %>%
-  mutate(n = seq_along(ID),
-         a = v - lag(v)) %>%
-  filter(n > 1) %>%
-  summarise(sda = sd(a),
-            sdd = sd(delta)) -> stDevs
-
-stDevs %>%
-  filter(sda > quantile(.$sda, 0.8)) %>%
-  .$ID -> highSdA
-stDevs %>%
-  filter(sdd > quantile(.$sdd, 0.8)) %>%
-  .$ID -> highSdD
-highSdJoint <- highSdA[highSdA %in% highSdD]
-
-results %>%
-  filter(id %in% highSdJoint & h == 30 & is.finite(logscore)) %>%
-  group_by(S, prior, change) %>%
-  summarise(med = median(logscore)) %>%
-  ggplot() + geom_line(aes(S, med, colour = prior)) + facet_wrap(~change, scales = 'free')
-
+  ggplot() + geom_line(data = filter(meanTimings, method == 'Standard'), aes(T, meanTime)) + 
+    geom_line(data = filter(meanTimings, method == 'Updating'), aes(T, meanTime, colour = `T - S`)) + 
+    labs(x = 'T (100 milliseconds)', y = 'Mean Time to Converge (seconds)') + 
+    theme_bw() + 
+    ylim(0, 25)
 
 
 }

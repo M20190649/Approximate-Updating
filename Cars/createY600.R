@@ -22,6 +22,7 @@ colnames(cars) = c('ID', 'frame', 'totalFrames', 'time', 'x', 'y',
                    'veloc', 'accel', 'lane', 'proceeding', 'following', 
                    'spacing', 'headway')
 
+
 #Operations on data
 cars %>%
   group_by(ID) %>%

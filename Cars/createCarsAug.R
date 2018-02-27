@@ -22,6 +22,14 @@ colnames(cars) = c('ID', 'frame', 'totalFrames', 'time', 'x', 'y',
                    'veloc', 'accel', 'lane', 'proceeding', 'following', 
                    'spacing', 'headway')
 
+cars %>%
+  filter(ID %in% head(unique(.$ID), 10)) %>%
+  ggplot() + geom_path(aes(x, y, group = ID)) +
+  labs(y = NULL, x = 'Lane') + 
+  theme_bw() + 
+  scale_x_continuous(labels = c('Lane 1', 'Lane 2', 'Lane 3', 'Lane 4', 'Lane 5', 'Entry Lane'),
+                     breaks = c(6, 18, 30, 40, 50, 65))
+
 #Operations on data
 cars %>%
   mutate(time = time - min(time)) -> cars
