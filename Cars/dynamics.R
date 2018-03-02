@@ -35,3 +35,38 @@ timeToAction %>%
 gridExtra::grid.arrange(maxAccel, maxAngle, ncol = 2)
 
 
+
+carsAug %>%
+  filter(ID %in% sample(carsAug$ID, 5)) %>% 
+  group_by(ID) %>%
+  mutate(n = seq_along(v),
+         a = v - ifelse(n == 1, v, lag(v))) -> pacfData
+
+
+pacfs <- data.frame()
+for(i in 1:5){
+  id <- unique(pacfData$ID)[i]
+  
+  pacfData %>%
+    filter(ID == id) %>%
+    .$reldelta %>%
+    pacf(plot = FALSE) %>%
+    with(data.frame(lag, acf)) %>%
+    mutate(ID = paste0('Vehicle ', i),
+           var = 'delta') -> tmp
+  pacfs <- rbind(pacfs, tmp)
+  
+  pacfData %>%
+    filter(ID == id) %>%
+    .$a %>%
+    pacf(plot = FALSE) %>%
+    with(data.frame(lag, acf)) %>%
+    mutate(ID = paste0('Vehicle ', i),
+           var = 'a') -> tmp
+  pacfs <- rbind(pacfs, tmp)
+  
+}
+
+ggplot(pacfs) + geom_bar(aes(lag, acf), stat = 'identity') + 
+  facet_grid(var~ID) + labs(x = 'Lag', y = 'Partial Autocorrelation') + 
+  theme_bw()
