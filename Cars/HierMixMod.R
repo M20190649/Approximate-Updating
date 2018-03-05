@@ -1,8 +1,6 @@
 ########## TO DO #############
 # Write more things.
 # Build the Neural Network (find why loss goes to nan)
-# Add a constant (non-zero) acceleration naive model
-# Add a homogenous behaviour AR2 Model (estimate on 2000 car sample and apply to new cars)
 
 library(tidyverse)
 library(Rcpp)
@@ -535,14 +533,21 @@ results <- readr::read_csv('results.csv')
 # Plot updating vs standard logscores
 
 results[!is.na(results$logscore) & 
-        results$model %in% c('Finite Mixture VB-Standard', 'Finite Mixture VB-Updating'),] %>%
-  select(model, logscore, h, S, id) %>%
+        results$model %in% c('Finite Mixture VB-Standard', 'Finite Mixture VB-Updating',
+                             'Non-Informative VB-Standard', 'Non-Informative VB-Updating') & 
+         results$h == 30,] %>%
+  select(model, logscore, S, id) %>%
+  mutate(model = ifelse(model == 'Non-Informative VB-Standard', 'Independent VB-Standard', 
+                        ifelse(model == 'Non-Informative VB-Updating', 'Independent VB-Updating', model))) %>% 
   spread(model, logscore) %>%
-  mutate(Hierarchy = `Finite Mixture VB-Updating` - `Finite Mixture VB-Standard`,
+  mutate(Clustered = `Finite Mixture VB-Updating` - `Finite Mixture VB-Standard`,
+         Independent = `Independent VB-Updating` - `Independent VB-Standard`,
          S = ceiling((S - 100) / 50)) %>%
   filter(S > 0) %>%
-  select(S, id, Hierarchy) %>%
-  ggplot() + geom_boxplot(aes(factor(S), Hierarchy)) + 
+  select(S, id, Clustered, Independent) %>%
+  gather(Model, Difference, -S, -id) %>%
+  ggplot() + geom_boxplot(aes(factor(S), Difference)) + 
+  facet_wrap(~Model, ncol = 2) + 
   labs(x = 'T (100 milliseconds)', y = 'Differences In Logscore (Updating Minus Standard)') + 
   theme_bw() +
   ylim(-0.5, 0.5) + 
