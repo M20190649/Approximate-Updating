@@ -122,27 +122,27 @@
 \section{Introduction}
 \label{sec:intro}
 
-Self-driving vehicles are rapidly becoming more advanced, with manufacturers such as Tesla, Ford, and Audi expecting autonomous vehicles available to consumers as early as 2020. These vehicles rely on a nagivation system that detects the position of surrounding traffic, forecasts their trajectery, and selects a path to avoid any collisions. As many as $94\%$ of accidents are due to human error according to data from the United States National Highway Traffic Saftey Administration in 2015, \citep{NHTSA2015}, which can feasibly be reduced by self-driving vehicles. However self-driving vehicles will operate in situations where surrounding vehicles are controlled by human drivers, and so forecasts should be able to account for a wide range of possible human behaviour.
+Self-driving vehicles are rapidly becoming more advanced, with manufacturers such as Tesla, Ford, and Audi expecting autonomous vehicles to be available to consumers as early as 2020. These vehicles rely on a nagivation system that detects the position of surrounding traffic, forecasts their trajectery, and selects a path to avoid collisions. With as many as $94\%$ of accidents in the United States resulting from human error, according to the US National Highway Traffic Saftey Administration in 2015, \citep{NHTSA2015}, the introduction of fully self-driving vehicles is expected to substantially improve safety on the roads. However self-driving vehicles will operate in situations where the majority of surrounding vehicles are still controlled by human drivers, and so forecasts should be able to account for a wide range of possible human behaviour.
 \\
 
-While characteristics of surrounding vehicles, such as theor postition, velocity, and steering angle, can be extracted from sensors through the use of deep neural networks (See e.g. \citet{Woo2016a} and \citet{Tian2017} for details), the problem of forecasting the future trajectory has seen less attention in the literature. These forecasts often assume the surrounding vehicles will maintain their current angle and velocity \citep{Gindele2010, Houenou2013, Bautista2017, Waymo2017} but interest has developed in more advanced models such as Neural Networks, Hidden Markov Models, and Support Vector Machines \citep{Ding2013, Woo2016b, Geng2017, Woo2017}.
+While characteristics of surrounding vehicles, such as theirr postition, velocity, and steering angle, can be extracted from sensors through the use of deep neural networks (See e.g. \citet{Woo2016a} and \citet{Tian2017} for details), the problem of forecasting the future trajectory has seen less attention in the literature. These forecasts often assume the surrounding vehicles will maintain their current angle and velocity \citep{Gindele2010, Houenou2013, Bautista2017, Waymo2017} but interest has developed in more advanced models such as Neural Networks, Hidden Markov Models, and Support Vector Machines \citep{Ding2013, Woo2016b, Geng2017, Woo2017}.
 \\
 
-This paper takes a statistical approach to this trajectory forecasting problem, fitting time series models to two extracted variables, acceleration and steering angle, of vehicles in the Next Generation Simulation (NGSIM) US Highway 101 Dataset. It uses Bayesian methods to forecast the distribution of the future velocity and steering angle, which can be transformed into a forecast for the distribution of trajectories, allowing low probability trajectories that can lead to a collision to be detected. The time series models used allow for heterogeneity between different vehicles, which may result from sources of driver heterogeneity that may result from factors such as differences in individual driving styles, or the conditions of traffic directly around them. Including heterogeneity in the model will allow for drivers with extreme behaviours to be accounted for, for example 'lead-footed' drivers can be assigned a larger variance on their acceleration while forecasts for more consistent drivers will benefit from a low variance.
+This paper takes a statistical approach to this trajectory forecasting problem, fitting time series models to two extracted variables, acceleration and steering angle, of vehicles in the Next Generation Simulation (NGSIM) US Highway 101 Dataset. It uses Bayesian methods to forecast the distribution of the future velocity and steering angle, which can be transformed into a forecast for the distribution of trajectories, allowing low probability trajectories that could cause a collision to be detected. The time series models used allow for heterogeneity between different vehicles, which may result from sources such as differences in individual driving styles, or the conditions of traffic. Including heterogeneity in the model will allow for drivers with extreme behaviours to be accounted for, for example 'lead-footed' drivers can be assigned a larger variance on their acceleration, while forecasts for more consistent drivers will benefit from a low variance.
 \\
 
 Incorporating heterogeneity into forecasts requires the behaviour of each driver of interest to be inferred as vehicles are encountered while driving. This inference is facilitated by first obtaining the posterior distribution for a large number of vehicles before the self-driving vehicle is on the road, from which the prior distribution for additional vehicles can be constructed. Once the self-driving vehicle is on the road, online inference is made possible by the introduction of Updating Variational Bayes (UVB), which approximates Bayesian updating so that inference may be periodically updated as additional data relating to surrounding vehicles is made available. 
 \\
 
-We find that the use of time series models produces accurate point forecasts in terms of mean Euclidean error when compared to the contstant models commonly used, and including driver heterogeneity in the model substantially reduces the uncertainty in the entire forecast distribution relative to a homogeneous model. These results give credence to the validity of the methodological framework developed in this thesis, where exact Bayesian inference techniques are used to guide the construction on a prior distribution for parameters that are approximately inferred in an online setting.
+We find that the use of time series models produces accurate point forecasts in terms of mean Euclidean error when compared to the contstant models commonly used, and including driver heterogeneity in these time series models substantially reduces the uncertainty in the entire forecast distribution relative to a homogeneous approach. These results give credence to the validity of the methodological framework developed in this thesis, where exact Bayesian inference techniques are used to guide the construction of a prior and approximating distribution for parameters that are inferred in an online setting with Variational Bayes.
 \\
 
-This paper is structured as follows: Section \ref{sec:dataProcessing} describes the dataset used and steps required to extract acceleration and steering angle for each vehicle, while Section \ref{sec:models} introduces several time series models used. Section \ref{sec:Inference} reviews Bayesian inference, which is extended to the online updating setting in Section \ref{sec:UVB}. Finally Section \ref{sec:eval} contains empirical results, and Section \ref{sec:disc} concludes the vehicle trajectory forecasting study and discusses future work.
+This paper is structured as follows: Section \ref{sec:dataProcessing} describes the dataset used and steps required to extract acceleration and steering angle for each vehicle, while Section \ref{sec:models} introduces several time series models used. Section \ref{sec:Inference} reviews Bayesian inference, which is extended to the online, approximate updating setting in Section \ref{sec:UVB}. Finally Section \ref{sec:eval} contains empirical results, and Section \ref{sec:disc} concludes the vehicle trajectory forecasting study and discusses future work.
 
 \section{Data processing}
 \label{sec:dataProcessing}
-Data is provided by the Next Generation Simulation (NGSIM) project, which recorded vehicles travelling along a 2235 feet section of the US 101 freeway in Los Angeles, California during the morning peak from 7:50 am to 8:35 am on June 15th, 2005. Data for 6101 vehicles was collected every 100 milliseconds by seven static cameras, and processed by Cambridge Systematics Inc to produce coordinates for each vehicle and point in time relative to the start of the road section. 
-Figure \ref{fig:rawData} shows the paths of ten vehicles in the dataset, which traveled along the five major lanes or entered from the entry/exit lane to the right; with one vehicle changing from Lane 2 to Lane 1. Vehicles that entered or exited midway through the freeway section, are excluded in this paper. There is a curvature to the road occuring between 500 and 1000 feet, and again between 1800 and 2000 feet.
+Data is provided by the Next Generation Simulation (NGSIM) project conducted by the US Federal Highway Administration (FHWA), which recorded vehicles travelling along a 2235 feet section of the US 101 freeway in Los Angeles, California during the morning peak from 7:50 am to 8:35 am on June 15th, 2005. Data for 6101 vehicles was collected every 100 milliseconds by seven static cameras, and processed by Cambridge Systematics Inc to produce coordinates for each vehicle and point in time relative to the start of the road section. 
+Figure \ref{fig:rawData} shows the paths of ten vehicles in the dataset, which traveled along the five major lanes or entered from the entry/exit lane to the right; with one vehicle changing from Lane 2 to Lane 1. Vehicles that entered or exited midway through the freeway section are excluded in this paper. There is a curvature to the road occuring between 500 and 1000 feet, and again between 1800 and 2000 feet.
 \\
 
 \begin{figure}
@@ -152,10 +152,10 @@ Figure \ref{fig:rawData} shows the paths of ten vehicles in the dataset, which t
 \label{fig:rawData}
 \end{figure}
 
-Modern vehicles are capable of tracking the path of lane markings \citep{Thuy2010}, such as painted centre lines or lane dividers, and thus they can automatically identify the locations of surrounding vehicles in coordinates relative to their own position on the road compensating for any curvature. To remove the variation in car position due to curvature in the road, and so that the data is in a coordinate system similar to that of a self-driving vehicle tracking surrounding vehicles, the coordinate system provided by NGSIM is transformed into relative coordinates. This is facilitated by measuring the location of vehicles relative to an estimate of the midpoint of their associated lane. \citet{Woo2016a} fit a polynomial curve to detected lane markings to build a local model of the road lane edges, and this idea is extended with the use of smoothing splines to estimate each of the lane centres for the available section of the freeway. Details of this process are in the appendix, and results in relative coordinates $\{x^*_{i, t}, y^*_{i, t}\}$  where $y^*_{i, t}$ denotes the distance travelled along the road, and $x^*_{i, t}$ denotes the deviation from the lane centre line for each of remaining vehicles in the dataset.
+Modern vehicles are capable of tracking the path of lane markings \citep{Thuy2010}, such as painted centre lines or lane dividers, and thus they can automatically identify the locations of surrounding vehicles in coordinates relative to their own position on the road compensating for any curvature. To remove the variation in car position due to curvature in the road, and so that the data is in a coordinate system similar to that of a self-driving vehicle tracking surrounding vehicles, the coordinate system provided by NGSIM is transformed into relative coordinates. This is facilitated by measuring the location of vehicles relative to an estimate of the midpoint of their associated lane. \citet{Woo2016a} fit a polynomial curve to detected lane markings to build a local model of the road lane edges, and this idea is extended with the use of smoothing splines to estimate each of the lane centres for the available section of the freeway. Details of this process are in the appendix, and results in relative coordinates $\{x^*_{i, t}, y^*_{i, t}\}$  where $y^*_{i, t}$ denotes the distance travelled along the cente of the road, and $x^*_{i, t}$ denotes the deviation from the lane centre line for each of remaining vehicles in the dataset.
 \\
 
-Once relative coordinates are extracted, the changes in relative position of any vehicle $i$ from observation $t-1$ to observation $t$ according to the trigonometric relationship in Figure \ref{fig:motion}:
+Once relative coordinates are extracted, the changes in relative position of any vehicle $i$ from observation $t-1$ to observation $t$ follows friom the trigonometric relationship in Figure \ref{fig:motion}:
 \begin{align}
 x^*_{i, t} &= x^*_{i, t-1} + v_{i, t} \cos(\delta_{i, t}) \label{xEq} \\
 y^*_{i, t} &= y^*_{i, t-1} + v_{i, t} \sin(\delta_{i, t}) \label{yEq},
@@ -163,28 +163,28 @@ y^*_{i, t} &= y^*_{i, t-1} + v_{i, t} \sin(\delta_{i, t}) \label{yEq},
 Note that when $\delta_{i, t} \pm \pi/2$ then car $i$ takes a position parallel to the centre line, and hence $x^*_{i, t} = x^*_{i, t-1}$.
 \\
 
-From this relationship, and the coordinate sequences $\{x^*_{i, s}, \mbox{ for }s=1,2,...,T\}$ and $\{y^*_{i, s}, s=1,2,...,T\}$, the inputs from driver $i$ are calculated via
+From this relationship, and the coordinate sequences $\{x^*_{i, s}, \mbox{ for }s=1,2,...,T\}$ and $\{y^*_{i, s}, s=1,2,...,T\}$, the inputs to motion from driver $i$ are calculated via
 \begin{align}
 \delta_{i, t} &= 
      \begin{cases}
        \tan^{-1}\left(\frac{(y^*_{i, t} - y^*_{i, t-1})}{(x^*_{i, t} - x^*_{i, t-1})} \right)  &\quad\text{if }x^*_{i, t} \neq x^*_{i, t-1} \\
        \frac{\pi}{2} &\quad\text{if } y^*_{i, t} > y^*_{i, t-1} \mbox{ and } x^*_{i, t} = x^*_{i, t-1} \\
        -\frac{\pi}{2} &\quad\text{if } y^*_{i, t} < y^*_{i, t-1} \mbox{ and } x^*_{i, t} = x^*_{i, t-1} \\
-       \delta_{i, t-1} &\quad\text{otherwise} \\ 
+       \delta_{i, t-1} &\quad\text{otherwise,} \\ 
      \end{cases} \label{dEq} \\
 v_{i, t} &= \sqrt{(x^*_{i, t} - x^*_{i, t-1})^2 + (y^*_{i, t} - y^*_{i, t-1})^2} \label{vEq}.
 \end{align}
-In addition, the corresponding acceleration sequence is given by $\{a_{i, t},t=2,3,...,T\}$, according to
+In addition, the corresponding acceleration sequence is given by $\{a_{i, t},t=3,4,...,T\}$, according to
 \begin{equation}
 \label{aEq}
 a_{i, t} = v_{i, t} - v_{i, t-1}. 
 \end{equation}
 \\
 
-Data resulting from the observation of vehicle $i$ for a period of time $T$ is defined as $z_{i, 1:T} = \{x^*_{i, s}, y^*_{i, s}, | s = 1, \dots, T\}$ and data from multiple drivers are then collected as $\mathbf{z}_{1:N} = \{z_{i, 1:T} | i = 1, \dots, N\}$. 3387 vehicles remain in the dataset after the above exclusion criteria are applied. The data into a two sets of vehicles: a training set of 2000 vehicles and a test set of a further 1387 vehicles.
+Data resulting from the observation of vehicle $i$ for a period of time $T$ is defined as $z_{i, 1:T} = \{x^*_{i, s}, y^*_{i, s}, | s = 1, \dots, T\}$ and data from multiple drivers are then collected as $\mathbf{z}_{1:N} = \{z_{i, 1:T} | i = 1, \dots, N\}$. Some additional vehicles are excluded due to an insufficient number of observations, leaving 3387 vehicles in the dataset in a relative coordinate system. These vehicles are split into two sets of vehicles: a training set of 2000 vehicles and a test set of a further 1387 vehicles.
 \\
 
-The training set and the test set are treated as observations from vehicles at two distinct time periods. The training set represents any vehicle for which data is collected during the development of the self-driving vehicle, for example this data could be collected by human driven vehicles. The test set represents those vehicles the self-driving vehicle will encounter when it is driving autonomously, which require trajectory forecasts in close to real time.
+The training set and the test set are treated as observations from vehicles at two distinct time periods, illustrated in Figure \ref{fig:problem}. The training set in the left panel represents any vehicle for which data is collected during the development of the self-driving vehicle, for example this data could be collected by human driven vehicles. The test set in the right panel represents those vehicles the self-driving vehicle will encounter when it is driving autonomously, which require trajectory forecasts in close to real time.
 
 \begin{figure}
 \centering
@@ -193,16 +193,23 @@ The training set and the test set are treated as observations from vehicles at t
 \label{fig:motion}
 \end{figure}
 
+\begin{figure}
+\centering
+\includegraphics[width = 0.95\textwidth]{problem}
+\caption{Left: The paths of vehicles in the training set. Right: The self-driving car (Solid) and two nearby vehicles (Outlined). All motion is from left to right. The self-driving vehicle must forecast the trajectory of the nearby vehicels based on their observed path and any knowledge of the driver behaviour learned from the training set vehicles}
+\label{fig:problem}
+\end{figure}
+
 \section{Models for Trajectory Forecasting}
 \label{sec:models}
 
-Three related time series models are introduced to produce trajectory forecasts, differing by their implications about the dependency between different vehicles. These are referred to as the homogenous model, under which all drivers are treated identically and the training set is used to infer all behaviour and two heterogenous models: the independent heterogenous (IH) model and the hierarchical, clustered heterogeneity (CH) model. The ID model does not incorporate information from the training set of vehicles into inference for the test set, while the CH model allows information to be shared between vehicles; learning a range of possible behaviours from the training set that can be incorporated into inference about the test set. 
+Three related time series models are introduced to produce trajectory forecasts, differing by their implications about the dependency between the different sets of vehicles. These are referred to as the homogenous model, under which all drivers are treated identically and the training set is used to infer all behaviour and two heterogenous models: the independent heterogenous (IH) model and the hierarchical, clustered heterogeneity (CH) model. The ID model does not incorporate information from the vehicles in the training into inference for the test set, while the CH model allows information to be shared between vehicles; learning a range of possible behaviours from the training set that can be incorporated into inference about the test set. 
 \\
 
 \subsection{A Homogenous Time Series Model}
 \label{subsec:homogenous}
 
-The framework provided by (\ref{xEq}) and (\ref{yEq}) allows distributional forecasts of future position coordinates of a given vehicle $i$, $\{x^*_{i, t}, y^*_{i, t} | t = T + 1, \dots, T+H\}$ to be obtained given the position and velocity of a vehicle at time $T$, $\{x^*_{i, T}, y^*_{i, T}, v_{i, T}\}$, and distributional forecasts of the future values of $\{a_{i, t}, \delta_{i, t} | t = T + 1, \dots, T+H\}$.  
+The framework provided by (\ref{xEq}) and (\ref{yEq}) allows distributional forecasts of future position coordinates of a given vehicle $i$, $\{x^*_{i, t}, y^*_{i, t} | t = T + 1, \dots, T+H\}$, to be obtained given the position and velocity of a vehicle at time $T$, $\{x^*_{i, T}, y^*_{i, T}, v_{i, T}\}$, and distributional forecasts of the future values of $\{a_{i, t}, \delta_{i, t} | t = T + 1, \dots, T+H\}$.  
 \\
 
 \iffalse % Partial Autocorrelation plots are a better way to show dynamic behaviour in the data.
@@ -240,7 +247,7 @@ These dynamics imply that changes in acceleration and angle are predictable give
 a_{i, t} &= \sum_{j = 1}^p \phi_{j} a_{i, t-j} + \sigma_{\epsilon} \epsilon_{i, t} \label{aAR} \\
 \delta_{i, t} &= \pi/2 + \sum_{j = 1}^q \gamma_{j} (\delta_{i, t-j} - \pi/2) + \sigma_{\eta} \eta_{i, t} \label{dAR}
 \end{align}
-for each $i = 1, \dots, N$, where $\epsilon_{i, t}$ and $\eta_{i, t}$ are independently and identically distributed according to a standard normal distribution. 
+for each $i = 1, \dots, N$, where $\epsilon_{i, t}$ and $\eta_{i, t}$ are independently and identically distributed according to a standard normal distribution. The unconditional means for acceleration and steering and are set to zero and $\pi/2$ respectively, corresponding to forward motion at a constant velocity.
 \\
 
 For notational convenience, and to facilitate implementation of the Bayesian inferential approach described in Section \ref{sec:Inference}, the variance parameters $\sigma^2_{\epsilon}$ and $\sigma^2_{\eta}$ are transformed and collected together with all other model parameters into the $\mathbb{R}^{p + q + 2}$-dimensional vector
@@ -266,7 +273,7 @@ p(\theta | \textbf{z}_{1:N}) \propto \prod_{i=1}^N \prod_{t = \max(p, q) + 1}^T 
 \subsection{Two Heterogenous Time Series Models}
 \label{subsec:heterogenous}
 
-The behaviour of a driver, and the dynamics of their actions, may depend on many individual features such as their experience, type of vehicle, personality, and the characteristics of traffic surrounding them. To accommodate such variation, heterogeneity, we introduce two so-called \textit{heterogeneous models}, namely an \textit{independent heterogenous (IH) model} and a dependent \textit{clustered heterogeneous} (CH) model. In both cases, the shared Heterogeneity is allowed by replacing the shared $\theta$ parameter vector is replaced with $N$ individual parameter vectors $\theta_i$, with the components of $\theta_i=\{\phi_{i,1}, \dots, \phi_{i,p}, \gamma_{i,1}, \dots, \gamma_{i,q}, \log(\sigma^{2}_{\epsilon,i}), \log(\sigma^{2}_{\eta,i})$ corresponding to the parameters given in the model for car $i$ given in
+The behaviour of a driver, and the dynamics of their actions, may depend on many individual features such as their experience, type of vehicle, personality, and the characteristics of traffic surrounding them. To accommodate such variation, heterogeneity, we introduce two so-called \textit{heterogeneous models}, namely an \textit{independent heterogenous} (IH) model and a dependent \textit{clustered heterogeneous} (CH) model. In both cases, the shared Heterogeneity is allowed by replacing the shared $\theta$ parameter vector is replaced with $N$ individual parameter vectors $\theta_i$, with the components of $\theta_i=\{\phi_{i,1}, \dots, \phi_{i,p}, \gamma_{i,1}, \dots, \gamma_{i,q}, \log(\sigma^{2}_{\epsilon,i}), \log(\sigma^{2}_{\eta,i})\}$ corresponding to the parameters given in the model for car $i$ given in
 \begin{align}
 a_{i, t} &= \sum_{j = 1}^p \phi_{i, j} a_{i, t-j} + \sigma_{\epsilon, i} \epsilon_{i, t} \label{aAR2} \\
 \delta_{i, t} &= \pi/2 + \sum_{j = 1}^q \gamma_{i, j} (\delta_{i, t-j} - \pi/2) + \sigma_{\eta, i} \eta_{i, t}. \label{dAR2}
@@ -287,7 +294,7 @@ and
 \begin{equation}
 k_i \mid \beta \sim \mbox{Multinomial}\left(\pi_1, \dots, \pi_{K}\right)
 \end{equation}
-for each $i = 1, \dots, N$. The mixture indicator variables satisfying $k_i=j$ determine a cluster of similar $\theta_i$ parameters corresponding to the behaviours of a subset of drivers. $\beta$ contains all of the determinants of these distributions, with $\beta = \{\mu_j,\Sigma_j, \pi_j, for j=1,\},$ with \textit{a priori} assumptions for each cluster given by  
+for each $i = 1, \dots, N$. The mixture indicator variables satisfying $k_i=j$ determine a cluster of similar $\theta_i$ parameters corresponding to the behaviours of a subset of drivers. $\beta$ contains all of the determinants of these distributions, with $\beta = \{\mu_j,\Sigma_j, \pi_j, \mbox{ for } j=1,\},$ with \textit{a priori} assumptions for each cluster given by  
 \begin{align}
 \mu_j &\sim \mathcal{N}\left(\bar{\mu}_j, \Omega_j\right), \\
 \Sigma_j &\sim \mbox{Inverse Wishart}\left(\mbox{Degrees of Freedom } \tau_j, \mbox{Scale } \Psi_j\right), \\
@@ -310,7 +317,7 @@ These summaries are compared against the figures in the bottom panel of Figure \
 \subsection{Encountering Additional Vehicles}
 \label{subsec:additionalVehicles}
 
-For the remainder of this paper $\textbf{z}_{1:N}$ and $\theta_{1:N}$ refer, respectively, to the data collected from, and the associated parameter vectors for, the $N$ vehicles that are available. We conceive of such information begin available before any self-driving vehicle enters a lone on the road. Use of the subscript $i$ is reserved for some $i > N$, and refers to the attriubtes (data or a parameter vector) for an additional behicle that may be encountered while the self-driving vehicle is on the road. Inference about $\theta_{1:N}$, the individual parameter vectors for the IH and CH models, as well as for $\theta$, the shared parameter vector under the homogeneous model, and $\beta$, the CH hyper-parameter, conditional on $z_{1:N}$ are assumed to be available.
+For the remainder of this paper $\textbf{z}_{1:N}$ and $\theta_{1:N}$ refer, respectively, to the data collected from, and the associated parameter vectors for, the $N$ vehicles in the training set, the vehicles where information is available for before any self-driving vehicle enters the road. Use of the subscript $i$ is reserved for some $i > N$, and refers to the attriubtes (data or a parameter vector) for an additional vehicle in the test set that may be encountered while the self-driving vehicle is on the road. Inference about $\theta_{1:N}$, the individual parameter vectors for the IH and CH models, as well as for $\theta$, the shared parameter vector under the homogeneous model, and $\beta$, the CH hyper-parameter, conditional on $z_{1:N}$ are assumed to be available before driving.
 \\
 
 The idea we pursue is to use the available data, and corresponding model posterior distributions, to forecast the future behaviour of a vehicle that is positioned near a given self-driving vehicle. Leveraging off of the information gathered from previous data (via previously computed model posteriors that accommodate the range of heterogeneous behaviour of the population of vehicles) together with fresh information received in real-time, we aim to predict the near future position of an additional vehicle moving contemporaneously with the self-driving one
@@ -344,32 +351,32 @@ p(\theta_{i} | \textbf{z}_{1:N}, z_{i, 1:T}) \propto p(z_{i, 1:T} | \theta_{i}) 
 \end{equation}
 \\
 
-Combining a fast inference procedure with the test vehicle posterior distributions implied by the IH and CH models, (\ref{indepNewCar}) and (\ref{hierNewCar2}), will allow online, heterogenous, trajectory forecasts to be produced as the self-driving vehicle observes data for the vehicles it encounters.
+Combining a fast inference procedure with the test vehicle posterior distributions implied by either of the IH and CH models, (\ref{indepNewCar}) and (\ref{hierNewCar2}), will allow online, heterogenous, trajectory forecasts to be produced as the self-driving vehicle observes data for the vehicles it encounters.
 
 \section{Bayesian Inference}
 \label{sec:Inference}
 
-Given a series of data for vehicle $i$ observed up to time $T$, $z_{i, 1:T}$, the Bayesian forecast distribution associated with some future time $T+h$ is characterized by the conditional density
+Given a series of data for vehicle $i$ observed up to time $T$, $z_{i, 1:T}$, and the training set data $\textbf{z}_{1:N}$, the Bayesian forecast distribution associated with some future time $T+h$ is characterized by the conditional density
 \begin{equation}
 \label{predictive}
 p(z_{i, T+h} | z_{i, 1:T}) =\int p(z_{i, T+h}|z_{i, 1:T}, \theta_i) p(\theta_i | \textbf{z}_{1:N}, z_{i, 1:T}) d\theta.
 \end{equation}
-To obtain this distribution, the posterior density for $\theta_i$, given by (\ref{homogPost}) for the homogenous model, (\ref{indepNewCar}) for the IH model and (\ref{hierNewcar2}) for the CH model must first be inferred. However these are only known up to proportionallity, and hence the analytical solution to (\ref{predictive} is unavailable.
+To obtain this distribution, the posterior density for $\theta_i$, given by (\ref{homogPost}) for the homogenous model, (\ref{indepNewCar}) for the IH model and (\ref{hierNewCar2}) for the CH model must first be inferred. However these are only known up to proportionallity, and hence the analytical solution to (\ref{predictive}) is unavailable.
 \\
 
-Collectively denoting all available data, for either $\textbf{z}_{1:N}$ or $z_{i}$, as $\textbf{z}$ for the remainder of this section, two alternative methods for computing the desired posterior distribution will be reviewed: Markov Chain Monte Carlo (MCMC) and Variational Bayes (VB). In brief, MCMC is used to create a sample from $p(\theta_i | \textbf{z})$, with any function of $\theta_i$ that is desired estimated from that sample. In contrast, VB replaces $p(\theta_i | \textbf{z})$ with a parametric approximation, denoted by $q_{\lambda}(\theta_i |\textbf{z})$, where $\lambda$ is a vector of auxiliary parameters associated with the approximation that may depend on the observations $\textbf{z}$.
+Collectively denoting all available data, including both $\textbf{z}_{1:N}$ and $z_{i, 1:T}$, as $\textbf{z}$ for the remainder of this section, two alternative methods for computing the desired posterior distribution will be reviewed: Markov Chain Monte Carlo (MCMC) and Variational Bayes (VB). In brief, MCMC is used to create a sample from $p(\theta_i | \textbf{z})$, with any function of $\theta_i$ that is desired estimated from that sample. In contrast, VB replaces $p(\theta_i | \textbf{z})$ with a parametric approximation, denoted by $q_{\lambda}(\theta_i |\textbf{z})$, where $\lambda$ is a vector of auxiliary parameters associated with the approximation that may depend on the observations $\textbf{z}$.
 
 \subsection{Markov Chain Monte Carlo}
 \label{subsec:MCMC}
 
-There are many types of MCMC algorithms, with arguably the simplest and most commonly used one being the Gibbs sampler. The Gibbs sampler algorithm iteratively samples the components of a $k$dimensional parameter vector $\theta_i$ via each of the so-called full conditional distributions as follows,
+There are many types of MCMC algorithms, with arguably the simplest and most commonly used one being the Gibbs sampler. The Gibbs sampler algorithm iteratively samples the components of a $k$-dimensional parameter vector $\theta_i$ via each of the so-called full conditional distributions as follows,
 \begin{align}
 &p(\theta_{i, 1} | \theta_{i, 2}, \dots, \theta_{i, k}, \textbf{z}) \nonumber \\
 &p(\theta_{i, 2} | \theta_{i, 1}, \theta_{i, 3}, \dots, \theta_{i, k}, \textbf{z}) \nonumber \\
 &\vdots \nonumber \\
-&p(\theta_{i, k} | \theta_{i, 1}, \dots, \theta_{o, k-1}, \textbf{z}). \nonumber
+&p(\theta_{i, k} | \theta_{i, 1}, \dots, \theta_{i, k-1}, \textbf{z}). \nonumber
 \end{align}
-Under mild regularity conditions (see, e.g., \citet{Tierney1994}) and with enough iterations of the Markov chain that results from the Gibbs sampler, these samples converge in distribution to $p(\theta_i | \textbf{z})$. Samples taken before the MCMC converges to the posterior must be discarded, and the remaining samples may have strong dependence between consecutive draws of the same parameter due to the Markov nature of the algorithm. The computation time for each iteration and the overall number of iterations required to accurately summarise the posterior distribution is problem specific and typically increases with the number of parameters in the model. The full conditional distributions cannot be recognised for each of the time series models proposed in Section \ref{sec:models} and a Metropolis-Hastings-within-Gibbs (MH) step is utilised instead \citep{Gilks1995}.
+Under mild regularity conditions (see, e.g., \citet{Tierney1994}) and with enough iterations of the Markov chain that results from the Gibbs sampler, these samples converge in distribution to $p(\theta_i | \textbf{z})$. Samples taken before the MCMC converges to the posterior must be discarded, and the remaining samples may have strong dependence between consecutive draws of the same parameter due to the Markov nature of the algorithm. The computation time for each iteration and the overall number of iterations required to accurately summarise the posterior distribution is problem specific and typically increases with the amount of data and number of parameters in the model. The full conditional distributions cannot be recognised for each of the models proposed in Section \ref{sec:models}, and a Metropolis-Hastings-within-Gibbs (MH) step is utilised instead \citep{Gilks1995}.
 \\
 
 In MH-MCMC, a candidate $\theta_{i, j}^{(c)}$, where $\theta_{i, j}$ may be any scalar or vector subset of $\theta_i$, is drawn from a proposal distribution $r(\theta_{i, j})$ and accepted by the sampler with probability
@@ -390,7 +397,7 @@ Performance of Random Walk Metropolis Hastings MCMC (RWMH-MCMC) then depends on 
 \subsection{Variational Bayes}
 \label{subsec:VB}
 
-A typically faster, albeit approximate, alternative to MCMC based inference is VB \citep{Jordan1999}. VB posits a family of parametric approximating distributions $q_{\lambda}(\theta_i | \textbf{z})$, parameterised by an auxiliary vector $\lambda$, that share the same support as the true posterior distribution $p(\theta_i | \textbf{z})$. Note that the family $q_{\lambda}(\theta_i | \textbf{z})$ does not neccesarily depend on $\textbf{z}$, but this notation is used to make it clear that this distribution is an approximation for $p(\theta_i | \textbf{z})$. A member of approximating family is chosen to minimise some error function, typically the Kullback-Leibler (KL) divergence from $q_{\lambda}(\theta_i | \textbf{z})$ to $p(\theta_i | \textbf{z})$, given by $KL[q_{\lambda}(\theta_i | \textbf{z})\hspace{.1cm}||\hspace{.1cm}p(\theta_i | \textbf{z})]$ \citep{Kullback1951}. The KL divergence is defined by
+A typically faster, albeit approximate, alternative to MCMC based inference is VB (see \citet{Blei2017} for a recent review). VB posits a family of parametric approximating distributions $q_{\lambda}(\theta_i | \textbf{z})$, parameterised by an auxiliary vector $\lambda$, that share the same support as the true posterior distribution $p(\theta_i | \textbf{z})$. Note that $q_{\lambda}(\theta_i | \textbf{z})$ does not neccesarily depend on $\textbf{z}$, but this notation is used to make it clear that this distribution is an approximation for $p(\theta_i | \textbf{z})$. A member of the approximating family is chosen to minimise some error function, typically the Kullback-Leibler (KL) divergence from $q_{\lambda}(\theta_i | \textbf{z})$ to $p(\theta_i | \textbf{z})$, given by $KL[q_{\lambda}(\theta_i | \textbf{z})\hspace{.1cm}||\hspace{.1cm}p(\theta_i | \textbf{z})]$ \citep{Kullback1951}. The KL divergence is defined by
 \begin{equation}
 \label{KL-def}
 KL[q_{\lambda}(\theta_i | \textbf{z})\hspace{.1cm}||\hspace{.1cm}p(\theta_i | \textbf{z})] = E_{q_{\lambda}(\theta_i | \textbf{z})} \left[ \log(q_{\lambda}(\theta_i | \textbf{z})) - \log(p(\theta_i | \textbf{z})) \right],
@@ -398,7 +405,7 @@ KL[q_{\lambda}(\theta_i | \textbf{z})\hspace{.1cm}||\hspace{.1cm}p(\theta_i | \t
 and is a non-negative, asymmetric measure of the discrepancy between $p(\theta_i | \textbf{z})$ and $q_{\lambda}(\theta_i | \textbf{z})$  that will be equal to zero if and only if $p(\theta_i | \textbf{z}) = q_{\lambda}(\theta_i | \textbf{z})$ almost everywhere \citep{Bishop2006}.
 \\
 
-Typically (\ref{KL-def}) cannot be evaluated, and Monte-Carlo estimates as
+Typically (\ref{KL-def}) cannot be evaluated, and Monte-Carlo estimates
 \begin{equation}
 \label{KL-MC}
 KL[q_{\lambda}(\theta_i | \textbf{z})\hspace{.1cm}||\hspace{.1cm}p(\theta_i | \textbf{z}] \approx \frac{1}{M}\sum_{j=1}^M \left(\log(q_{\lambda}(\theta_{j, i} | \textbf{z})) - \log(p(\theta_{j, i} | \textbf{z})) \right)
@@ -413,11 +420,11 @@ which is evaluated with Monte-Carlo estimates
 \label{ELBO-MC}
 \mathcal{L}(q, \lambda) \approx \frac{1}{M} \sum_{j=1}^M \left(\log(p(\theta_{j, i}, \textbf{z})) - \log(q_{\lambda}(\theta_{j, i} | \textbf{z})) \right)
 \end{equation}
-where $\theta_{j, i} \sim q_{\lambda}(\theta_i | \textbf{z}))$. The ELBO is equal to the negative KL divergence plus a constant, and hence maximising (\ref{ELBO}) with respect to $q_{\lambda}(\theta_i | \textbf{z})$ is equivalent to minimising (\ref{KL-def}).
+where $\theta_{j, i} \sim q_{\lambda}(\theta_i | \textbf{z}))$. The ELBO is equal to the negative KL divergence plus a constant, and hence maximising \ref{ELBO}) with respect to $q_{\lambda}(\theta_i | \textbf{z})$ is equivalent to minimising (\ref{KL-def}).
 
 \subsection{Stochastic Gradient Ascent}
 \label{subsec:SGA}
-For exponential family likelihood models, $p$, with a factorisable approximation, $q$, the characteristics of the surface of the ELBO can be exploited for optimisation in Mean Field Variational Bayes \citep{Ghahramani2000, Wainwright2008}, but for more general distributions the surface of the ELBO and its stochastic estimate are unknown. Maximisation proceeds by optimising only the auxiliary parameters $\lambda$ for a fixed distribution family $q$ with stochastic gradient ascent (SGA).
+For exponential family likelihood models, $p$, with a factorisable approximation, $q$, the characteristics of the surface of the ELBO can be exploited for optimisation in what is known as Mean Field Variational Bayes \citep{Jordan1999, Ghahramani2000, Wainwright2008}, but for more general distributions the surface of the ELBO and its stochastic estimate are unknown. In this general case, maximisation proceeds by optimising only the auxiliary parameters $\lambda$ for a fixed distribution family $q$ with stochastic gradient ascent (SGA).
 \\
 
 SGA repeatedly takes Monte-Carlo estimates of the gradient of the ELBO with respect to $\lambda$, $\delta\mathcal{L}(q, \lambda) / \delta \lambda$, as $\widehat{\delta\mathcal{L}(q, \lambda) / \delta \lambda}$ and applies updates of the form
@@ -441,12 +448,12 @@ There are two popular choices for the Monte Carlo estimator of $\delta\mathcal{L
 where $\theta_{j, i} \sim q_{\lambda}(\theta_i | \textbf{z})$ and the reparameteterised estimator of \citet{Kingma2014}. Reparameterisation introduces an auxiliary variable $\epsilon$ and differentiable function $f(\cdot, \cdot)$ to rephrase Variational Bayes optimisation as the equivalent search for the parameters $\lambda$ that minimises the Kullback Leibler divergence from some distribution $q(\epsilon)$ with zero free parameters to the posterior distribution implied by the transformation $\theta_i = f(\epsilon, \lambda)$:
 \begin{equation}
 \label{rpDist}
-p(f(\epsilon, \lambda) | z) = p(\theta_i | \textbf{z}) |J^{-1}(f(\epsilon, \lambda))|
+p(f(\epsilon, \lambda) | \textbf{z}) = p(\theta_i | \textbf{z}) |J^{-1}(f(\epsilon, \lambda))|
 \end{equation}
-where $J(f(\epsilon, \lambda))$ is the Jacobian Matrix of the transformation $f(\epsilon, \lambda)$. Examples of $f$ and $q(\epsilon)$ include treating $\theta_i$ as location scale transformation from a standard normal $\epsilon$, or an inverse-CDF transformation from a uniform$(0, 1)$ $\epsilon$. 
+where $J(f(\epsilon, \lambda))$ is the Jacobian Matrix of the transformation $f(\epsilon, \lambda)$. Examples of $f$ and $q(\epsilon)$ include treating $\theta_i$ as location-scale transformation from a standard normal $\epsilon$, or an inverse-CDF transformation from a uniform$(0, 1)$ $\epsilon$. 
 \\
 
-The ELBO can be reparameterised by substituting $p(\theta_i, \textbf{z}) = p(f(\epsilon, \lambda), z)|J(f(\epsilon, \lambda))|$ into (\ref{ELBO}),
+The ELBO can be reparameterised by substituting $p(\theta_i, \textbf{z}) = p(f(\epsilon, \lambda), \textbf{z})|J(f(\epsilon, \lambda))|$ into (\ref{ELBO}),
 \begin{equation}
 \label{rpELBO}
 \mathcal{L}(q, \lambda) = E_{r(\epsilon)} \bigg[\log(p(f(\epsilon,\lambda), \textbf{z})|J(f(\epsilon, \lambda))|) - \log(q(\epsilon))\bigg].
@@ -466,21 +473,21 @@ This form leads to the reparameterised gradient estimator,
 where $\epsilon_j \sim q(\epsilon)$. The reparameterised gradient estimator typically has lower variance than the score estimator (see eg. \cite{Rezende2014}; \cite{Ruiz2016}), but treating $q_{\lambda}(\theta_i | \textbf{z})$ as the distribution implied by the transformation $f$ of $q(\epsilon)$ restricts the class of approximating families that can be used.
 \\
 
-Choosing the number of samples per estimate, $M$, involves a trade-off between the computation time per gradient estimate and the stochastic noise present in each estimate. An increased value of $M$ will reduce the estimator variance, and generally reduce the number of iterations required for the ELBO to converge, at a linear increase in computation time per iteration. To reduce the variance of the Monte Carlo estimator, following \citet{Gunawan2017}, Randomised Quasi Monte Carlo (RQMC) which has shown to be more efficient, where numbers in the unit hypercube are generated according to a Sobol Sequence \citep{Sobol1967} which are then randomised using the scrambled net method \citep{Matousek1998}, and transformed using the inverse-CDF of $q_{\lambda}(\theta | z)$ or $r(\epsilon)$. Use of RQMC has shown to be more efficient than standard Monte-Carlo in many applications (see \cite{Niederreiter1992, Caflisch1998}).
+Choosing the number of samples per estimate, $M$, involves a trade-off between the computation time per gradient estimate and the stochastic noise present in each estimate. An increased value of $M$ will the Monte-Carlo error, and generally reduce the number of iterations required for the ELBO to converge, at a linear increase in computation time per iteration. To reduce the Monte Carlo error, following \citet{Gunawan2017}, Randomised Quasi Monte Carlo (RQMC) is used instead, which has shown to be more efficient than standard Monte-Carlo in many applications (see \cite{{Niederreiter1992, Caflisch1998}). In RQMC a deterministic sequence of numbers in the unit hypercube (of dimensionality equal to $\theta_i$) are generated evenly, in the sense that they have a low star discrepency \citep{Sobol1976}, according to a Sobol Sequence \citep{Sobol1967}. These numbers are then randomised using the scrambled net method \citep{Matousek1998}, which preserves the low discrepency properties while inducing a central limit theorem. $M$ of the resulting numbers are transformed using the inverse-CDF of $q_{\lambda}(\theta | z)$ or $r(\epsilon)$ to simulate $M$ draws from these distributions. 
 
 \section{Updating Variational Bayes}
 \label{sec:UVB}
 
-The self-driving vehicle is constantly observing data about the movements of the surrounding vehicles which can be used for posterior inference. Figure \ref{fig:timeUpdate} illustrates this for a vehicle in the NGSIM dataset travelling towards the right. In the left panel, the vehicle has been observed until time $S$, and this data $z_{i, 1:S}$ can be incorporated into the Variational Bayes posterior approximation $q_{\lambda_S}(\theta_{i} | z_{i, 1:S})$, suppressing the additional conditional dependence on $\textbf{z}_{1:N}$. In the right panel, at some later time $T > S$, an additional $T - S$ data points have been observed, and inference of the behaviour of this vehicle, and hence forecasts, could be improved by incorporating the information contained in $z_{i, S+1:T}$ to form the posterior approximation $q_{\lambda_T}(\theta_{i} | z_{i, 1:T})$. Note that the $S$ and $T$ subscripts on $\lambda$ are introduced to differentiate the auxiliary parameter vector conditioned on data up to times $S$ and $T$. To facilitate this posterior update, an Updating Variational Bayes (UVB) mechanism is introduced where only $z_{i, S+1:T}$ needs to be processed.
+The self-driving vehicle is constantly observing data about the movements of the surrounding vehicles which can be used for posterior inference. Figure \ref{fig:timeUpdate} illustrates this for a vehicle in the NGSIM dataset travelling towards the right. In the left panel, the vehicle has been observed for a time period $S$ resulting in data $z_{i, 1:S}$ which can be incorporated into the Variational Bayes posterior approximation $q_{\lambda_S}(\theta_{i} | z_{i, 1:S})$, suppressing the additional conditional dependence on $\textbf{z}_{1:N}$. In the right panel, after observation until some later time $T > S$, an additional $T - S$ data points are available, and inference of the behaviour of this vehicle, and hence forecasts, could be improved by incorporating the information contained in $z_{i, S+1:T}$ to form the posterior approximation $q_{\lambda_T}(\theta_{i} | z_{i, 1:T})$. Note that the $S$ and $T$ subscripts on $\lambda$ are introduced to differentiate the auxiliary parameter vector conditioned on data up to times $S$ and $T$. To facilitate this posterior update, an Updating Variational Bayes (UVB) mechanism is introduced where only $z_{i, S+1:T}$ needs to be processed.
 \begin{figure}[ht]
 \centering
 \includegraphics[width = 0.95\textwidth]{timeUpdate}
-\caption{Left: The path of a vehicle in the NGSIM dataset at time $S$, where the direction of travel is from the left to the right. Right: The same vehicle at a later time $T > S$, with the extra $T - S$ observations denoted by the dashed line. Inference about this vehicle at time $S$ can be updated by the inclusion of the additional information observed up to time $T$.}
+\caption{Left: The path of a vehicle in the NGSIM dataset tat has been observed for a time period equal to $S$, where the direction of travel is from the left to the right. Right: The same vehicle at a later time $T > S$, with the extra $T - S$ observations denoted by the dashed line. Posterior inference about this vehicle could be updated from time $S$ to time $T$ by the inclusion of this additional information.}
 \label{fig:timeUpdate}
 \end{figure}
 \\
 
-Given $p(\theta_{i} | z_{i, 1:S})$ from (\ref{posterior}), the posterior distribution at time $T$, $p(\theta_{i} | z_{i, 1:T})$ is given by Bayes rule as
+Given the posterior at time $S$, $p(\theta_{i} | z_{i, 1:S})$, the posterior distribution at time $T$, $p(\theta_{i} | z_{i, 1:T})$ is given by Bayes rule as
 \begin{equation}
 \label{updatePost}
 p(\theta_{i} | z_{i, 1:T}) \propto p(z_{i, S+1:T} | \theta_{i})p(\theta_{i} | z_{i, 1:S})
@@ -492,28 +499,32 @@ Standard methods to evaluate the posterior, such as Variational Bayes or Markov 
 \end{equation}
 \\
 
-The ELBO gradient estimators to construct the updated Variational Bayes approximation at time $T$,  $q_{\lambda_T}(\theta_{i} | z_{i, 1:T})$, can be obtained by substituting (\ref{ApproxJoint}) into the score gradient estimator (\ref{scoreDeriv}) or the reparameterised gradient estimator (\ref{rpDeriv}). The updating score estimator is given by
+The ELBO gradient estimators to construct the updated Variational Bayes approximation at time $T$, $q_{\lambda_T}(\theta_{i} | z_{i, 1:T})$, can be obtained by substituting (\ref{ApproxJoint}) into the score gradient estimator (\ref{scoreDeriv}) or the reparameterised gradient estimator (\ref{rpDeriv}). The updating score estimator is given by
 \begin{align}
 \widehat{\frac{\delta\mathcal{L}(q, \lambda_T)}{\delta \lambda_T}}_{USC} &= \sum_{j = 1}^M \frac{\delta \log(q_{\lambda_T}(\theta_{i, j} | z_{i, 1:T}))}{\delta \lambda_T} \nonumber \\
-&\times \left(\log(q_{\lambda_S}(\theta_{i, j} | z_{i, 1:S}) - \log(q_{\lambda_T}(\theta_{i} z_{i, 1:T})) \right) \label{scoreUpdate}
+&\times \left(\log(q_{\lambda_S}(\theta_{i, j} | z_{i, 1:S}) - \log(q_{\lambda_T}(\theta_{i, j} | z_{i, 1:T})) \right) \label{scoreUpdate}
 \end{align}
 where $\theta_{i, j} \sim q(\theta_{i} | z_{i, 1:T})$. Similarly, the updating reparameterised estimator is given by
 \begin{equation}
 \label{rpUpdate}
 \widehat{\frac{\delta\mathcal{L}(q, \lambda_T)}{\delta \lambda_T}}_{URP} = \sum_{j = 1}^M \frac{\delta f(\lambda_T, \epsilon_j)}{\delta \lambda_T} \frac{\delta \log(q_{\lambda_S}(\theta_{i} |z_{i, 1:S}))}{\delta \theta_{i}} \bigg\rvert_{\theta_{i} = f(\lambda_T, \epsilon_j)} + \frac{\delta J(\lambda_T, \epsilon_j)}{\delta \lambda_T},
 \end{equation}
-where $\epsilon_j \sim r(\epsilon)$. If this process is repeated periodically, $S$ will grow at the same rate as $T$, and updating VB is $O(1)$ rather than $O(T)$ as required by re-using the full sample without the approximation step in (\ref{ApproxJoint}).
+where $\epsilon_j \sim r(\epsilon)$. If this process is repeated periodically, $S$ will grow at the same rate as $T$, and UVB has a computational complexity as $T$ increases of $O(1)$, rather than $O(T)$ as required by standard VB that must process $z_{i, 1:T}$ at each possible value of $T$. 
 
 \section{Forecast Evaluation}
 \label{sec:eval}
 
-After obtaining the posterior distributions for each model conditioned on 2000 vehicles, with $p = q = 2$ and $K = 6$, forecasts are created and evaluated on a further 1387 vehicles. For each of these vehicles $i > 2000$, at each point in time $T = 100, 110, \dots, 450$ and forecast horizon $h = 1, \dots, 30$, point estimates of $z_{i, T+h}$ are obtained from every naive model, while the time-series models are used to provide forecast densities of $p(z_{i, T+h} | \textbf{z}_{1:2000}, z_{i, 1:T})$ and point estimates using the coordinate pair $\{\hat{x}_{i, t}^*, \hat{y}_{i, t}^*\}$ which maximises this density. As data is observed every 100 milliseconds, this equates to forecasting the next three seconds of movement after every second of observing the vehicle. The forecast density for the homogenous model is created using the MCMC samples of $p(\theta | \textbf{z}_{1:2000}, z_{i, T})$, while the IH and CH models produce $p(\theta_{i} | \textbf{z}_{1:2000}, z_{i, 1:T})$ through three methods:
+After obtaining the posterior distributions for each model conditioned on the training set of 2000 vehicles, with $p = q = 2$ and $K = 6$, forecasts are created and evaluated on the  further 1387 vehicles in the test set. For each of these vehicles $i > 2000$, after each of $T = 100, 110, \dots, 450$ observations, and at every forecast horizon $h = 1, \dots, 30$, point estimates of $z_{i, T+h}$ are obtained from every naive model. The time-series models are used to provide forecast densities of $p(z_{i, T+h} | \textbf{z}_{1:2000}, z_{i, 1:T})$, and point estimates using the coordinate pair $\{\hat{x}_{i, t}^*, \hat{y}_{i, t}^*\}$ which maximises this density. As data is observed every 100 milliseconds, this equates to forecasting the next three seconds of movement for every vehicle after every second of observation. The forecast density for the homogenous model is created using the MCMC samples of $p(\theta | \textbf{z}_{1:2000}, z_{i, T})$, while the IH and CH models produce $p(\theta_{i} | \textbf{z}_{1:2000}, z_{i, 1:T})$ before creating forecasts through three methods:
 \begin{enumerate}
 \item Posterior sampling with RWMH-MCMC,
-\item VB fitting $q_{\lambda_T}(\theta_{i} | \textbf{z}_{1:2000}, z_{i, 1:T})$ to the complete $z_{i, 1:T}$ using the original prior distribution,
+\item VB fitting $q_{\lambda_T}(\theta_{i} | \textbf{z}_{1:2000}, z_{i, 1:T})$ to the complete $z_{i, 1:T}$,
 \item UVB fitting $q_{\lambda_T}(\theta_{i} | \textbf{z}_{1:2000}, z_{i, 1:T})$ using $q_{\lambda_S}(\theta_{i} | \textbf{z}_{1:2000}, z_{i, 1:S})$ and data $z_{i, S+1:T}$ as described in Section \ref{sec:UVB}.
 \end{enumerate}
-Approximating distributions for VB are chosen to match the form of the prior distributions, multivariate normal $q$ for the IH model and a mixture of multivariate normals for the CH model. A summary of these approaches is provided in Table \ref{tableAlg}. Point estimate forecasts are evaluated by their Euclidean Error,
+
+Approximating distributional families $q$ for each of VB and UVB are chosen to match the form of the model prior distributions: multivariate normal for the IH model and a mixture of multivariate normals for the CH model. A summary of these approaches is provided in Table \ref{tableAlg}. 
+\\
+
+Point estimate forecasts are evaluated by their Euclidean Error in metres,
 \begin{equation}
 \mbox{EE}_{i, T, h} = \sqrt{\left(\hat{x}^*_{i, T+h} - x^*_{i, T+h} \right)^2 + \left(\hat{y}^*_{i, T+h} - y^*_{i, T+h} \right)^2},
 \label{eucError}
@@ -531,19 +542,19 @@ where $\{\hat{x}^*_{i, T+h}, \hat{y}^*_{i, T+h}\}$ is a forecast of $\{x^*_{i, T
 \hline
 & Independent Heterogenous Model & Clustered Heterogenous Model \\
 \hline
-MCMC & \multicolumn{2}{c|}{RWMH-MCMC jointly drawing the entire $\theta$ vector using \citet{Garthwaite2016} to control the} \\
-& \multicolumn{2}{c|}{variance matrix of the Multivariate Gaussian proposal distribution to obtain a 23.4\% acceptance rate for $\theta$ draws.} \\
+MCMC&\multicolumn{2}{c|}{RWMH-MCMC jointly drawing the entire $\theta_i$ vector using \citet{Garthwaite2016} to control the}\\
+&\multicolumn{2}{c|}{variance matrix of the Multivariate Normal proposal distribution to obtain a 23.4\% acceptance rate for $\theta_i$ draws.}\\
 \hline
-VB  & Variational Bayes using (\ref{rpDeriv}) to update parameters & Variational Bayes using (\ref{scoreDeriv}) to update parameters\\
-Standard &  of a Multivariate Gaussian approximation with &  of an approximation formed as a six component mixture\\
-&non-zero covariance using $M = 25$, where $f$ is a &  of diagonal variance Multivariate Gaussians using $M = 50$. \\
-&location scale transform from a standard normal $r(\epsilon)$. &\\
+VB& Variational Bayes using (\ref{rpDeriv}) to update parameters&Variational Bayes using (\ref{scoreDeriv}) to update parameters\\
+  &of a Multivariate Normal approximation with&of an approximation formed as a six component mixture\\
+&non-zero covariance using $M = 25$, where $f$ is a&of diagonal variance Multivariate Normals using $M = 50$.\\
+&location scale transform from a standard normal $r(\epsilon)$.&\\
 \hline
-VB  & Variational Bayes fit to $100$ observations using (\ref{rpDeriv}), & Variational Bayes fit to $100$ observations using (\ref{scoreDeriv}), \\
- &  then updated every $10$ observations using (\ref{rpUpdate}). & then udpated every $10$ observations using using (\ref{scoreUpdate}). \\
-Standard &  $q$ is a Multivariate Gaussian approximation with &  $q$ is a six component mixture\\
-&non-zero covariance using $M = 25$, where $f$ is a&  of diagonal variance Multivariate Gaussians using $M = 50$. \\
-&location scale transform from a standard normal $r(\epsilon)$. &\\
+UVB&Variational Bayes fit to $100$ observations using (\ref{rpDeriv}),&Variational Bayes fit to $100$ observations using (\ref{scoreDeriv}),\\
+ &then updated every $10$ observations using (\ref{rpUpdate}).&then udpated every $10$ observations using using (\ref{scoreUpdate}).\\
+ &$q$ is a Multivariate Normal approximation with&$q$ is a six component mixture of diagonal\\
+&non-zero covariance using $M = 25$, where $f$ is a&variance Multivariate Normals using $M = 50$.\\
+&location scale transform from a standard normal $r(\epsilon)$.&\\
 \hline
 \end{tabular}}
 \caption{Details of the algorithms used to produce posterior distributions for each method and prior combination}
@@ -554,9 +565,10 @@ Standard &  $q$ is a Multivariate Gaussian approximation with &  $q$ is a six co
 \subsection{Naive Forecast Models}
 \label{subsec:Naive}
 
-Nine naive forecast models are provided where forecasts of $a_{i, t}$ and $\delta_{i, t}$ at time $T$ are constants equal to $\hat{a}_{i, T}$ and $\hat{\delta}_{i, T}$ for $t = T+1, \dots, T+H$. The classification of each naive model is provided in Table \ref{tableNaive} as a combination of one estimator for $\hat{a}_{i, T}$ and one estimator for $\hat{\delta}_{i, T}$. Acceleration estimators are the most recent acceleration, $\hat{a}_{i, T} = a_{i, T}$, the average acceleration over the most recent second, $\hat{a}_{i, T} = 0.1 \sum_{s = T-9}^T a_{i, s}$, and zero acceleration $\hat{a}_{i, T} = 0$, equivalent to constant velocity. Similarly, steering angle estimators are the most recent angle, $\hat{\delta}_{i, T} = \delta_{i, T}$, the average angle over the most recent second, $\hat{\delta}_{i, T} = 0.1 \sum_{s = T - 9}^T \delta_{i, s}$, and $\hat{\delta}_{i, T} = \pi/2$, corresponding to the vehicle to driving directly forward.
+Nine naive forecast models are provided where forecasts of $a_{i, t}$ and $\delta_{i, t}$ at each time $T$ are constants equal to $\hat{a}_{i, T}$ and $\hat{\delta}_{i, T}$ for $t = T+1, \dots, T+H$. The classification of each naive model is provided in Table \ref{tableNaive} as a combination of one estimator for $\hat{a}_{i, T}$ and one estimator for $\hat{\delta}_{i, T}$. Acceleration estimators are the most recent acceleration, $\hat{a}_{i, T} = a_{i, T}$, the average acceleration over the most recent second, $\hat{a}_{i, T} = 0.1 \sum_{s = T-9}^T a_{i, s}$, and zero acceleration $\hat{a}_{i, T} = 0$, equivalent to constant velocity. Similarly, steering angle estimators are the most recent angle, $\hat{\delta}_{i, T} = \delta_{i, T}$, the average angle over the most recent second, $\hat{\delta}_{i, T} = 0.1 \sum_{s = T - 9}^T \delta_{i, s}$, and $\hat{\delta}_{i, T} = \pi/2$, corresponding to the vehicle to driving directly forward.
 \begin{table}
 \begin{center}
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{|l|c|c|c|}
 \hline
 & $\hat{\delta}_{i, T} = \delta_{i, T}$ & $\hat{\delta}_{i, T} = 1/10 \sum_{s=T-9}^T \delta_{i, s}$ & $\hat{\delta}_{i, T} = \pi/2$ \\
@@ -565,47 +577,68 @@ $\hat{a}_{i, T} = a_{i, T}$ & Naive 1 & Naive 2 & Naive 3 \\
 $\hat{a}_{i, T} = 1/10\sum_{s=T-9}^T a_{i, s}$ & Naive 4 & Naive 5 & Naive 6\\
 $\hat{a}_{i, T} = 0$ & Naive 7 & Naive 8 & Naive 9 \\
 \hline
-\end{tabular}
+\end{tabular}}
 \end{center}
-\caption{Classification of naive forecast models by future velocity and steering angle estimators.}
+\caption{Classification of naive forecast models by future acceleration and steering angle estimators.}
 \label{tableNaive}
 \end{table}
 
 \subsection{Recurrent Neural Networks}
 \label{subsec:RNN}
-A Recurrent Neural Network (RNN) is constructed with inputs following \citet{Ding2013}, the ten most recent lags of vehicle position, angle, velocity, and time headway to the preceding vehicle. The RNN outputs the next thirty changes in the vehicle position, is trained through gradient descent using the Adam optimiser to minimise the euclidean error of the three second ahead point forecast corresponding to $EE_{i, T, 30}$ defined in (\ref{eucError}). As of writing this report forecast results from this model are not competitive with the naive models and are not discussed further.
+A Recurrent Neural Network (RNN) is constructed with inputs following \citet{Ding2013}, the ten most recent lags of vehicle position, angle, velocity, and time headway to the preceding vehicle. The RNN outputs the next thirty changes in the vehicle position, and is trained with gradient descent using the Adam optimiser to minimise the Euclidean error of the three second ahead point forecast corresponding to $EE_{i, T, 30}$ defined in (\ref{eucError}). As of writing this report forecast results from this model are not competitive with the naive models and are not discussed further.
 
 \subsection{Results}
 \label{subsec:Results}
 
-Eucliedean Error for each model, averaged across test set vehicles at forecast horizons of one, two, and three seconds ($h = 10, 20$ and $30$) are provided in Figure \ref{fig:PredError}. Naive model performance is split into three groups according to the choice of acceleration forecast, and for a given $\hat{a}_{i, T}$ the choice of $\hat{\delta}_{i, T}$ has not substantially changed the forecast error. Zero acceleration naive models (Naive 7, 8, and 9) perform the best, followed by the averaged acceleration models (Naive 4, 5, and 6) and finally the current acceleration models (Naive 1, 2, and 3). At all forecast horizons the error for each implementation of each of the time series models are significantly lower than every naive model.
+Eucliedean Error for each model, averaged across test set vehicles at forecast horizons of one, two, and three seconds ($h = 10, 20$ and $30$) are provided in Figure \ref{fig:PredError}. Naive model performance is split into three groups according to the choice of acceleration forecast, and for a given $\hat{a}_{i, T}$ the choice of $\hat{\delta}_{i, T}$ has not substantially changed the forecast error. Zero acceleration naive models (Naive 7, 8, and 9) perform the best, followed by the averaged acceleration models (Naive 4, 5, and 6) and finally the current acceleration models (Naive 1, 2, and 3). At all forecast horizons the error for each implementation of each of the time series models are significantly lower than every naive model. The average forecast Euclidean Error for the best performing Naive model, Naive 8, and each of the time series models at each of these three forecast horizons are presented in Table \ref{table:meanError}.
 \\
 
-Figure (\ref{fig:PredErrorZ}) truncates Figure (\ref{fig:PredError}) to include only the time series models, and with the exception of the IH model with UVB inference, each time series model and inference implementation produces a forecast with a similar amount of error. This implies that there is no systematic increase or decrease in MAP forecast accuracy for choosing either the homogenous or introducing heterogeneity with the IH and CH models. As the UVB implementation of the CH model is competitive with MCMC and standard VB inference discussion will focus on the CH model rather than the IH model.
+Figure (\ref{fig:PredErrorZ}) truncates Figure (\ref{fig:PredError}) to include only the time series models, each of which produces a forecast with a similar amount of error that does not increase substantially as the forecast horizon increases. This implies that there is no systematic increase or decrease in MAP forecast accuracy for choosing either the homogenous or introducing heterogeneity with the IH and CH models, however the UVB inference implementation of the IH model has increased the forecast error relative to MCMC and standard VB. The UVB implementation of the CH model produces forecast errors that are competitive with MCMC and standard VB, and so inference discussion will focus on the CH model rather than the IH model. 
 \\
 
 \begin{figure}[ht]
 \centering
 \includegraphics[width = 0.8\textwidth]{predictiveError.png}
-\caption{Mean predictive Euclidean error in metres for $p(z_{i, T+h} | \textbf{z}_{1:N}, z_{i, 1:T})$ for $h \in \{10, 20, 30\}$ and $T \in \{100, 110, \dots, 450\}$ for each model. Each time series model is significantly more accurate than the naive constant acceleration / angle models, with little discernable difference between the time series models.}
+\caption{Mean predictive Euclidean error in metres for $p(z_{i, T+h} | \textbf{z}_{1:N}, z_{i, 1:T})$ for $h \in \{10, 20, 30\}$ and $T \in \{100, 110, \dots, 450\}$ for each model. Each time series model is significantly more accurate than the naive constant acceleration / angle models, with little discernable difference between each.}
 \label{fig:PredError}
 \end{figure}
 
 \begin{figure}[ht]
 \centering
 \includegraphics[width = 0.8\textwidth]{predictiveErrorZoom.png}
-\caption{The same results as Figure \ref{fig:PredError} with the Naive models excluded. Most of the time series model have very similar MAP forecast accuracy, with the UVB / Independent time series combination performing slightly weaker}
+\caption{The same results as Figure \ref{fig:PredError} with the Naive models excluded. Most of the time series model have very similar MAP forecast accuracy, with the exception of the UVB / IH Model combination}
 \label{fig:PredErrorZ}
 \end{figure}
 
-There are systematic differences in the level of certainty in forecasts provided by the CH and homogenous models as measured by their logscores, resulting from the CH model being able to to assign each vehicle individual variance parameters,  $\sigma^2_{\epsilon, i}$ for $a_{i, t}$, and $\sigma^2_{\eta, i}$ for $\delta_{i, t}$. Figure (\ref{fig:posVarMean}) plots the range of posterior means for these parameters from with RWMH-MCMC sampling with $T = 450$, with the homogenous model posterior means indicated with vertical red lines. There is a large amount of positive skewness in the distribution of variances, which may have caused the homogenous model to estimate a variance that is too large for most individual vehicles. The homogenous variance posterior means are greater than $80\%$ and $91.5\%$ of CH variance posterior means for acceleration and the steering angle respectivley. This large variance has little impact on the location of the MAP of $p(z_{i, T+h} | \textbf{z}_{1:N}, z_{i, 1:T})$, but impacts the level of uncertainty in the forecast density. Figure \ref{fig:varSplit} shows a detailed breakdown of the median increase in predictive logscore obtained from using the CH model with UVB inference over the homogenous model at the three second forecast horizon. Vehicles are split into bivariate quintiles according to their posterior variance means for acceleration along the x-axis and angle along the y-axis. The CH model trajectory forecasts for drivers in the lower variance quintiles benefit the most from including heterogeneity. However the median difference is zero, or even negative, for forecasts of drivers in the fifth quintiles. This paper argues that heterogenous modelling is still useful in this scenario, as the individual vehicle variance estimates allow identification of vehicles with high variance, and potentially more erratic and dangerous driving styles.
+\begin{table}[ht]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{| l | c c c c c c c c|}
+\hline
+Horizon & Naive 8 & Homogenous MCMC & IH MCMC & IH VB & IH UVB & CH MCMC & CH VB & CH UVB \\
+\hline
+One Second & 1.10 & \textbf{0.131} & \textbf{0.131} & \textbf{0.131} & 0.137 & \textbf{0.131} & 0.132 & 0.132 \\
+Two Seconds & 1.50 & \textbf{0.226} & 0.228 & 0.228 & 0.246 & 0.227 & 0.230 & 0.227 \\
+Three Seconds & 2.38 & \textbf{0.3} & 0.304 & 0.304 & 0.332 & 0.302 & 0.306 & 0.302 \\
+\hline
+\end{tabular}}
+\caption{Mean forecast Euclidean error in metres for the the best Naive model, Naive 8, and each time series model at a forecast horizon of one second, two seconds and three seconds. Each time series model performs significantly better than Naive 8, and are very competitive with each other. The use of UVB for the IH model appears to have increased the forecast error relative to MCMC and VB inference for this model.}
+\label{table:meanError}
+\end{table}
+
+The CH model assigns each vehicle in the test set one of a wide range of variances, while the homogenous model must use the same variance paramter for every vehicle. Changes in variance parameters has little impact on the location of the MAP of $p(z_{i, T+h} | \textbf{z}_{1:N}, z_{i, 1:T})$, but impacts the level of uncertainty in the forecast density, causing systematic differences in the level of forecast uncertainty measured by logscores.
+\\
+Figure (\ref{fig:posVarMean}) displays plots of density of posterior means for each of acceleration and steering angle resulting from RWMH-MCMC sampling with $T = 450$. The homogenous model posterior means are indicated with vertical red lines. As in Figure \ref{fig:HierSingleKDE}, there is a large amount of variation in the distribution of variances for the test set, many of which are lower than the homogenous model: the homogenous posterior means are greater than $80\%$ and $91.5\%$ of CH posterior means for acceleration and the steering angle respectivley. 
+\\
+
+Figure \ref{fig:varSplit} shows a detailed breakdown of the median increase in predictive logscore obtained from using the CH model with UVB inference over the homogenous model at the three second forecast horizon. Vehicles are split into bivariate quintiles according to their posterior variance means for acceleration along the x-axis and angle along the y-axis. The CH model trajectory forecasts for drivers in the lower variance quintiles benefit the most from including heterogeneity. However the median difference is zero, or even negative, for forecasts of drivers in the fifth quintiles. This paper argues that heterogenous modelling is still useful in this scenario, as the individual vehicle variance estimates allow identification of vehicles with high variance, and potentially more erratic and dangerous driving styles.
 \\
 
 
 \begin{figure}[ht]
 \centering
 \includegraphics[width = 0.95\textwidth]{posVarMean}
-\caption{Kernel Density Estimates for the posterior mean of the variance parameters, $\sigma^2_{\eta, i}$ and $\sigma^2_{\epsilon, i}$ for each of the 1387 forecasted cars fit by Metropolis-Hastings MCMC at $T = 450$ using the CH model, compared to the homogenous posterior mean in red. Small amounts of cars with high variance has skewed the homogenous estimates to be too large for the majority of the vehicles forecasted.}
+\caption{Kernel Density Estimates for the posterior mean of the variance parameters, $\sigma^2_{\eta, i}$ and $\sigma^2_{\epsilon, i}$ for each of the 1387 forecasted cars fit by RWMH-MCMC at $T = 450$ using the CH model, compared to the homogenous posterior mean in red. Small amounts of cars with high variance in the training set has increased the homogenous variances.}
 \label{fig:posVarMean}
 \end{figure}
 
@@ -619,7 +652,7 @@ There are systematic differences in the level of certainty in forecasts provided
 The benefits of heterogenous modelling is only useful if the posterior distribution $p(\theta_{i} | \textbf{z}_{1:N}, z_{1:T})$, or its variational approximation $q_{\lambda_T}(\theta_{i} | \textbf{z}_{1:N}, z_{1:T})$ can be inferred in the short time frames demanded by self-driving vehicles. Figure (\ref{fig:timing}) demonstrates the average computation time required for standard VB (Black) and UVB (coloured), where UVB is first fit to $100$ observations then repeatedly updated every $T-S$ observations for different values of $T-S$. The compuation time for standard VB increases linearly with $T$, while UVB is constant; posterior inference available at time $T$ utilising UVB can be conditioned on more data than standard VB. Parallelising the $M$ Monte-Carlo samples per iteration can further reduce computation time and make UVB feasible for more complex models. 
 \\
 
-As UVB involves replacing the posterior at time $S$ with its variational approximation, the error introduced by UVB depends on the approximation error of Variational Bayes itself. The left panel for Figure (\ref{fig:updateCost}) displays boxplots of UVB logscores minus standard VB logscores at the three second forecast horizon for the CH model, and demonstrates that UVB does not typically lead to a decrease in the forecast logscores, as the difference between the logscores obtained by UVB and standard VB are distributed close to zero for several ranges of $T$. The right panel displays analogous boxplots for the IH model, where the UVB logscores tend to be lower than the standard VB logscores, matching the increased Euclidean error found for the IH model with UVB inference in Figure \ref{fig:PredErrorZ}. An explanation for this is given by the form of the approximating distribution used for the IH model, the multivariate normal distribution may not adequately approximate the posterior distribution, while the extra flexibilitiy of the mixture multivariate normal distribution for the CH model was sufficient to replace the posterior.
+As UVB involves replacing the posterior distribution at update with its variational approximation, the error introduced by UVB depends on how closely the variational approximation can represent the true posterior distribution. The left panel for Figure (\ref{fig:updateCost}) displays boxplots of the difference in logscore between UVB and standard VB at the three second forecast horizon for the CH model, and demonstrates that UVB in this case does not decrease the forecast logscores, as the difference between the logscores obtained by UVB and standard VB are distributed close to zero for several ranges of $T$. The right panel displays analogous boxplots for the IH model, where the UVB logscores tend to be lower than the standard VB logscores, matching the increased Euclidean error found for the IH model with UVB inference in Figure \ref{fig:PredErrorZ}. An explanation for this is given by the form of the approximating distribution used for the IH model, the multivariate normal distribution may not adequately approximate the posterior distribution, while the extra flexibilitiy of the mixture multivariate normal distribution for the CH model was sufficient to replace the posterior.
 
 \begin{figure}[htp]
 \centering
@@ -647,9 +680,18 @@ We find that the additional approximation error introduced by UVB does not mater
 \\
 
 The framework used by the trajectory forecasting problem is to construct a hierarchical model to infer the range of heterogeneity present in a dataset, and use exact inference results provided by MCMC to construct a prior distribution for an additional unit in the hierarchy. Our use of this framework has focused on situations where exact inference on the additional unit is unavailble in the time-frame required by the problem, instead using Variational Bayes to infer the posterior distribution of this additional unit. We have introduced UVB to allow this inference to happen in the online setting, and have explored fitting copula models to the MCMC samples to produce a functional form for the approximating distribution that better matches the true posterior, though have not been able to link the copula structure for the units in the original hierarchy to the new unit.
-This framework is not specific to vehicle forecasting, and could conceivably be used for many other problems such as classification, or anomoly detection by extending the hierarchical model with a dirichlet process prior.
 \\
 
+This framework is not specific to vehicle forecasting, and could conceivably be used for many other problems, for example classifying new units in an online setting, or the detection of anomolous units through the use of a dirichlet process prior.
+\\
+
+The proposed timeline for the rest of the thesis is as follows:
+\begin{itemize}
+\item March - April: Finalise vehicle trajectory forecasting study for publication
+\item May: Compile inference notes to form thesis background chapters
+\item June - Novemeber: Extend framework in another project
+\item December - May 2019: Additional projects and finalise thesis for submission
+\end{itemize}
 
 
 \newpage
@@ -668,7 +710,7 @@ d_{i, t} = \sqrt{(x_{i, t} - x_{i, 1})^2 + (y_{i, t} - y_{i, 1})^2}.
 Using this distance metric and the data from the sampled 100 cars per lane, the two-dimensional coordinates corresponding to the centre line of each lane are estimated via independent smoothing splines where each coordinate is a function of the distance travelled to that point. Each smoothing spline is calculated using the `R stats' package \citep{R}. The estimated centre line for lane $k$, is denoted by the curve $\{(\hat{x}_{d,k} = f_k(d), \hat{y}_{d,k} = g_k(d)\}$, for $d \geq 0$.
 \\
 
-Excluding the vehicles used to estimate the spline model, each of the 3387 remaining vehicles in the dataset uses the relevant lane centre line estimate fit from the spline model associated with its starting lane to calculate relative coordinates $\{x^*_{i, t}, y^*_{i, t}\}$, where $y^*_{i, t}$ denotes the distance travelled along the road, and $x^*_{i, t}$ denotes the deviation from the lane centre line, with
+Excluding the vehicles used to estimate the spline models, each of the 3387 remaining vehicles in the dataset uses the relevant lane centre line estimate fit from the spline model associated with its starting lane to calculate relative coordinates $\{x^*_{i, t}, y^*_{i, t}\}$, where $y^*_{i, t}$ denotes the distance travelled along the road, and $x^*_{i, t}$ denotes the deviation from the lane centre line, with
 \begin{align}
 x^*_{i, t} &= \mbox{sign}\left(\tan^{-1}\left(\frac{g'(d_{i, t}) }{f'(d_{i, t})}\right) - \tan^{-1}\left(\frac{\hat{y}_{i, t} - y_{i, t}}{\hat{x}_{i, t} - x_{i, t}} \right)\right)\sqrt{(x_{i, t}-\hat{x}_{i, t})^2 + (y_{i, t} - \hat{y}_{i, t})^2)} \label{xRel} \\
 y^*_{i, t} &= d_{i, t}. \label{yRel}

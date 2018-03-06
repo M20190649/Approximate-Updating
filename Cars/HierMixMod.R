@@ -6,7 +6,6 @@ library(tidyverse)
 library(Rcpp)
 library(RcppArmadillo)
 library(GGally)
-
 setup {
 id <- readRDS('carsID.RDS')
 
@@ -93,6 +92,7 @@ for(i in 1:N){
 mixDraws <- mixtureMCMC(data, reps, draws, hyper, thin, K, 'gaussian', 0.01)
 
 saveRDS(mixDraws, 'mixN2000K6.RDS')
+mixDraws <- readRDS(file = 'mixN2000K6.RDS')
 
 mapGroup <- NULL
 for(i in 1:N){
@@ -190,18 +190,29 @@ for(k in 1:K){
 
 
 
-
 densities %>%
-  mutate(var = factor(var, levels = c('sigSq_eps', 'phi1', 'phi2',
-                                      'sigSq_eta', 'gamma1', 'gamma2'))) %>%
+  mutate(var = case_when(
+    var == 'sigSq_eps' ~ 'sigma[epsilon]^{2}',
+    var == 'phi1' ~ 'phi[1]',
+    var == 'phi2' ~ 'phi[2]',
+    var == 'sigSq_eta' ~ 'sigma[eta]^{2}',
+    var == 'gamma1' ~ 'gamma[1]',
+    var == 'gamma2' ~ 'gamma[2]',
+    TRUE ~ as.character(var)
+  ),
+  var = factor(var, levels = c('sigma[epsilon]^{2}', 'phi[1]', 'phi[2]',
+                                      'sigma[eta]^{2}', 'gamma[1]', 'gamma[2]'))) -> densities
+densities %>% 
   group_by(var, support) %>%
   summarise(dens = sum(dens)) -> densMixMod
 
   ggplot(densMixMod) + geom_line(aes(support, dens)) +
   geom_line(data=densities, aes(support, dens, colour = factor(group))) +
-  facet_wrap(~var, scales = 'free', ncol = 6) + 
-  labs(title = 'Hierarchical Model Prior', x = NULL, y = NULL) + 
-  theme(legend.position = 'none', axis.text.x = element_text(angle = 45, hjust = 1)) -> p1
+  facet_wrap(~var, scales = 'free', ncol = 6, labeller = label_parsed) + 
+  labs(x = NULL, y = NULL) + 
+  theme_bw() + 
+  theme(legend.position = 'none', axis.text.x = element_text(angle = 45, hjust = 1))  -> p1
+  
 
   means <- rep(0, 6*6)
   varinv <- matrix(0, 6*6, 6)
@@ -294,21 +305,23 @@ otherMCMCModels{
     as.data.frame() %>%
     cbind(iter = 1:(reps/thin)) %>%
     mutate(V1 = exp(V1), V2 = exp(V2)) %>%
-    rename(sigSq_eps = V1, sigSq_eta = V2, phi1 = V3, phi2 = V4, gamma1 = V5, gamma2 = V6) %>%
+    rename(`sigma[epsilon]^{2}` = V1, `sigma[eta]^{2}` = V2, `phi[1]` = V3, `phi[2]` = V4, `gamma[1]` = V5, `gamma[2]` = V6) %>%
     gather(var, draw, -iter) %>%
-    mutate(var = factor(var, levels = c('sigSq_eps', 'phi1', 'phi2', 'sigSq_eta', 'gamma1', 'gamma2'))) %>%
+    mutate(var = factor(var, levels = c('sigma[epsilon]^{2}', 'phi[1]', 'phi[2]',
+                                 'sigma[eta]^{2}', 'gamma[1]', 'gamma[2]'))) %>% 
     filter(iter > 100) %>%
-    ggplot() + geom_line(aes(iter, draw)) + facet_wrap(~var, scales = 'free')
+    ggplot() + geom_line(aes(iter, draw)) + facet_wrap(~var, scales = 'free', labeller = label_parsed)
   
   noHierDraws$draws %>%
     as.data.frame() %>%
     cbind(iter = 1:(reps/thin)) %>%
     mutate(V1 = exp(V1), V2 = exp(V2)) %>%
-    rename(sigSq_eps = V1, sigSq_eta = V2, phi1 = V3, phi2 = V4, gamma1 = V5, gamma2 = V6) %>%
+    rename(`sigma[epsilon]^{2}` = V1, `sigma[eta]^{2}` = V2, `phi[1]` = V3, `phi[2]` = V4, `gamma[1]` = V5, `gamma[2]` = V6) %>%
     gather(var, draw, -iter) %>%
-    mutate(var = factor(var, levels = c('sigSq_eps', 'phi1', 'phi2', 'sigSq_eta', 'gamma1', 'gamma2'))) %>%
+    mutate(var = factor(var, levels = c('sigma[epsilon]^{2}', 'phi[1]', 'phi[2]',
+                                        'sigma[eta]^{2}', 'gamma[1]', 'gamma[2]'))) %>% 
     filter(iter > 1000) %>%
-    ggplot() + geom_density(aes(draw)) + facet_wrap(~var, scales = 'free', ncol = 6) + 
+    ggplot() + geom_density(aes(draw)) + facet_wrap(~var, scales = 'free', ncol = 6, labeller = label_parsed) + 
     theme_bw() + 
     theme(axis.text.x = element_text(angle = 315, hjust = 0)) + 
     labs(x = NULL, y = NULL)
@@ -418,7 +431,7 @@ IndepMCMC{
   
 N <- 2000
 posMeans <- NULL
-vars <- c('sigSq_eps', 'sigSq_eta', 'phi1', 'phi2', 'gamma1', 'gamma2') 
+vars <- c('sigma[epsilon]^{2}', 'sigma[eta]^{2}', 'phi[1]', 'phi[2]', 'gamma[1]', 'gamma[2]') 
 for(i in 1:N){
   carsAug %>%
     filter(ID == id$idSubset[i]) %>%
@@ -441,24 +454,27 @@ for(i in 1:N){
     print(i)
   }
 }
+saveRDS(posMeans, 'posMeans.RDS')
 
 # Fill in densMixMod and p1 from the Hierarchical Model results above (crtl-f 'densMixMod')
 
 posMeans %>%
   mutate(var = as.character(var),
-         var = ifelse(var == 'log_sigSq_eps', 'sigSq_eps', 
-                      ifelse(var == 'log_sigSq_eta', 'sigSq_eta', var)),
-         var = factor(var, levels = c('sigSq_eps', 'phi1', 'phi2', 'sigSq_eta', 'gamma1', 'gamma2'))) %>%
-  filter((var == 'sigSq_eps' & mean > exp(-13) & mean < exp(-4.5)) |
-         (var == 'sigSq_eta' & mean > exp(-15) & mean < exp(-7.6)) | 
-         (var == 'phi1' & mean > -0.5 & mean < 2) |
-         (var == 'phi2' & mean > -1 & mean < 0.8) | 
-         (var == 'gamma1' & mean > 0 & mean < 2) | 
-         (var == 'gamma2' & mean > -1 & mean < 0.5)) %>%
+         #var = ifelse(var == 'log_sigSq_eps', 'sigSq_eps', 
+        #              ifelse(var == 'log_sigSq_eta', 'sigSq_eta', var)),
+         var = factor(var, levels = c('sigma[epsilon]^{2}', 'phi[1]', 'phi[2]',
+                                       'sigma[eta]^{2}', 'gamma[1]', 'gamma[2]'))) %>%
+  filter((var == 'sigma[epsilon]^{2}' & mean > exp(-13) & mean < exp(-4.5)) |
+         (var == 'sigma[eta]^{2}' & mean > exp(-15) & mean < exp(-7.6)) | 
+         (var == 'phi[1]' & mean > -0.5 & mean < 2) |
+         (var == 'phi[2]' & mean > -1 & mean < 0.8) | 
+         (var == 'gamma[1]' & mean > 0 & mean < 2) | 
+         (var == 'gamma[2]' & mean > -1 & mean < 0.5)) %>%
   ggplot() + geom_density(aes(mean)) + 
   geom_blank(data = densMixMod, aes(x = support)) + 
-  facet_wrap(~var, scales = 'free', ncol = 6) +
-  labs(title = 'Single Model Means (Kernel Density Estimate)', x = NULL, y = NULL) +
+  facet_wrap(~var, scales = 'free', ncol = 6, labeller = label_parsed) +
+  labs(x = NULL, y = NULL) +
+  theme_bw() + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1))-> p2
 
 gridExtra::grid.arrange(p2, p1, ncol = 1)
@@ -530,6 +546,24 @@ results %>%
 write.csv(results, 'results.csv', row.names = FALSE)
 results <- readr::read_csv('results.csv')
 
+# Average prediction Error
+
+results[results$h %in% c(10, 20, 30) &
+          !results$model %in% c('Single Hierarchy MCMC', 'Single Hierarchy VB-Standard', 'Single Hierarchy VB-Updating'), ] %>%
+  mutate(horizon = paste(h / 10, ifelse(h == 10, 'second', 'seconds'), 'ahead'),
+         model = sub('Non-Informative', 'IH', model),
+         model = sub('Finite Mixture', 'CH', model),
+         model = sub('VB-Standard', 'VB', model),
+         model = sub('VB-Updating', 'UVB', model),
+         model = factor(model, levels = c('Naive 1', 'Naive 2', 'Naive 3', 'Naive 4', 'Naive 5', 
+                                          'Naive 6', 'Naive 7', 'Naive 8', 'Naive 9', 'Homogenous MCMC', 
+                                          'IH MCMC', 'IH VB', 'IH UVB',
+                                          'CH MCMC', 'CH VB', 'CH UVB'))) %>%  
+  group_by(S, horizon, model) %>%
+  group_by(model, h) %>%
+  summarise(mean = mean(dist)) %>% 
+  spread(model, mean)
+
 # Plot updating vs standard logscores
 
 results[!is.na(results$logscore) & 
@@ -548,7 +582,7 @@ results[!is.na(results$logscore) &
   gather(Model, Difference, -S, -id) %>%
   ggplot() + geom_boxplot(aes(factor(S), Difference)) + 
   facet_wrap(~Model, ncol = 2) + 
-  labs(x = 'T (100 milliseconds)', y = 'Differences In Logscore (Updating Minus Standard)') + 
+  labs(x = 'T (100 milliseconds)', y = 'Difference In Logscore (UVB - VB)') + 
   theme_bw() +
   ylim(-0.5, 0.5) + 
   scale_x_discrete(labels = c('110-150', '160-200', '210-250', '260-300', '310-350', '360-400', '410-450'))
@@ -558,16 +592,19 @@ results[!is.na(results$logscore) &
 results[results$h %in% c(10, 20, 30) &
         !results$model %in% c('Single Hierarchy MCMC', 'Single Hierarchy VB-Standard', 'Single Hierarchy VB-Updating'), ] %>%
   mutate(horizon = paste(h / 10, ifelse(h == 10, 'second', 'seconds'), 'ahead'),
-         model = sub('Non-Informative', 'Independent', model),
-         model = sub('Finite Mixture', 'Hierarchy', model),
+         model = sub('Non-Informative', 'IH', model),
+         model = sub('Finite Mixture', 'CH', model),
+         model = sub('VB-Standard', 'VB', model),
+         model = sub('VB-Updating', 'UVB', model),
          model = factor(model, levels = c('Naive 1', 'Naive 2', 'Naive 3', 'Naive 4', 'Naive 5', 
                                           'Naive 6', 'Naive 7', 'Naive 8', 'Naive 9', 'Homogenous MCMC', 
-                                          'Independent MCMC', 'Independent VB-Standard', 'Independent VB-Updating',
-                                          'Hierarchy MCMC', 'Hierarchy VB-Standard', 'Hierarchy VB-Updating'))) %>%  
-  group_by(S, horizon, model) %>%
+                                          'IH MCMC', 'IH VB', 'IH UVB',
+                                          'CH MCMC', 'CH VB', 'CH UVB'))) %>%  
+  rename(Model = model) %>%
+  group_by(S, horizon, Model) %>%
   summarise(meanError = mean(dist)) %>%
   ungroup() %>%
-  ggplot() + geom_line(aes(x = S, y = meanError, colour = model)) + 
+  ggplot() + geom_line(aes(x = S, y = meanError, colour = Model)) + 
   facet_wrap(~horizon) + 
   labs(x = 'T', y = 'Mean Euclidean Error (metres)') + 
   theme_bw() +  
@@ -579,15 +616,18 @@ results[results$h %in% c(10, 20, 30) &
         results$model %in% c('Homogenous MCMC', 'Non-Informative MCMC', 'Non-Informative VB-Standard', 'Non-Informative VB-Updating',
                              'Finite Mixture MCMC', 'Finite Mixture VB-Standard', 'Finite Mixture VB-Updating'), ] %>%
   mutate(horizon = paste(h / 10, ifelse(h == 10, 'second', 'seconds'), 'ahead'),
-         model = sub('Non-Informative', 'Independent', model),
-         model = sub('Finite Mixture', 'Hierarchy', model),
+         model = sub('Non-Informative', 'IH', model),
+         model = sub('Finite Mixture', 'CH', model),
+         model = sub('VB-Standard', 'VB', model),
+         model = sub('VB-Updating', 'UVB', model),
          model = factor(model, levels = c('Homogenous MCMC', 
-                                          'Independent MCMC', 'Independent VB-Standard', 'Independent VB-Updating',
-                                          'Hierarchy MCMC', 'Hierarchy VB-Standard', 'Hierarchy VB-Updating'))) %>%  
-  group_by(S, horizon, model) %>%
+                                          'IH MCMC', 'IH VB', 'IH UVB',
+                                          'CH MCMC', 'CH VB', 'CH UVB'))) %>%  
+  rename(Model = model) %>%
+  group_by(S, horizon, Model) %>%
   summarise(meanError = mean(dist)) %>%
   ungroup() %>%
-  ggplot() + geom_line(aes(x = S, y = meanError, colour = model)) + 
+  ggplot() + geom_line(aes(x = S, y = meanError, colour = Model)) + 
   facet_wrap(~horizon) + 
   labs(x = 'T', y = 'Mean Euclidean Error (metres)') + 
   theme_bw() +  
@@ -663,10 +703,9 @@ results[!is.na(results$logscore) &
 hierarchyVarSplit %>%
   ggplot() + geom_line(aes(S, diff)) +
   geom_hline(aes(yintercept = 0), colour = 'red') + facet_grid(aVar ~ dVar) + 
-  labs(y = 'Median Difference in h = 30 Logscore (Hierarchical - Homogenous)', x = 'T (100 milliseconds)') + 
+  labs(y = 'Median Difference in h = 30 Logscore (CH - Homogenous)', x = 'T (100 milliseconds)') + 
   theme_bw() + 
   theme(legend.position = 'bottom')
-
 
 sigma %>%
   filter(method == 'MCMC' & prior == 'Non-Informative' & variable == 'a') %>%
