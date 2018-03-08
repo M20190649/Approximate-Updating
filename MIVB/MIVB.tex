@@ -169,20 +169,24 @@ x_0 &\sim \mathcal{N}(0, \sigma^2_x(1 - \phi^2)^{-1})
 \end{align}
 where $\mathcal{IG}(\mbox{shape}, \mbox{ scale})$ denotes the inverse of a Gamma (shape, rate) distribution. Conjugate priors are chosen for $\gamma, \sigma^2_y$ and $\sigma^2_x$, while the uniform prior for $\phi$ constrains $p(\phi | y_{1:T+S})$ to have zero probability mass outside of the AR(1) stationary region. $\sigma^2_y$ and $\sigma^2_x$ are log-transformed such that $\theta^* = \{\gamma, \phi, \ln(\sigma^2_y), \ln(\sigma^2_x), x_{0:T}\} \in \mathbb{R}^{T+5}$. $100$ data sets $y_{1:T+S}$ are simulated for each $T \in \{50, 100, 250, 500, 1000, 2000, 5000, 10000\}$, using true parameter values of $\gamma = 2, \phi = 0.95, \sigma^2_y = 1$ and $\sigma^2_x=1$, and hyperparameters $\bar{\gamma} = 0, \sigma^2_{\gamma} = 10, \alpha_y = 1, \beta_y = 1, \alpha_x = 1$ and $\beta_x = 1$. For each case MCMC and ADVI are applied with both a diagonal and non-diagonal covariance matrix for $q(\theta^* | \boldsymbol{\lambda})$; however the non-diagonal version is not used for $T \geq 1000$ as the number of covariance parameters is quadratic in $T$. MCMC approaches use a Gibbs sampler with $\max(5000, 10T)$ iterations, discarding the first half. The posterior means for $\boldsymbol{\theta}$ are plotted in Figure \ref{fig:DLM:ADVI}, which suggests that ADVI is inconsistent for $\phi, \sigma^2_x$ and $\sigma^2_y$. Section \ref{MIVB} advocates the opposite approach to ADVI, tailoring the functional form of $q$ to the specific problem.
 
+\iffalse
 \begin{figure}[h]
 \includegraphics[width=1\linewidth]{DLMAdvi}
 \caption{The MCMC and ADVI posterior means for each $\boldsymbol{\theta}$ parameter with $100$ data replications at each $T \in \{50, 100, 250, 500, 1000, 2000\}$. True values for each parameter is denoted by the red line. MCMC consistently estimates of the true value, while both ADVI algorithms are only consistent for the mean parameter $\gamma$.}
 \label{fig:DLM:ADVI}
 \end{figure}
+\fi
 
 A further $100 T = 500$ datasets are simulated with the previous parameter and hyperparameter values, and for each $\theta_i$ the ELBO is maximised for $q(\theta_i, | \boldsymbol{\lambda})$, holding each $\theta_{j \neq i}$ and $x_{0:T}$ fixed at their true values, and variance of $\theta_i$ set at the MCMC sample variance. $\lambda$ contains only the mean of $\theta_i$, so the ELBO is evaluated over a grid so the stochastic nature of the gradient ascent algorithm is not a confounding factor. The maximising value of the mean of $\theta_i$ is plotted in Figure \ref{fig:DLM:Numeric}. Holding $\sigma^2_x$ and $\sigma^2_y$ fixed at their true values improves the estimation of the mean of $\phi$, but neither $\sigma^2_y$ nor $\sigma^2_x$ improves. 
 
+\iffalse
 \begin{figure}[h]
 \centering
 \includegraphics{DLMNumeric}
 \caption{The ELBO maximising mean for each $\theta$ parameter, holding each other $\theta$ and $x_{0:T}$ fixed at their true values. Estimation of the mean of $\phi$ and $\sigma^2_x$ improves relative to Figure \ref{fig:DLM:ADVI} but the posterior mean of $\sigma^2_y$ is consistently over-estimated.}
 \label{fig:DLM:Numeric}
 \end{figure}
+\fi
 
 \section{MCMC Informed Variational Bayes}
 \label{MIVB}
@@ -206,6 +210,8 @@ where $p(\theta)$ is a pdf, $P(\theta)$ is a cdf, and $c(\cdot)$ is a copula. A 
 \item Each node in $T_t,  t = 2, \dots, k-1$ is labelled by the union of the nodes associated edge in $T_{t-1}$ connects to.
 \end{enumerate}
 Each edge corresponds to a bivariate copula between the two variables that are unique to each of the connected nodes, with a conditioning set containing all shared variables. The product of each of these $k(k-1)/2$ bivariate copulae forms the complete copula. Figure (\ref{fig:vinecop}) provides an example for a four dimensional $\theta$.
+
+\iffalse
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.4\linewidth,height=\textheight,keepaspectratio]{vines.png}
@@ -213,6 +219,7 @@ Each edge corresponds to a bivariate copula between the two variables that are u
 \caption{An example of a Vine Copula over four variables. The edges in the top tree represent unconditional bivariate copulae between the parameters on the connected nodes. The second tree edges represent the bivariate copulae for $\theta_1 \theta_3 | \theta_2$ and for $\theta_3 \theta_4 | \theta_2$, the conditioning on $\theta_2$ caused by its appearance in each connected node. The edge in the final tree represents the bivariate copula for $\theta_1, \theta_4 | \theta_2, \theta_3$, as both $\theta_2$ and $\theta_3$ appear in the connected nodes.}
 \label{fig:vinecop}
 \end{figure}
+\fi
 
 Denoting the number of elements in $\boldsymbol{\theta}$ by $k$, a vine copula for $q(\boldsymbol{\theta}, x_{0:T} | \boldsymbol{\lambda})$ contains $T+k$ trees, with a number of parameters included in $\boldsymbol{\lambda}$ that is $O(T+k)^2$. Constructing the vine so that the first $k$ trees do not contain copulae between any two elements of $x_t$ and the $k+1$'th tree contains copulae $c(x_t, x_{t+1} | \boldsymbol{\theta})$ will force trees $k+r$, with $r \geq 2$, to contain copulae $c(x_t, x_{t+r} | \boldsymbol{\theta}, x_{t+1:t+r-1})$. These can be set to the independence copula as the Markovian nature of the latent varables implies that $x_t$ and $x_{t+r}$ are conditionally independent given $\boldsymbol{\theta}$ and $x_{t+1:t+r-1}$, reducing the number of copula parameters to $O(Tk)$. For convenience the vine is further restricted so that, in each of the first $k$ trees, every $x_t$ has an edge to the same $\theta$ node with the same copula family. 
 

@@ -33,15 +33,16 @@ ya3 <- sqrt(0.15^2 - (xa3 - 1)^2) + 1
 ggplot() + geom_path(aes(x = c(1, 2, 2, 1), y = c(1, 1, 2, 1))) + 
   geom_point(aes(x = 1, y = 1), colour = 'red', size = 5) + 
   geom_point(aes(x = 2, y = 2), colour = 'blue', size = 5) + 
-  geom_text(aes(x = 0.8, y = 0.8, label = 'x[t-1]'), size = 10, parse = TRUE) + 
-  geom_text(aes(x = 0.9, y = 0.8, label = ','), size = 10) +
+  geom_text(aes(x = 0.85, y = 0.8, label = 'x[t-1]'), size = 10, parse = TRUE) + 
+  geom_text(aes(x = 0.93, y = 0.8, label = ','), size = 10) +
   geom_text(aes(x = 1.02, y = 0.8, label = 'y[t-1]'), size = 10, parse = TRUE) +
   geom_text(aes(x = 2.1, y = 2, label = 'x[t]'), size = 10, parse = TRUE) + 
   geom_text(aes(x = 2.15, y = 2, label = ','), size = 10) +
-  geom_text(aes(x = 2.25, y = 2, label = 'y[t]'), size = 10, parse = TRUE) +
+  geom_text(aes(x = 2.23, y = 2, label = 'y[t]'), size = 10, parse = TRUE) +
   geom_line(aes(xa3, ya3), linetype = 2) + 
   geom_text(aes(x = 1.18, y = 1.09, label = "delta[t]"), size = 10, parse = TRUE) +
   geom_text(aes(x = 1.4, y = 1.5, label = "v[t]"), size = 10, parse = TRUE) +
+  geom_text(aes(x = c(0.85, 1, 2.14, 2.26), y = c(0.84, 0.85, 2.05, 2.05), label = "*"), size = 10) + 
   ylim(0.75, 2.1) + xlim(0.6, 2.3) + 
   theme_bw() + 
   theme(axis.text = element_blank(),

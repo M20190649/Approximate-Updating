@@ -1,0 +1,484 @@
+\documentclass[8pt]{beamer}\usepackage[]{graphicx}\usepackage[]{color}
+%% maxwidth is the original width if it is less than linewidth
+%% otherwise use linewidth (to make sure the graphics do not exceed the margin)
+\makeatletter
+\def\maxwidth{ %
+  \ifdim\Gin@nat@width>\linewidth
+    \linewidth
+  \else
+    \Gin@nat@width
+  \fi
+}
+\makeatother
+
+\definecolor{fgcolor}{rgb}{0.345, 0.345, 0.345}
+\newcommand{\hlnum}[1]{\textcolor[rgb]{0.686,0.059,0.569}{#1}}%
+\newcommand{\hlstr}[1]{\textcolor[rgb]{0.192,0.494,0.8}{#1}}%
+\newcommand{\hlcom}[1]{\textcolor[rgb]{0.678,0.584,0.686}{\textit{#1}}}%
+\newcommand{\hlopt}[1]{\textcolor[rgb]{0,0,0}{#1}}%
+\newcommand{\hlstd}[1]{\textcolor[rgb]{0.345,0.345,0.345}{#1}}%
+\newcommand{\hlkwa}[1]{\textcolor[rgb]{0.161,0.373,0.58}{\textbf{#1}}}%
+\newcommand{\hlkwb}[1]{\textcolor[rgb]{0.69,0.353,0.396}{#1}}%
+\newcommand{\hlkwc}[1]{\textcolor[rgb]{0.333,0.667,0.333}{#1}}%
+\newcommand{\hlkwd}[1]{\textcolor[rgb]{0.737,0.353,0.396}{\textbf{#1}}}%
+
+\usepackage{framed}
+\makeatletter
+\newenvironment{kframe}{%
+ \def\at@end@of@kframe{}%
+ \ifinner\ifhmode%
+  \def\at@end@of@kframe{\end{minipage}}%
+  \begin{minipage}{\columnwidth}%
+ \fi\fi%
+ \def\FrameCommand##1{\hskip\@totalleftmargin \hskip-\fboxsep
+ \colorbox{shadecolor}{##1}\hskip-\fboxsep
+     % There is no \\@totalrightmargin, so:
+     \hskip-\linewidth \hskip-\@totalleftmargin \hskip\columnwidth}%
+ \MakeFramed {\advance\hsize-\width
+   \@totalleftmargin\z@ \linewidth\hsize
+   \@setminipage}}%
+ {\par\unskip\endMakeFramed%
+ \at@end@of@kframe}
+\makeatother
+
+\definecolor{shadecolor}{rgb}{.97, .97, .97}
+\definecolor{messagecolor}{rgb}{0, 0, 0}
+\definecolor{warningcolor}{rgb}{1, 0, 1}
+\definecolor{errorcolor}{rgb}{1, 0, 0}
+\newenvironment{knitrout}{}{} % an empty environment to be redefined in TeX
+
+\usepackage{alltt}
+
+\makeatletter
+\def\maxwidth{ %
+  \ifdim\Gin@nat@width>\linewidth
+    \linewidth
+  \else
+    \Gin@nat@width
+  \fi
+}
+\makeatother
+
+\definecolor{shadecolor}{rgb}{.97, .97, .97}
+\definecolor{messagecolor}{rgb}{0, 0, 0}
+\definecolor{warningcolor}{rgb}{1, 0, 1}
+\definecolor{errorcolor}{rgb}{1, 0, 0}
+
+\usepackage{alltt}
+\usepackage{natbib}
+\usepackage{array}
+\usepackage[font=small,skip=5pt]{caption}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{dsfont}
+\usepackage[]{algorithm2e}
+\usepackage{amsthm}
+\usepackage{amsfonts}
+\usepackage{url}
+\usepackage{ulem}
+\usepackage{afterpage}
+\usepackage{bbm}
+\usepackage{tikz}
+\usepackage{amssymb}
+\usepackage{bm}
+\setbeamertemplate{caption}[numbered]
+
+\usetheme{Warsaw}
+\defbeamertemplate*{footline}{shadow theme}
+{%
+  \leavevmode%
+  \hbox{\begin{beamercolorbox}[wd=.5\paperwidth,ht=2.5ex,dp=1.125ex,leftskip=.3cm plus1fil,rightskip=.3cm]{author in head/foot}%
+    \usebeamerfont{author in head/foot}\insertframenumber\,/\,\inserttotalframenumber\hfill\insertshortauthor
+  \end{beamercolorbox}%
+  \begin{beamercolorbox}[wd=.5\paperwidth,ht=2.5ex,dp=1.125ex,leftskip=.3cm,rightskip=.3cm plus1fil]{title in head/foot}%
+    \usebeamerfont{title in head/foot}\insertshorttitle%
+  \end{beamercolorbox}}%
+  \vskip0pt%
+}
+
+\setbeamertemplate{headline}{%
+\leavevmode%
+  \hbox{%
+    \begin{beamercolorbox}[wd=\paperwidth,ht=2.5ex,dp=1.125ex]{palette quaternary}%
+    \insertsectionnavigationhorizontal{\paperwidth}{\hskip0pt plus1filll}{\hskip0pt plus1filll}
+    \end{beamercolorbox}%
+  }
+}
+
+\newcounter{saveenumi}
+\newcommand{\seti}{\setcounter{saveenumi}{\value{enumi}}}
+\newcommand{\conti}{\setcounter{enumi}{\value{saveenumi}}}
+\resetcounteronoverlays{saveenumi}
+
+
+\title[Online Updating of Variational Bayes]{Online Updating of Variational Bayes for Heterogeneous Forecasts of Vehicle Trajectory}
+\author[Nathaniel Tomasetti]{Nathaniel Tomasetti}
+\date{ }
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\begin{document}
+
+\begin{frame}
+\titlepage
+\centering
+Supervised by Catherine Forbes and Anastasios Panagiotelis
+\end{frame}
+
+
+\begin{frame}
+\tableofcontents
+\end{frame}
+
+\begin{frame}
+\section{Framework}
+\frametitle{Thesis Framework}
+Focus: Two sets of data
+\begin{itemize}
+\item Stuff Here about the general themes
+\item Use of exact inference to improve VB
+\item Hierarchical models with exact inference
+\item Some new unit with time constrained inference
+\item Want to use MCMC info to improve VB
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}
+\section{Inference}
+\frametitle{Bayesian Inference}
+Note: reframe discussion with two sets of data from previous slide
+\begin{itemize}
+\item The posterior distribution for parameters $\theta$, $p(\theta | \textbf{z})$, can be inferred with Markov Chain Monte Carlo (MCMC). MCMC:
+\begin{enumerate}
+\item Allows 'exact' inference as the number of iterations increases
+\item Can be very slow
+\end{enumerate}
+\item We focus on settings where MCMC inference for the additional unit is too slow to be useful.
+\item Instead, Variational Bayes (VB) is used. VB:
+\begin{enumerate}
+\item Approximates the posterior with an analytical alternative $q_{\lambda}(\theta | \textbf{z})$.
+\item Chooses the distribution $q$ that minimises a divergence funciton
+\item Is typically much faster than MCMC.
+\end{enumerate}
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Kullback Leibler Divergence and Stochastic Optimisation}
+\begin{itemize}
+\item The typical divergence is the Kullback Leibler Divergence from $q$ to $p$.
+\end{itemize}
+\begin{equation}
+\label{KL-def}
+KL[q_{\lambda}(\theta | \textbf{z})\hspace{.1cm}||\hspace{.1cm}p(\theta | \textbf{z})] = E_{q_{\lambda}(\theta | \textbf{z})} \left[ \log(q_{\lambda}(\theta | \textbf{z})) - \log(p(\theta | \textbf{z})) \right],
+\end{equation}
+\begin{itemize}
+\item Monte-Carlo simulations are usually unavailable due to the $p(\theta | \textbf{z})$ term.
+\end{itemize}
+\begin{equation}
+\label{ELBO}
+\mathcal{L}(q, \lambda) = E_{q_{\lambda}(\theta | \textbf{z})} \left[\log(p(\theta, \textbf{z})) - \log(q_{\lambda}(\theta | \textbf{z}))\right],
+\end{equation}
+\begin{itemize}
+\item Stochastic Estimates are available through Monte-Carlo:
+\end{itemize}
+\begin{equation}
+\label{ELBO-MC}
+\mathcal{L}(q, \lambda) \approx \frac{1}{M} \sum_{j=1}^M \left(\log(p(\theta_{j}, \textbf{z})) - \log(q_{\lambda}(\theta_{j} | \textbf{z})) \right)
+\end{equation}
+where $\theta_{j} \sim q_{\lambda}(\theta | \textbf{z})$.
+\end{frame}
+
+\begin{frame}
+\frametitle{Gradient Estimators}
+\begin{itemize}
+\item For most $p$ and $q$ only Stochastic Gradient Ascent is available for optimisation. Repeatedly apply:
+\begin{equation}
+\label{gradientAscent}
+\lambda^{(m+1)} = \lambda^{(m)} + \rho^{(m)} \widehat{\frac{\delta\mathcal{L}(q, \lambda)}{\delta \lambda}} \bigg\rvert_{\lambda = \lambda^{(m)}}
+\end{equation}
+\item ELBO gradients can be estimated by the Score Estimator:
+\begin{equation}
+\label{scoreDeriv}
+\widehat{\frac{\delta\mathcal{L}(q, \lambda)}{\delta \lambda}}_{SC} = \sum_{j = 1}^M \frac{\delta \log(q_{\lambda}(\theta_{j, i} | \textbf{z}))}{\delta \lambda} \left(\log(p(\theta_{j, i}, \textbf{z})) - \log(q_{\lambda}(\theta_{j, i} | \textbf{z})) \right),
+\end{equation}
+where $\theta_j \sim q_{\lambda}(\theta | \epsilon)$.
+\item Or the Reparametersied Estimator, where $\theta = f(\epsilon, \lambda)$:
+\begin{equation}
+\label{rpDeriv}
+\widehat{\frac{\delta\mathcal{L}(q, \lambda)}{\delta \lambda}}_{RP} = \sum_{j = 1}^M \frac{\delta \theta}{\delta \lambda} \frac{\delta \log(p(\theta, \textbf{z}))}{\delta \theta} \bigg\rvert_{\theta = f(\lambda, \epsilon_j)} + \frac{\delta J(\lambda, \epsilon_j)}{\delta \lambda}, 
+\end{equation}
+where $\epsilon_j \sim q(\epsilon)$.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\section{Online Heterogenous Forecasting: Problem}
+\subsection{Motivation}
+\frametitle{Self-Driving Vehicles}
+\begin{itemize}
+\item Self-Driving Vehicles are a thing soon
+\item The navigation system has three steps
+\begin{enumerate}
+\item Detect surrounding traffic
+\item Forecast surrounding traffic
+\item Navigate through safely
+\end{enumerate}
+\item Forecasting has not had much work
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Aims of the first paper}
+\begin{itemize}
+\item What we plan on doing with this first paper
+\item Overall goals and stuff
+\item Motivate heterogeneity
+\item Note heterogeneity needs inference on vehicles as they are encountered
+\item There is not much time to do that
+\item Develop an approximation to the Bayesian Update Equation so we can infer parameters for new vehicles online
+\item Also mention something on density forecasting would be nice
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\subsection{Data}
+\frametitle{Next Generation Simulation}
+\begin{itemize}
+\item This is a dataset created for macro traffic modelling
+\item It records all of the cars all of the time
+\item The road is curved
+\item Before and After of road straightening project
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Forecasting in the framework}
+\begin{itemize}
+\item That is a terrible title.
+\item Split the data into two sets: train/test
+\item Cars observed beforehand, cars encountered while driving
+\end{itemize}
+\begin{figure}
+\centering
+\includegraphics[width = 0.95\textwidth]{problem}
+\end{figure}
+\end{frame}
+
+
+
+\begin{frame}
+\frametitle{Trigonometric Motion Equations}
+\begin{align}
+x^*_{i, t} &= x^*_{i, t-1} + v_{i, t} \cos(\delta_{i, t}) \label{xEq}, \\
+y^*_{i, t} &= y^*_{i, t-1} + v_{i, t} \sin(\delta_{i, t}) \label{yEq}.
+\end{align}
+Picture
+\end{frame}
+
+\begin{frame}
+\frametitle{Extracting Driver Inputs}
+\begin{align}
+\delta_{i, t} &= 
+     \begin{cases}
+       \tan^{-1}\left(\frac{(y^*_{i, t} - y^*_{i, t-1})}{(x^*_{i, t} - x^*_{i, t-1})} \right)  &\quad\text{if }x^*_{i, t} \neq x^*_{i, t-1} \\
+       \frac{\pi}{2} &\quad\text{if } y^*_{i, t} > y^*_{i, t-1} \mbox{ and } x^*_{i, t} = x^*_{i, t-1} \\
+       -\frac{\pi}{2} &\quad\text{if } y^*_{i, t} < y^*_{i, t-1} \mbox{ and } x^*_{i, t} = x^*_{i, t-1} \\
+       \delta_{i, t-1} &\quad\text{otherwise,} \\ 
+     \end{cases} \label{dEq} \\
+v_{i, t} &= \sqrt{(x^*_{i, t} - x^*_{i, t-1})^2 + (y^*_{i, t} - y^*_{i, t-1})^2} \label{vEq}.
+\end{align}
+\begin{equation}
+\label{aEq}
+a_{i, t} = v_{i, t} - v_{i, t-1}. 
+\end{equation}
+\begin{itemize}
+\item Why other variables are useful
+\item Acceleration is good because relative velocity / non-stationarity
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\subsection{Modelling}
+\frametitle{Auto-regressive Models for Trajectory Forecasting}
+\begin{itemize}
+\item Evidence of dynamics behaviour
+\item Modelling approachs / relationship to test train set
+\item Motivate the use of the three different models
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{A Homogeneous Approach}
+Talk about what is going on here
+\begin{align}
+a_{i, t} &= \sum_{j = 1}^p \phi_{j} a_{i, t-j} + \sigma_{\epsilon} \epsilon_{i, t} \label{aAR} \\
+\delta_{i, t} &= \pi/2 + \sum_{j = 1}^q \gamma_{j} (\delta_{i, t-j} - \pi/2) + \sigma_{\eta} \eta_{i, t} \label{dAR}
+\end{align}
+\begin{equation*}
+\label{thetaVec}
+\theta = \{\phi_{1}, \dots, \phi_{p}, \gamma_{1}, \dots, \gamma_{q}, \log(\sigma^{2}_{\epsilon}), \log(\sigma^{2}_{\eta})\}.
+\end{equation*}
+\begin{equation}
+\label{indPrior}
+\theta \sim \mathcal{N}\left(\mu, \Sigma \right)
+\end{equation}
+\begin{itemize}
+\item The Posterior
+\item Why are we doing this
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{The Independent Heterogeneity Model}
+Maybe different drivers behave differently?
+\begin{align}
+a_{i, t} &= \sum_{j = 1}^p \phi_{i, j} a_{i, t-j} + \sigma_{\epsilon, i} \epsilon_{i, t} \label{aAR2} \\
+\delta_{i, t} &= \pi/2 + \sum_{j = 1}^q \gamma_{i, j} (\delta_{i, t-j} - \pi/2) + \sigma_{\eta, i} \eta_{i, t}. \label{dAR2}
+\end{align}
+This breaks down into a bunch of independent posteriors
+\begin{equation}
+p(\theta_{1:N} \mid z_{1:N}) = \prod_{i=1}^N p(\theta_{i} \mid z_{i}),
+\end{equation}
+The training set isn't terribly useful.
+\begin{equation}
+p(\theta_{i}| \textbf{z}_{1:N}, z_{i,1:T}, \theta_{1:N}) = p(\theta_{i} | z_{i, 1:T}) \propto p(z_{i, 1:T} | \theta_i) p(\theta_i).
+\label{indepNewCar}
+\end{equation}
+\end{frame}
+
+\begin{frame}
+\frametitle{The Clustered Heterogeneity Model}
+Hierarchical Models share information 
+\begin{itemize}
+\item Introduce Auxiliary Variable K
+\item Sharing of the information
+\end{itemize}
+\begin{equation}
+\label{mixPrior}
+\theta_i | k_i = j \sim N(\mu_j, \Sigma_j),
+\end{equation}
+and
+\begin{equation}
+k_i \mid \beta \sim \mbox{Multinomial}\left(\pi_1, \dots, \pi_{K}\right)
+\end{equation}
+\begin{align}
+\mu_j &\sim \mathcal{N}\left(\bar{\mu}_j, \Omega_j\right), \\
+\Sigma_j &\sim \mbox{Inverse Wishart}\left(\mbox{Degrees of Freedom } \tau_j, \mbox{Scale } \Psi_j\right), \\
+\boldsymbol{\pi} &\sim \mbox{Dirichlet}\left(\alpha_1 = \alpha_2 = \dots = \alpha_K\right).
+\end{align}
+\end{frame}
+
+\begin{frame}
+\frametitle{The Clustered Heterogeneity Model}
+The new vehicle depends on the old vehicles through $\beta$.
+\begin{equation}
+\label{hierNewCar}
+p(\theta_{i} | \textbf{z}_{1:N}, z_{i, 1:T}) \propto p(z_{i, 1:T} | \theta_{i}) \int_{\beta} p(\theta_{i} | \beta) p (\beta | \textbf{z}_{1:N}) d\beta.
+\end{equation}
+The $\beta$ posterior is precise for large $N$
+\begin{equation}
+\label{hierNewCar2}
+p(\theta_{i} | \textbf{z}_{1:N}, z_{i, 1:T}) \propto p(z_{i, 1:T} | \theta_{i}) p(\theta_{i} | \hat{\beta}).
+\end{equation}
+\end{frame}
+
+\begin{frame}
+\begin{itemize}
+\item That picture showing the IH / CH fits
+\item Evidence of heterogeneity and the suitability of the mixture model
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\section{Updating Variational Bayes}
+\frametitle{Updating Variational Bayes}
+\begin{itemize}
+\item Motivation
+\begin{figure}[ht]
+\centering
+\includegraphics[width = 0.95\textwidth]{timeUpdate}
+\end{figure}
+\item Notation: $q_{\lambda_S}(\theta_{i} | z_{i, 1:S})$ and $q_{\lambda_T}(\theta_{i} | z_{i, 1:T})$
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Approximating Bayesian Updating}
+\begin{equation}
+\label{updatePost}
+p(\theta_{i} | z_{i, 1:T}) \propto p(z_{i, S+1:T} | \theta_{i})p(\theta_{i} | z_{i, 1:S})
+\end{equation}
+\begin{itemize}
+\item This only works if the right hand side can be evaluated
+\item VB Gradient Estimators requires the joint distribution
+\begin{equation}
+\label{updateJoint}
+p(\theta_{i}, z_{i, 1:T}) = p(z_{i, S+1:T} | \theta_{i})p(\theta_{i} | z_{i, 1:S})
+\end{equation}
+\item We will replace it with this
+\begin{equation}
+\label{ApproxJoint}
+\hat{p}(\theta_{i},  z_{i, 1:T}) = p(z_{i, S+1:T} | \theta_{i})q_{\lambda_S}(\theta_{i} | z_{i, 1:S}).
+\end{equation}
+\item Sources of error: How close $q$ is to $p$
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Updating Gradient Estimators}
+The updating score estimator:
+\begin{align}
+\widehat{\frac{\delta\mathcal{L}(q, \lambda_T)}{\delta \lambda_T}}_{USC} &= \sum_{j = 1}^M \frac{\delta \log(q_{\lambda_T}(\theta_{i, j} | z_{i, 1:T}))}{\delta \lambda_T} \nonumber \\
+&\times \left(\log(q_{\lambda_S}(\theta_{i, j} | z_{i, 1:S}) - \log(q_{\lambda_T}(\theta_{i, j} | z_{i, 1:T})) \right) \label{scoreUpdate}
+\end{align}
+where $\theta_{i, j} \sim q(\theta_{i} | z_{i, 1:T})$. 
+The updating reparameterised estimator:
+\begin{equation}
+\label{rpUpdate}
+\widehat{\frac{\delta\mathcal{L}(q, \lambda_T)}{\delta \lambda_T}}_{URP} = \sum_{j = 1}^M \frac{\delta f(\lambda_T, \epsilon_j)}{\delta \lambda_T} \frac{\delta \log(q_{\lambda_S}(\theta_{i} |z_{i, 1:S}))}{\delta \theta_{i}} \bigg\rvert_{\theta_{i} = f(\lambda_T, \epsilon_j)} + \frac{\delta J(\lambda_T, \epsilon_j)}{\delta \lambda_T},
+\end{equation}
+where $\epsilon_j \sim q(\epsilon)$.
+\end{frame}
+
+\begin{frame}
+\section{Online Heterogeneous Forecasting: Results}
+\frametitle{Point Forecasts}
+\begin{itemize}
+\item Introduce Naive / RNN models?
+\item Some stuff about point forecasts: Both pictures?
+\item Note that, on average, the homogenous model is as good as others
+\item Some stuff about different inference frameworks
+\item MAPs are not the whole story
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Heterogeneous Variance Distributions}
+\begin{itemize}
+\item Some stuff about variance
+\item A note on erratic driver detection
+\item Two different pictures to go in here
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Updating Variational Bayes Results}
+\begin{itemize}
+\item Compare to regular VB
+\item Time Complexity
+\item Difference in logscores
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\section{Extensions}
+\frametitle{Extending the Framework}
+\begin{itemize}
+\item Copula Project
+\item Other Applications
+\end{itemize}
+\end{frame}
+
+\end{document}
