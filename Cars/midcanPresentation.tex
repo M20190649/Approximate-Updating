@@ -134,12 +134,15 @@ Supervised by Catherine Forbes and Anastasios Panagiotelis
 \subsection{Motivation}
 \frametitle{Motivation}
 \begin{itemize}
+\item We aim to build a framework to provide density forecasts for new units in a heirarchy as they are observed.
+\pause
 \item Bayesian Inference in Forecasting:
 \begin{enumerate}
-\item Provides forecast densities for the variable of interest.
-\item Encorporates parameter uncertainty.
+\item Provides density forecasts for the variable of interest.
+\item Provides a mechanism to update posterior distributions
 \item Is easy to extend to hierarchical models.
 \end{enumerate}
+\pause
 \vspace{3mm}
 \item Bayesian Inference is only as good as its compuation:
 \begin{enumerate}
@@ -158,7 +161,9 @@ Supervised by Catherine Forbes and Anastasios Panagiotelis
 \item Inference conditioned on additional units in a short time-frame is desired.
 \end{enumerate}
 \vspace{3mm}
-\item We aim to infer, and forecast, additional units in an online setting.
+\pause
+\item We aim to infer, and forecast, additional units in an online data setting.
+\pause
 \item We want to leverage the existing information to improve the forecasts.
 \end{itemize}
 \end{frame}
@@ -173,6 +178,7 @@ Supervised by Catherine Forbes and Anastasios Panagiotelis
 \item The prior: $p(\theta_i | \beta)$ where $\beta$ is shared across all $i$,
 \item The hyper-prior: $p(\beta)$ is fixed.
 \end{enumerate}
+\pause
 \vspace{5mm}
 \item For $i = 1, 2, \dots, N$, we assume that the posterior distribution $$p(\beta, \theta_1, \dots, \theta_N | z_1, \dots, z_N)$$ is available.
 \end{itemize}
@@ -182,7 +188,8 @@ Supervised by Catherine Forbes and Anastasios Panagiotelis
 \frametitle{Hierarchical Models}
 \begin{itemize}
 \item What about $i = N+1$? Using $\textbf{z}_{1:j} = \{z_i | i = 1, \dots, j\}$, $$p(\theta_{N+1} |\textbf{z}_{1:N+1}) \propto p(z_{N+1} | \theta_{N+1})\int_{\beta}p(\theta_{N+1} | \beta)p(\beta | \textbf{z}_{1:N})d\beta.$$
-\item If there is a time constraint, we might use VB and approximate $$q_{\lambda}(\theta_{N+1} | \textbf{z}_{1:N+1}) \approx p(\theta_{N+1} |\textbf{z}_{1:N+1})$$
+\pause
+\item If there is a time constraint, we might use VB with the approximation $$q_{\lambda}(\theta_{N+1} | \textbf{z}_{1:N+1}) \approx p(\theta_{N+1} |\textbf{z}_{1:N+1})$$
 \item choosing $$\lambda_{VB} = \arg \underset{\lambda}{\min}\mbox{ }D(p, q).$$
 \end{itemize}
 \end{frame}
@@ -192,11 +199,12 @@ Supervised by Catherine Forbes and Anastasios Panagiotelis
 \frametitle{Variational Bayes and the Kullback-Leibler Divergence}
 \begin{itemize}
 \item A common divergence function is the Kullback Leibler Divergence from $q$ to $p$,
-\begin{align}
+\begin{align*}
 \label{KL-def}
-KL[q_{\lambda}(\theta_{N+1} &| \textbf{z}_{1:N+1})\hspace{.1cm}||\hspace{.1cm}p(\theta_{N+1} | \textbf{z}_{1:N+1})] = \nonumber \\
+KL[q_{\lambda}(\theta_{N+1} &| \textbf{z}_{1:N+1})\hspace{.1cm}||\hspace{.1cm}p(\theta_{N+1} | \textbf{z}_{1:N+1})] = \\
 &E_q \left[ \log(q_{\lambda}(\theta_{N+1} | \textbf{z}_{1:N+1})) - \log(p(\theta_{N+1} | \textbf{z}_{1:N+1})) \right],
-\end{align}
+\end{align*}
+\pause
 \item The expectation is intractable for most $p$ and $q$.
 \item It typically cannot be estimated with Monte-Carlo simulations.
 \end{itemize}
@@ -205,12 +213,10 @@ KL[q_{\lambda}(\theta_{N+1} &| \textbf{z}_{1:N+1})\hspace{.1cm}||\hspace{.1cm}p(
 \begin{frame}
 \frametitle{The Evidence Lower Bound}
 \begin{itemize}
-\item Instead look at the Evidence Lower Bound (ELBO), 
-\begin{equation}
-\label{ELBO}
-\mathcal{L}(q, \lambda) = E_{q} \left[\log(p(\theta_{N+1}, \textbf{z}_{1:N+1})) - \log(q_{\lambda}(\theta | \textbf{z}_{1:N+1}))\right],
-\end{equation}
-\item Stochastic Estimates are available through Monte-Carlo: $$\mathcal{L}(q, \lambda) \approx \frac{1}{M} \sum_{j=1}^M \left(\log(p(\theta_{j, N+1}, \textbf{z}_{1:N+1})) - \log(q_{\lambda}(\theta_{j, N+1} | \textbf{z}_{1:N+1})) \right)$$ where $\theta_{j, N+1} \sim q_{\lambda}(\theta_{N+1} | \textbf{z}_{1:N+1})$.
+\item Instead look at the Evidence Lower Bound (ELBO), $$\mathcal{L}(q, \lambda) = E_{q} \left[\log(p(\theta_{N+1}, \textbf{z}_{1:N+1})) - \log(q_{\lambda}(\theta | \textbf{z}_{1:N+1}))\right],$$
+\pause
+\item Stochastic Estimates are available through Monte-Carlo: $$\mathcal{L}(q, \lambda) \approx \frac{1}{M} \sum_{j=1}^M \left(\log(p(\theta_{N+1}^{(j)}, \textbf{z}_{1:N+1})) - \log(q_{\lambda}(\theta_{N+1}^{(j)} | \textbf{z}_{1:N+1})) \right)$$ where $\theta_{N+1}^{(j)} \sim q_{\lambda}(\theta_{N+1} | \textbf{z}_{1:N+1})$.
+\pause
 \item Maximising the ELBO is equivalent to minimising the Kullback-Leibler Divergence.
 \end{itemize}
 \end{frame}
@@ -228,7 +234,7 @@ KL[q_{\lambda}(\theta_{N+1} &| \textbf{z}_{1:N+1})\hspace{.1cm}||\hspace{.1cm}p(
 \end{itemize}
 \begin{figure}
 \centering
-\includegraphics[width = 0.5\textwidth]{gradientascent}
+\includegraphics[width = 0.4\textwidth]{gradientascent}
 \end{figure}
 \end{frame}
 
@@ -236,17 +242,23 @@ KL[q_{\lambda}(\theta_{N+1} &| \textbf{z}_{1:N+1})\hspace{.1cm}||\hspace{.1cm}p(
 \frametitle{Stochastic Optimisation}
 \begin{itemize}
 \item ELBO gradients can be estimated by the Score Estimator:
-\begin{equation}
-\label{scoreDeriv}
-\widehat{\frac{\delta\mathcal{L}(q, \lambda)}{\delta \lambda}}_{SC} = \sum_{j = 1}^M \frac{\delta \log(q_{\lambda}(\theta_{j, i} | \textbf{z}))}{\delta \lambda} \left(\log(p(\theta_{j, i}, \textbf{z})) - \log(q_{\lambda}(\theta_{j, i} | \textbf{z})) \right),
-\end{equation}
-where $\theta_j \sim q_{\lambda}(\theta | \epsilon)$.
-\item Or the Reparametersied Estimator, where $\theta = f(\epsilon, \lambda)$:
-\begin{equation}
-\label{rpDeriv}
-\widehat{\frac{\delta\mathcal{L}(q, \lambda)}{\delta \lambda}}_{RP} = \sum_{j = 1}^M \frac{\delta \theta}{\delta \lambda} \frac{\delta \log(p(\theta, \textbf{z}))}{\delta \theta} \bigg\rvert_{\theta = f(\lambda, \epsilon_j)} + \frac{\delta J(\lambda, \epsilon_j)}{\delta \lambda}, 
-\end{equation}
-where $\epsilon_j \sim q(\epsilon)$.
+\begin{align*}
+\widehat{\frac{\delta\mathcal{L}(q, \lambda)}{\delta \lambda}}_{SC} &= \sum_{j = 1}^M \frac{\delta \log(q_{\lambda}(\theta_{N+1}^{(j)} | \textbf{z}_{1:N+1}))}{\delta \lambda}  \\
+&\times \left(\log(p(\theta_{N+1}^{(j)}, \textbf{z}_{1:N+1})) - \log(q_{\lambda}(\theta_{N+1}^{(j)} | \textbf{z}_{1:N+1})) \right),
+\end{align*}
+where $\theta_{N+1}^{(j)} \sim q_{\lambda}(\theta_{N+1} | \textbf{z}_{1:N+1})$.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Stochastic Optimisation}
+\begin{itemize}
+\item Or the Reparameterised Estimator, where $\theta_{N+1} = f(\epsilon, \lambda)$:
+\begin{align*}
+\widehat{\frac{\delta\mathcal{L}(q, \lambda)}{\delta \lambda}}_{RP} &= \sum_{j = 1}^M \frac{\delta J(\lambda, \epsilon^{(j)})}{\delta \lambda} + \frac{\delta \theta_{N+1}}{\delta \lambda} \\
+\times \frac{\delta \log(p(\theta_{N+1}, \textbf{z}_{1:N+1}))}{\delta \theta_{N+1}} \bigg\rvert_{\theta_{N+1} = f(\lambda, \epsilon^{(j)})},
+\end{align*}
+where $\epsilon^{(j)} \sim q(\epsilon)$.
 \end{itemize}
 \end{frame}
 
@@ -486,17 +498,23 @@ p(\theta_{i}, z_{i, 1:T}) = p(z_{i, S+1:T} | \theta_{i})p(\theta_{i} | z_{i, 1:S
 \frametitle{Updating Gradient Estimators}
 \begin{itemize}
 \item The updating score estimator:
-\begin{align}
-\widehat{\frac{\delta\mathcal{L}(q, \lambda_T)}{\delta \lambda_T}}_{USC} &= \sum_{j = 1}^M \frac{\delta \log(q_{\lambda_T}(\theta_{i, j} | z_{i, 1:T}))}{\delta \lambda_T} \nonumber \\
-&\times \left(\log(q_{\lambda_S}(\theta_{i, j} | z_{i, 1:S}) - \log(q_{\lambda_T}(\theta_{i, j} | z_{i, 1:T})) \right) \label{scoreUpdate}
-\end{align}
-where $\theta_{i, j} \sim q(\theta_{i} | z_{i, 1:T})$. 
+\begin{align*}
+\widehat{\frac{\delta\mathcal{L}(q, \lambda_T)}{\delta \lambda_T}}_{USC} &= \sum_{j = 1}^M \frac{\delta \log(q_{\lambda_T}(\theta_{N+1}^{(j)} | z_{N+1, 1:T}))}{\delta \lambda_T}  \\
+&\times \left(\log(q_{\lambda_S}(\theta_{N+1}^{(j)} | z_{N+1, 1:S}) - \log(q_{\lambda_T}(\theta_{N+1}^{(j)} | z_{N+1, 1:T})) \right)
+\end{align*}
+where $\theta_{N+1}^{(j)} \sim q(\theta_{N+1} | z_{N+1, 1:T})$. 
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Updating Gradient Estimators}
+\begin{itemize}
 \item The updating reparameterised estimator:
-\begin{equation}
-\label{rpUpdate}
-\widehat{\frac{\delta\mathcal{L}(q, \lambda_T)}{\delta \lambda_T}}_{URP} = \sum_{j = 1}^M \frac{\delta f(\lambda_T, \epsilon_j)}{\delta \lambda_T} \frac{\delta \log(q_{\lambda_S}(\theta_{i} |z_{i, 1:S}))}{\delta \theta_{i}} \bigg\rvert_{\theta_{i} = f(\lambda_T, \epsilon_j)} + \frac{\delta J(\lambda_T, \epsilon_j)}{\delta \lambda_T},
-\end{equation}
-where $\epsilon_j \sim q(\epsilon)$.
+\begin{align*}
+\widehat{\frac{\delta\mathcal{L}(q, \lambda_T)}{\delta \lambda_T}}_{URP} &= \sum_{j = 1}^M \frac{\delta J(\lambda_T, \epsilon^{(j)})}{\delta \lambda_T} + \frac{\delta f(\lambda_T, \epsilon^{(j)})}{\delta \lambda_T} \\
+&\times \frac{\delta \log(q_{\lambda_S}(\theta_{N+1} |z_{N+1, 1:S}))}{\delta \theta_{N+1}} \bigg\rvert_{\theta_{N+1} = f(\lambda_T, \epsilon^{(j)}} 
+\end{align*}
+where $\epsilon^{(j)} \sim q(\epsilon)$.
 \end{itemize}
 \end{frame}
 
