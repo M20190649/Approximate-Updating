@@ -1,4 +1,4 @@
-\documentclass[8pt]{beamer}\usepackage[]{graphicx}\usepackage[]{color}
+\documentclass[11pt]{beamer}\usepackage[]{graphicx}\usepackage[]{color}
 %% maxwidth is the original width if it is less than linewidth
 %% otherwise use linewidth (to make sure the graphics do not exceed the margin)
 \makeatletter
@@ -130,74 +130,111 @@ Supervised by Catherine Forbes and Anastasios Panagiotelis
 \end{frame}
 
 \begin{frame}
-\section{Framework}
-\frametitle{Thesis Framework}
-Focus: Two sets of data
+\section{Background}
+\subsection{Motivation}
+\frametitle{Motivation}
 \begin{itemize}
-\item Stuff Here about the general themes
-\item Use of exact inference to improve VB
-\item Hierarchical models with exact inference
-\item Some new unit with time constrained inference
-\item Want to use MCMC info to improve VB
-\end{itemize}
-\end{frame}
-
-
-\begin{frame}
-\section{Inference}
-\frametitle{Bayesian Inference}
-Note: reframe discussion with two sets of data from previous slide
-\begin{itemize}
-\item The posterior distribution for parameters $\theta$, $p(\theta | \textbf{z})$, can be inferred with Markov Chain Monte Carlo (MCMC). MCMC:
+\item Bayesian Inference in Forecasting:
 \begin{enumerate}
-\item Allows 'exact' inference as the number of iterations increases
-\item Can be very slow
+\item Provides forecast densities for the variable of interest.
+\item Encorporates parameter uncertainty.
+\item Is easy to extend to hierarchical models.
 \end{enumerate}
-\item We focus on settings where MCMC inference for the additional unit is too slow to be useful.
-\item Instead, Variational Bayes (VB) is used. VB:
+\vspace{3mm}
+\item Bayesian Inference is only as good as its compuation:
 \begin{enumerate}
-\item Approximates the posterior with an analytical alternative $q_{\lambda}(\theta | \textbf{z})$.
-\item Chooses the distribution $q$ that minimises a divergence funciton
-\item Is typically much faster than MCMC.
+\item Computation based on Markov Chain Monte Carlo (MCMC) is 'exact', but slow.
+\item Computation based on Variational Bayes (VB) is fast, but approximate.
 \end{enumerate}
 \end{itemize}
 \end{frame}
 
+\begin{frame}
+\frametitle{Motivation}
+\begin{itemize}
+\item We focus on Hierarchical Models where:
+\begin{enumerate}
+\item Inference conditioned on existing units in the hierarchy is available.
+\item Inference conditioned on additional units in a short time-frame is desired.
+\end{enumerate}
+\vspace{3mm}
+\item We aim to infer, and forecast, additional units in an online setting.
+\item We want to leverage the existing information to improve the forecasts.
+\end{itemize}
+\end{frame}
 
 \begin{frame}
-\frametitle{Kullback Leibler Divergence and Stochastic Optimisation}
+\subsection{Hierarchical Models}
+\frametitle{Hierarchical Models}
 \begin{itemize}
-\item The typical divergence is the Kullback Leibler Divergence from $q$ to $p$.
+\item Hierarchical Models are structured into three levels:
+\begin{enumerate}
+\item The likelihood: $p(z_i | \theta_i)$ for each unit $i$ in the model,
+\item The prior: $p(\theta_i | \beta)$ where $\beta$ is shared across all $i$,
+\item The hyper-prior: $p(\beta)$ is fixed.
+\end{enumerate}
+\vspace{5mm}
+\item For $i = 1, 2, \dots, N$, we assume that the posterior distribution $$p(\beta, \theta_1, \dots, \theta_N | z_1, \dots, z_N)$$ is available.
 \end{itemize}
-\begin{equation}
+\end{frame}
+
+\begin{frame}
+\frametitle{Hierarchical Models}
+\begin{itemize}
+\item What about $i = N+1$? Using $\textbf{z}_{1:j} = \{z_i | i = 1, \dots, j\}$, $$p(\theta_{N+1} |\textbf{z}_{1:N+1}) \propto p(z_{N+1} | \theta_{N+1})\int_{\beta}p(\theta_{N+1} | \beta)p(\beta | \textbf{z}_{1:N})d\beta.$$
+\item If there is a time constraint, we might use VB and approximate $$q_{\lambda}(\theta_{N+1} | \textbf{z}_{1:N+1}) \approx p(\theta_{N+1} |\textbf{z}_{1:N+1})$$
+\item choosing $$\lambda_{VB} = \arg \underset{\lambda}{\min}\mbox{ }D(p, q).$$
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\subsection{Variational Bayes}
+\frametitle{Variational Bayes and the Kullback-Leibler Divergence}
+\begin{itemize}
+\item A common divergence function is the Kullback Leibler Divergence from $q$ to $p$,
+\begin{align}
 \label{KL-def}
-KL[q_{\lambda}(\theta | \textbf{z})\hspace{.1cm}||\hspace{.1cm}p(\theta | \textbf{z})] = E_{q_{\lambda}(\theta | \textbf{z})} \left[ \log(q_{\lambda}(\theta | \textbf{z})) - \log(p(\theta | \textbf{z})) \right],
-\end{equation}
-\begin{itemize}
-\item Monte-Carlo simulations are usually unavailable due to the $p(\theta | \textbf{z})$ term.
+KL[q_{\lambda}(\theta_{N+1} &| \textbf{z}_{1:N+1})\hspace{.1cm}||\hspace{.1cm}p(\theta_{N+1} | \textbf{z}_{1:N+1})] = \nonumber \\
+&E_q \left[ \log(q_{\lambda}(\theta_{N+1} | \textbf{z}_{1:N+1})) - \log(p(\theta_{N+1} | \textbf{z}_{1:N+1})) \right],
+\end{align}
+\item The expectation is intractable for most $p$ and $q$.
+\item It typically cannot be estimated with Monte-Carlo simulations.
 \end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{The Evidence Lower Bound}
+\begin{itemize}
+\item Instead look at the Evidence Lower Bound (ELBO), 
 \begin{equation}
 \label{ELBO}
-\mathcal{L}(q, \lambda) = E_{q_{\lambda}(\theta | \textbf{z})} \left[\log(p(\theta, \textbf{z})) - \log(q_{\lambda}(\theta | \textbf{z}))\right],
+\mathcal{L}(q, \lambda) = E_{q} \left[\log(p(\theta_{N+1}, \textbf{z}_{1:N+1})) - \log(q_{\lambda}(\theta | \textbf{z}_{1:N+1}))\right],
 \end{equation}
-\begin{itemize}
-\item Stochastic Estimates are available through Monte-Carlo:
+\item Stochastic Estimates are available through Monte-Carlo: $$\mathcal{L}(q, \lambda) \approx \frac{1}{M} \sum_{j=1}^M \left(\log(p(\theta_{j, N+1}, \textbf{z}_{1:N+1})) - \log(q_{\lambda}(\theta_{j, N+1} | \textbf{z}_{1:N+1})) \right)$$ where $\theta_{j, N+1} \sim q_{\lambda}(\theta_{N+1} | \textbf{z}_{1:N+1})$.
+\item Maximising the ELBO is equivalent to minimising the Kullback-Leibler Divergence.
 \end{itemize}
-\begin{equation}
-\label{ELBO-MC}
-\mathcal{L}(q, \lambda) \approx \frac{1}{M} \sum_{j=1}^M \left(\log(p(\theta_{j}, \textbf{z})) - \log(q_{\lambda}(\theta_{j} | \textbf{z})) \right)
-\end{equation}
-where $\theta_{j} \sim q_{\lambda}(\theta | \textbf{z})$.
 \end{frame}
 
 \begin{frame}
-\frametitle{Gradient Estimators}
+\frametitle{Stochastic Optimisation}
 \begin{itemize}
-\item For most $p$ and $q$ only Stochastic Gradient Ascent is available for optimisation. Repeatedly apply:
+\item For an exponential family $p$ and factorisable $q$ Mean Field Variational Bayes provides a fast method to the ELBO. 
+\item We do not restrict $p$ and $q$ this way and instead use Stochastic Gradient Ascent.
+\item Repeat until $| \mathcal{L}(q, \lambda^{(m)}) - \mathcal{L}(q, \lambda{(m+1)})| < \nu$:
 \begin{equation}
 \label{gradientAscent}
 \lambda^{(m+1)} = \lambda^{(m)} + \rho^{(m)} \widehat{\frac{\delta\mathcal{L}(q, \lambda)}{\delta \lambda}} \bigg\rvert_{\lambda = \lambda^{(m)}}
 \end{equation}
+\end{itemize}
+\begin{figure}
+\centering
+\includegraphics[width = 0.5\textwidth]{gradientascent}
+\end{figure}
+\end{frame}
+
+\begin{frame}
+\frametitle{Stochastic Optimisation}
+\begin{itemize}
 \item ELBO gradients can be estimated by the Score Estimator:
 \begin{equation}
 \label{scoreDeriv}
@@ -214,8 +251,8 @@ where $\epsilon_j \sim q(\epsilon)$.
 \end{frame}
 
 \begin{frame}
-\section{Online Heterogenous Forecasting: Problem}
-\subsection{Motivation}
+\section{Online Heterogeneous Forecasting: Problem}
+\subsection{Self-Driving Vehicles}
 \frametitle{Self-Driving Vehicles}
 \begin{itemize}
 \item Self-Driving Vehicles are a thing soon
@@ -227,6 +264,16 @@ where $\epsilon_j \sim q(\epsilon)$.
 \end{enumerate}
 \item Forecasting has not had much work
 \end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Forecasting Methods}
+The literature forecasts vehicles in three ways:
+\begin{enumerate}
+\item Constant Behaviour.
+\item Predict Events.
+\item Provide Point Estimates.
+\end{enumerate}
 \end{frame}
 
 \begin{frame}
@@ -243,7 +290,7 @@ where $\epsilon_j \sim q(\epsilon)$.
 \end{frame}
 
 \begin{frame}
-\subsection{Data}
+\subsection{The Next Generation Simulation Dataset}
 \frametitle{Next Generation Simulation}
 \begin{itemize}
 \item This is a dataset created for macro traffic modelling
@@ -252,21 +299,6 @@ where $\epsilon_j \sim q(\epsilon)$.
 \item Before and After of road straightening project
 \end{itemize}
 \end{frame}
-
-\begin{frame}
-\frametitle{Forecasting in the framework}
-\begin{itemize}
-\item That is a terrible title.
-\item Split the data into two sets: train/test
-\item Cars observed beforehand, cars encountered while driving
-\end{itemize}
-\begin{figure}
-\centering
-\includegraphics[width = 0.95\textwidth]{problem}
-\end{figure}
-\end{frame}
-
-
 
 \begin{frame}
 \frametitle{Trigonometric Motion Equations}
@@ -300,12 +332,34 @@ a_{i, t} = v_{i, t} - v_{i, t-1}.
 \end{frame}
 
 \begin{frame}
-\subsection{Modelling}
-\frametitle{Auto-regressive Models for Trajectory Forecasting}
+\frametitle{Forecasting in the framework}
 \begin{itemize}
-\item Evidence of dynamics behaviour
-\item Modelling approachs / relationship to test train set
-\item Motivate the use of the three different models
+\item That is a terrible title.
+\item Data is split into a training set and a test set:
+\item Training vehicles are observed before driving,
+\item Test vehicles are encountered while driving.
+\end{itemize}
+\begin{figure}
+\centering
+\includegraphics[width = \textwidth]{problem}
+\end{figure}
+\end{frame}
+
+\begin{frame}
+\subsection{Auto-regressive Models for Trajectory Forecasting}
+\frametitle{Auto-regressive Models for Trajectory Forecasting}
+\begin{figure}
+\centering
+\includegraphics[width = \textwidth]{pacf}
+\end{figure}
+\begin{itemize}
+\item Dynamics are implemented in with bivariate AR models
+\item There are three approaches:
+\begin{enumerate}
+\item The Homogeneous Model
+\item The Independent Heterogeneous Model
+\item The Clustered Heterogeneous Model
+\end{enumerate}
 \end{itemize}
 \end{frame}
 
@@ -385,61 +439,65 @@ p(\theta_{i} | \textbf{z}_{1:N}, z_{i, 1:T}) \propto p(z_{i, 1:T} | \theta_{i}) 
 \end{frame}
 
 \begin{frame}
-\begin{itemize}
-\item That picture showing the IH / CH fits
-\item Evidence of heterogeneity and the suitability of the mixture model
-\end{itemize}
+\frametitle{Heterogeneity in the Model Posteriors}
+\begin{figure}
+\centering
+\includegraphics[width = \textwidth]{HierSingleKDE}
+\end{figure}
 \end{frame}
 
 \begin{frame}
 \section{Updating Variational Bayes}
 \frametitle{Updating Variational Bayes}
 \begin{itemize}
-\item Motivation
+\item Inference for self-driving vehicles needs to be fast.
+\item Inference cannot slow down as the amount of data increases.
 \begin{figure}[ht]
 \centering
-\includegraphics[width = 0.95\textwidth]{timeUpdate}
+\includegraphics[width = \textwidth]{timeUpdate}
 \end{figure}
-\item Notation: $q_{\lambda_S}(\theta_{i} | z_{i, 1:S})$ and $q_{\lambda_T}(\theta_{i} | z_{i, 1:T})$
+\item How do we go from $q_{\lambda_S}(\theta_{i} | z_{i, 1:S})$ to $q_{\lambda_T}(\theta_{i} | z_{i, 1:T})$ for $S < T$?.
 \end{itemize}
 \end{frame}
 
 \begin{frame}
 \frametitle{Approximating Bayesian Updating}
+\begin{itemize}
+\item The Bayesian Update Equation: 
 \begin{equation}
 \label{updatePost}
-p(\theta_{i} | z_{i, 1:T}) \propto p(z_{i, S+1:T} | \theta_{i})p(\theta_{i} | z_{i, 1:S})
+p(\theta_{i} | z_{i, 1:T}) \propto p(z_{i, S+1:T} | \theta_{i})p(\theta_{i} | z_{i, 1:S}).
 \end{equation}
-\begin{itemize}
-\item This only works if the right hand side can be evaluated
-\item VB Gradient Estimators requires the joint distribution
+\item Computation requires evaluating the joint distribution,
 \begin{equation}
 \label{updateJoint}
-p(\theta_{i}, z_{i, 1:T}) = p(z_{i, S+1:T} | \theta_{i})p(\theta_{i} | z_{i, 1:S})
+p(\theta_{i}, z_{i, 1:T}) = p(z_{i, S+1:T} | \theta_{i})p(\theta_{i} | z_{i, 1:S}).
 \end{equation}
-\item We will replace it with this
+\item We will approximate the Bayesian Update Equation in VB,
 \begin{equation}
 \label{ApproxJoint}
 \hat{p}(\theta_{i},  z_{i, 1:T}) = p(z_{i, S+1:T} | \theta_{i})q_{\lambda_S}(\theta_{i} | z_{i, 1:S}).
 \end{equation}
-\item Sources of error: How close $q$ is to $p$
+\item Source of additional error: How close $q$ is to $p$.
 \end{itemize}
 \end{frame}
 
 \begin{frame}
 \frametitle{Updating Gradient Estimators}
-The updating score estimator:
+\begin{itemize}
+\item The updating score estimator:
 \begin{align}
 \widehat{\frac{\delta\mathcal{L}(q, \lambda_T)}{\delta \lambda_T}}_{USC} &= \sum_{j = 1}^M \frac{\delta \log(q_{\lambda_T}(\theta_{i, j} | z_{i, 1:T}))}{\delta \lambda_T} \nonumber \\
 &\times \left(\log(q_{\lambda_S}(\theta_{i, j} | z_{i, 1:S}) - \log(q_{\lambda_T}(\theta_{i, j} | z_{i, 1:T})) \right) \label{scoreUpdate}
 \end{align}
 where $\theta_{i, j} \sim q(\theta_{i} | z_{i, 1:T})$. 
-The updating reparameterised estimator:
+\item The updating reparameterised estimator:
 \begin{equation}
 \label{rpUpdate}
 \widehat{\frac{\delta\mathcal{L}(q, \lambda_T)}{\delta \lambda_T}}_{URP} = \sum_{j = 1}^M \frac{\delta f(\lambda_T, \epsilon_j)}{\delta \lambda_T} \frac{\delta \log(q_{\lambda_S}(\theta_{i} |z_{i, 1:S}))}{\delta \theta_{i}} \bigg\rvert_{\theta_{i} = f(\lambda_T, \epsilon_j)} + \frac{\delta J(\lambda_T, \epsilon_j)}{\delta \lambda_T},
 \end{equation}
 where $\epsilon_j \sim q(\epsilon)$.
+\end{itemize}
 \end{frame}
 
 \begin{frame}
