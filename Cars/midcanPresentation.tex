@@ -116,6 +116,18 @@
 \date{ }
 \IfFileExists{upquote.sty}{\usepackage{upquote}}{}
 \IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+
+\AtBeginSection[]{
+  \begin{frame}
+  \vfill
+  \centering
+  \begin{beamercolorbox}[sep=8pt,center,shadow=true,rounded=true]{title}
+    \usebeamerfont{title}\insertsectionhead\par%
+  \end{beamercolorbox}
+  \vfill
+  \end{frame}
+}
+
 \begin{document}
 
 \begin{frame}
@@ -129,12 +141,13 @@ Supervised by Catherine Forbes and Anastasios Panagiotelis
 \tableofcontents
 \end{frame}
 
-\begin{frame}
 \section{Background}
 \subsection{Motivation}
+
+\begin{frame}
 \frametitle{Motivation}
 \begin{itemize}
-\item We aim to build a framework to provide density forecasts for new units in a heirarchy as they are observed.
+\item We aim to build a framework to provide density forecasts for new units in a hierarchy as they are observed.
 \pause
 \item Bayesian Inference in Forecasting:
 \begin{enumerate}
@@ -157,20 +170,22 @@ Supervised by Catherine Forbes and Anastasios Panagiotelis
 \begin{itemize}
 \item We focus on Hierarchical Models where:
 \begin{enumerate}
-\item Inference conditioned on existing units in the hierarchy is available.
+\item Each unit is a time series,
+\item Inference conditioned on existing units in the hierarchy is available,
 \item Inference conditioned on additional units in a short time-frame is desired.
 \end{enumerate}
 \vspace{3mm}
 \pause
-\item We aim to infer, and forecast, additional units in an online data setting.
+\item We aim to infer, and forecast, additional units as they are observed.
 \pause
 \item We want to leverage the existing information to improve the forecasts.
 \end{itemize}
 \end{frame}
 
+\subsection{Bayesian Hierarchical Models}
+
 \begin{frame}
-\subsection{Hierarchical Models}
-\frametitle{Hierarchical Models}
+\frametitle{Bayesian Hierarchical Models}
 \begin{itemize}
 \item Hierarchical Models are structured into three levels:
 \begin{enumerate}
@@ -185,57 +200,33 @@ Supervised by Catherine Forbes and Anastasios Panagiotelis
 \end{frame}
 
 \begin{frame}
-\frametitle{Hierarchical Models}
+\frametitle{Bayesian Hierarchical Models}
 \begin{itemize}
 \item What about $i = N+1$? Using $\textbf{z}_{1:j} = \{z_i | i = 1, \dots, j\}$, $$p(\theta_{N+1} |\textbf{z}_{1:N+1}) \propto p(z_{N+1} | \theta_{N+1})\int_{\beta}p(\theta_{N+1} | \beta)p(\beta | \textbf{z}_{1:N})d\beta.$$
 \pause
-\item If there is a time constraint, we might use VB with the approximation $$q_{\lambda}(\theta_{N+1} | \textbf{z}_{1:N+1}) \approx p(\theta_{N+1} |\textbf{z}_{1:N+1})$$
+\item If there is a time constraint, we might use VB with the approximation $$p(\theta_{N+1} |\textbf{z}_{1:N+1}) \approx q_{\lambda}(\theta_{N+1} | \textbf{z}_{1:N+1})$$
 \item choosing $$\lambda_{VB} = \arg \underset{\lambda}{\min}\mbox{ }D(p, q).$$
 \end{itemize}
 \end{frame}
 
-\begin{frame}
 \subsection{Variational Bayes}
-\frametitle{Variational Bayes and the Kullback-Leibler Divergence}
+
+\begin{frame}[label=VB]
+\frametitle{Variational Bayes}
 \begin{itemize}
-\item A common divergence function is the Kullback Leibler Divergence from $q$ to $p$,
+\item Typically minimize the Kullback-Leibler Divergence from $q$ to $p$,
 \begin{align*}
 \label{KL-def}
 KL[q_{\lambda}(\theta_{N+1} &| \textbf{z}_{1:N+1})\hspace{.1cm}||\hspace{.1cm}p(\theta_{N+1} | \textbf{z}_{1:N+1})] = \\
 &E_q \left[ \log(q_{\lambda}(\theta_{N+1} | \textbf{z}_{1:N+1})) - \log(p(\theta_{N+1} | \textbf{z}_{1:N+1})) \right],
 \end{align*}
+\item Maximising the Evidence Lower Bound (ELBO) is a tractable alternative, $$\mathcal{L}(q, \lambda) = E_{q} \left[\log(p(\theta_{N+1}, \textbf{z}_{1:N+1})) - \log(q_{\lambda}(\theta | \textbf{z}_{1:N+1}))\right],$$
 \pause
-\item The expectation is intractable for most $p$ and $q$.
-\item It typically cannot be estimated with Monte-Carlo simulations.
+\item For a fixed family $q$, find optimal $\lambda$ with \hyperlink{SGA}{gradient ascent}:
+\begin{equation*}
+\lambda^{(m+1)} = \lambda^{(m)} + \rho^{(m)} \widehat{\frac{\partial\mathcal{L}(q, \lambda)}{\partial \lambda}} \bigg\rvert_{\lambda = \lambda^{(m)}}
+\end{equation*}
 \end{itemize}
-\end{frame}
-
-\begin{frame}
-\frametitle{The Evidence Lower Bound}
-\begin{itemize}
-\item Instead look at the Evidence Lower Bound (ELBO), $$\mathcal{L}(q, \lambda) = E_{q} \left[\log(p(\theta_{N+1}, \textbf{z}_{1:N+1})) - \log(q_{\lambda}(\theta | \textbf{z}_{1:N+1}))\right],$$
-\pause
-\item Stochastic Estimates are available through Monte-Carlo: $$\mathcal{L}(q, \lambda) \approx \frac{1}{M} \sum_{j=1}^M \left(\log(p(\theta_{N+1}^{(j)}, \textbf{z}_{1:N+1})) - \log(q_{\lambda}(\theta_{N+1}^{(j)} | \textbf{z}_{1:N+1})) \right)$$ where $\theta_{N+1}^{(j)} \sim q_{\lambda}(\theta_{N+1} | \textbf{z}_{1:N+1})$.
-\pause
-\item Maximising the ELBO is equivalent to minimising the Kullback-Leibler Divergence.
-\end{itemize}
-\end{frame}
-
-\begin{frame}
-\frametitle{Stochastic Optimisation}
-\begin{itemize}
-\item For an exponential family $p$ and factorisable $q$ Mean Field Variational Bayes provides a fast method to the ELBO. 
-\item We do not restrict $p$ and $q$ this way and instead use Stochastic Gradient Ascent.
-\item Repeat until $| \mathcal{L}(q, \lambda^{(m)}) - \mathcal{L}(q, \lambda{(m+1)})| < \nu$:
-\begin{equation}
-\label{gradientAscent}
-\lambda^{(m+1)} = \lambda^{(m)} + \rho^{(m)} \widehat{\frac{\delta\mathcal{L}(q, \lambda)}{\delta \lambda}} \bigg\rvert_{\lambda = \lambda^{(m)}}
-\end{equation}
-\end{itemize}
-\begin{figure}
-\centering
-\includegraphics[width = 0.4\textwidth]{gradientascent}
-\end{figure}
 \end{frame}
 
 \begin{frame}
@@ -243,7 +234,7 @@ KL[q_{\lambda}(\theta_{N+1} &| \textbf{z}_{1:N+1})\hspace{.1cm}||\hspace{.1cm}p(
 \begin{itemize}
 \item ELBO gradients can be estimated by the Score Estimator:
 \begin{align*}
-\widehat{\frac{\delta\mathcal{L}(q, \lambda)}{\delta \lambda}}_{SC} &= \sum_{j = 1}^M \frac{\delta \log(q_{\lambda}(\theta_{N+1}^{(j)} | \textbf{z}_{1:N+1}))}{\delta \lambda}  \\
+\widehat{\frac{\partial\mathcal{L}(q, \lambda)}{\partial \lambda}}_{SC} &= \sum_{j = 1}^M \frac{\partial \log(q_{\lambda}(\theta_{N+1}^{(j)} | \textbf{z}_{1:N+1}))}{\partial \lambda}  \\
 &\times \left(\log(p(\theta_{N+1}^{(j)}, \textbf{z}_{1:N+1})) - \log(q_{\lambda}(\theta_{N+1}^{(j)} | \textbf{z}_{1:N+1})) \right),
 \end{align*}
 where $\theta_{N+1}^{(j)} \sim q_{\lambda}(\theta_{N+1} | \textbf{z}_{1:N+1})$.
@@ -253,76 +244,98 @@ where $\theta_{N+1}^{(j)} \sim q_{\lambda}(\theta_{N+1} | \textbf{z}_{1:N+1})$.
 \begin{frame}
 \frametitle{Stochastic Optimisation}
 \begin{itemize}
-\item Or the Reparameterised Estimator, where $\theta_{N+1} = f(\epsilon, \lambda)$:
+\item Or the Reparameterised Estimator, where $\epsilon = f^{-1}(\theta_{N+1}, \lambda)$:
 \begin{align*}
-\widehat{\frac{\delta\mathcal{L}(q, \lambda)}{\delta \lambda}}_{RP} &= \sum_{j = 1}^M \frac{\delta J(\lambda, \epsilon^{(j)})}{\delta \lambda} + \frac{\delta \theta_{N+1}}{\delta \lambda} \\
-\times \frac{\delta \log(p(\theta_{N+1}, \textbf{z}_{1:N+1}))}{\delta \theta_{N+1}} \bigg\rvert_{\theta_{N+1} = f(\lambda, \epsilon^{(j)})},
+\widehat{\frac{\partial\mathcal{L}(q, \lambda)}{\partial \lambda}}_{RP} &= \sum_{j = 1}^M \frac{\partial J(\lambda, \epsilon^{(j)})}{\partial \lambda} + \frac{\partial \theta_{N+1}}{\partial \lambda} \\
+&\times \frac{\partial \log(p(\theta_{N+1}, \textbf{z}_{1:N+1}))}{\partial \theta_{N+1}} \bigg\rvert_{\theta_{N+1} = f(\lambda, \epsilon^{(j)})},
 \end{align*}
-where $\epsilon^{(j)} \sim q(\epsilon)$.
+where $\epsilon^{(j)} \sim q(\epsilon)$ and $J(\lambda, \epsilon)$ is the Jacobian of $f$.
 \end{itemize}
 \end{frame}
 
-\begin{frame}
 \section{Online Heterogeneous Forecasting: Problem}
 \subsection{Self-Driving Vehicles}
+
+\begin{frame}
 \frametitle{Self-Driving Vehicles}
 \begin{itemize}
-\item Self-Driving Vehicles are a thing soon
-\item The navigation system has three steps
+\item Many major manufacturers expect consumer self-driving vehicles to be available in the next 2-5 years
+\pause
+\item Autonomous driving has three major steps:
 \begin{enumerate}
-\item Detect surrounding traffic
-\item Forecast surrounding traffic
-\item Navigate through safely
+\item Detect surrounding traffic,
+\item Forecast surrounding traffic,
+\item Navigate through safely.
 \end{enumerate}
-\item Forecasting has not had much work
+\item We contribute to the second step.
 \end{itemize}
 \end{frame}
 
 \begin{frame}
-\frametitle{Forecasting Methods}
-The literature forecasts vehicles in three ways:
-\begin{enumerate}
-\item Constant Behaviour.
-\item Predict Events.
-\item Provide Point Estimates.
-\end{enumerate}
-\end{frame}
-
-\begin{frame}
-\frametitle{Aims of the first paper}
+\frametitle{Self-Driving Vehicles}
 \begin{itemize}
-\item What we plan on doing with this first paper
-\item Overall goals and stuff
-\item Motivate heterogeneity
-\item Note heterogeneity needs inference on vehicles as they are encountered
-\item There is not much time to do that
-\item Develop an approximation to the Bayesian Update Equation so we can infer parameters for new vehicles online
-\item Also mention something on density forecasting would be nice
+\item The existing literature has three major categories:
+\begin{enumerate}
+\item \textbf{Constant Behaviour Models:} \cite{Gindele2010, Houenou2013, Bautista2017, Waymo2017}
+\item \textbf{Predict Driver State:} \cite{Forbes1995, Pentland1999, Kuge2000, Gindele2010, Geng2017}
+\item \textbf{Provide Point Estimates:} \cite{Wolf2008, Ding2013, Woo2016b, Geng2017, Woo2017}
+\end{enumerate}
+\pause
+\item Our approach:
+\begin{enumerate}
+\item Provides density forecasts of vehicle trajectory,
+\item Incorporates driver heterogeneity,
+\item Provides feasible inference for online vehicle data.
+\end{enumerate}
 \end{itemize}
 \end{frame}
 
 \begin{frame}
+\frametitle{Forecasting Approach}
+\begin{itemize}
+\item \textbf{Training Vehicle} data is collected during development of the self-driving vehicle.
+\item \textbf{Test Vehicles} are encountered while driving and require forecasts.
+\begin{figure}
+\centering
+\includegraphics[width = \textwidth]{problem}
+\end{figure}
+\end{itemize}
+\end{frame}
+
 \subsection{The Next Generation Simulation Dataset}
-\frametitle{Next Generation Simulation}
+
+\begin{frame}
+\frametitle{Next Generation Simulation Data}
 \begin{itemize}
-\item This is a dataset created for macro traffic modelling
-\item It records all of the cars all of the time
-\item The road is curved
-\item Before and After of road straightening project
+\item The US Federal Highway Administration filmed 6101 vehicles every 100 milliseconds on the US 101 Freeway.
+\item We model and remove the curvature from the dataset.
+\begin{figure}
+\centering
+\includegraphics[width = \textwidth]{roadStraightening}
+\end{figure}
 \end{itemize}
 \end{frame}
 
 \begin{frame}
 \frametitle{Trigonometric Motion Equations}
+\begin{itemize}
+\item Changes in position are the result of velocity $v$ and steering angle $\delta$,
 \begin{align}
 x^*_{i, t} &= x^*_{i, t-1} + v_{i, t} \cos(\delta_{i, t}) \label{xEq}, \\
 y^*_{i, t} &= y^*_{i, t-1} + v_{i, t} \sin(\delta_{i, t}) \label{yEq}.
 \end{align}
-Picture
+\begin{figure}
+\centering
+\includegraphics[width = 0.7\textwidth]{motion}
+\end{figure}
+\end{itemize}
 \end{frame}
 
 \begin{frame}
 \frametitle{Extracting Driver Inputs}
+\begin{itemize}
+\item Transform the data to driver actions:
+\end{itemize}
 \begin{align}
 \delta_{i, t} &= 
      \begin{cases}
@@ -331,42 +344,30 @@ Picture
        -\frac{\pi}{2} &\quad\text{if } y^*_{i, t} < y^*_{i, t-1} \mbox{ and } x^*_{i, t} = x^*_{i, t-1} \\
        \delta_{i, t-1} &\quad\text{otherwise,} \\ 
      \end{cases} \label{dEq} \\
-v_{i, t} &= \sqrt{(x^*_{i, t} - x^*_{i, t-1})^2 + (y^*_{i, t} - y^*_{i, t-1})^2} \label{vEq}.
+v_{i, t} &= \sqrt{(x^*_{i, t} - x^*_{i, t-1})^2 + (y^*_{i, t} - y^*_{i, t-1})^2} \label{vEq}, \\
+a_{i, t} &= v_{i, t} - v_{i, t-1}. \label{aEq}
 \end{align}
-\begin{equation}
-\label{aEq}
-a_{i, t} = v_{i, t} - v_{i, t-1}. 
-\end{equation}
-\begin{itemize}
-\item Why other variables are useful
-\item Acceleration is good because relative velocity / non-stationarity
-\end{itemize}
 \end{frame}
 
 \begin{frame}
-\frametitle{Forecasting in the framework}
-\begin{itemize}
-\item That is a terrible title.
-\item Data is split into a training set and a test set:
-\item Training vehicles are observed before driving,
-\item Test vehicles are encountered while driving.
-\end{itemize}
+\frametitle{Vehicle Acceleration and Angle}
 \begin{figure}
-\centering
-\includegraphics[width = \textwidth]{problem}
+\includegraphics[width = \textwidth]{timeSeries}
 \end{figure}
 \end{frame}
 
+\subsection{Auto-Regressive Models for Trajectory Forecasting}
+
 \begin{frame}
-\subsection{Auto-regressive Models for Trajectory Forecasting}
-\frametitle{Auto-regressive Models for Trajectory Forecasting}
+\frametitle{Auto-Regressive Models for Trajectory Forecasting}
 \begin{figure}
 \centering
-\includegraphics[width = \textwidth]{pacf}
+\includegraphics[width = \textwidth]{pacf2}
 \end{figure}
 \begin{itemize}
-\item Dynamics are implemented in with bivariate AR models
-\item There are three approaches:
+\item Dynamics are modelled with bivariate AR processes.
+\pause
+\item We consdier three approaches:
 \begin{enumerate}
 \item The Homogeneous Model
 \item The Independent Heterogeneous Model
@@ -376,90 +377,86 @@ a_{i, t} = v_{i, t} - v_{i, t-1}.
 \end{frame}
 
 \begin{frame}
-\frametitle{A Homogeneous Approach}
-Talk about what is going on here
-\begin{align}
-a_{i, t} &= \sum_{j = 1}^p \phi_{j} a_{i, t-j} + \sigma_{\epsilon} \epsilon_{i, t} \label{aAR} \\
-\delta_{i, t} &= \pi/2 + \sum_{j = 1}^q \gamma_{j} (\delta_{i, t-j} - \pi/2) + \sigma_{\eta} \eta_{i, t} \label{dAR}
-\end{align}
-\begin{equation*}
-\label{thetaVec}
-\theta = \{\phi_{1}, \dots, \phi_{p}, \gamma_{1}, \dots, \gamma_{q}, \log(\sigma^{2}_{\epsilon}), \log(\sigma^{2}_{\eta})\}.
-\end{equation*}
-\begin{equation}
-\label{indPrior}
-\theta \sim \mathcal{N}\left(\mu, \Sigma \right)
-\end{equation}
+\frametitle{The Homogeneous Approach}
 \begin{itemize}
-\item The Posterior
-\item Why are we doing this
+\item Acceleration and Angle are modelled independently:
+\begin{align}
+a_{i, t} &= \sum_{j = 1}^p \phi_{j} a_{i, t-j} + \sigma_{\epsilon} \epsilon_{i, t}, \label{aAR} \\
+\delta_{i, t} &= \pi/2 + \sum_{j = 1}^q \gamma_{j} (\delta_{i, t-j} - \pi/2) + \sigma_{\eta} \eta_{i, t}. \label{dAR} 
+\end{align}
+\pause
+\item Collect parameters:
+\begin{align}
+\theta &= \{\phi_{1}, \dots, \phi_{p}, \gamma_{1}, \dots, \gamma_{q}, \log(\sigma^{2}_{\epsilon}), \log(\sigma^{2}_{\eta})\}. \label{thetaVec} \\
+\theta &\sim \mathcal{N}\left(\mu, \Sigma \right) \label{indPrior} 
+\end{align}
+\item Parameters are shared across different vehicles.
 \end{itemize}
 \end{frame}
 
 \begin{frame}
 \frametitle{The Independent Heterogeneity Model}
-Maybe different drivers behave differently?
-\begin{align}
-a_{i, t} &= \sum_{j = 1}^p \phi_{i, j} a_{i, t-j} + \sigma_{\epsilon, i} \epsilon_{i, t} \label{aAR2} \\
-\delta_{i, t} &= \pi/2 + \sum_{j = 1}^q \gamma_{i, j} (\delta_{i, t-j} - \pi/2) + \sigma_{\eta, i} \eta_{i, t}. \label{dAR2}
-\end{align}
-This breaks down into a bunch of independent posteriors
-\begin{equation}
-p(\theta_{1:N} \mid z_{1:N}) = \prod_{i=1}^N p(\theta_{i} \mid z_{i}),
-\end{equation}
-The training set isn't terribly useful.
-\begin{equation}
-p(\theta_{i}| \textbf{z}_{1:N}, z_{i,1:T}, \theta_{1:N}) = p(\theta_{i} | z_{i, 1:T}) \propto p(z_{i, 1:T} | \theta_i) p(\theta_i).
-\label{indepNewCar}
-\end{equation}
-\end{frame}
-
-\begin{frame}
-\frametitle{The Clustered Heterogeneity Model}
-Hierarchical Models share information 
 \begin{itemize}
-\item Introduce Auxiliary Variable K
-\item Sharing of the information
+\item Allow each vehicle to have an independent 
+\item Each vehicle $i$ has an associated $\theta_i$:
+\item Each $\theta_i$ has an identical, independent prior:
+\begin{equation}
+\theta_i \overset{iid}{\sim} \mathcal{N}\left(\mu, \Sigma \right). 
+\end{equation}
+\item Vehicle posteriors are independent.
+\item The training set does not provide information about the test set.
 \end{itemize}
-\begin{equation}
-\label{mixPrior}
-\theta_i | k_i = j \sim N(\mu_j, \Sigma_j),
-\end{equation}
-and
-\begin{equation}
-k_i \mid \beta \sim \mbox{Multinomial}\left(\pi_1, \dots, \pi_{K}\right)
-\end{equation}
-\begin{align}
-\mu_j &\sim \mathcal{N}\left(\bar{\mu}_j, \Omega_j\right), \\
-\Sigma_j &\sim \mbox{Inverse Wishart}\left(\mbox{Degrees of Freedom } \tau_j, \mbox{Scale } \Psi_j\right), \\
-\boldsymbol{\pi} &\sim \mbox{Dirichlet}\left(\alpha_1 = \alpha_2 = \dots = \alpha_K\right).
-\end{align}
 \end{frame}
 
 \begin{frame}
 \frametitle{The Clustered Heterogeneity Model}
-The new vehicle depends on the old vehicles through $\beta$.
+\begin{itemize}
+\item Replace the independent prior with a hierarchical prior:
+\begin{equation}
+\theta_i | \beta  \overset{iid}{\sim} \sum_{j=1}^K \pi_j \mathcal{N}(\mu_j, \Sigma_j)
+\end{equation}
+\pause
+\item The hyper-prior is:
+\begin{align*}
+\mu_j &\sim \mathcal{N}\left(\bar{\mu}_j, \Omega_j\right), \\
+\Sigma_j &\sim \mbox{Inverse Wishart}\left(\tau_j, \Psi_j\right), \\
+\boldsymbol{\pi} &\sim \mbox{Dirichlet}\left(\alpha_1 = \alpha_2 = \dots = \alpha_K\right).
+\end{align*}
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{The Clustered Heterogeneity Model}
+\begin{itemize}
+\item Test set vehicles depend on the train set vehicles through $\beta$.
 \begin{equation}
 \label{hierNewCar}
-p(\theta_{i} | \textbf{z}_{1:N}, z_{i, 1:T}) \propto p(z_{i, 1:T} | \theta_{i}) \int_{\beta} p(\theta_{i} | \beta) p (\beta | \textbf{z}_{1:N}) d\beta.
+p(\theta_{N+1} | \textbf{z}_{1:N+1}) \propto p(z_{N+1} | \theta_{N+1}) \int_{\beta} p(\theta_{N+1} | \beta) p (\beta | \textbf{z}_{1:N}) d\beta.
 \end{equation}
-The $\beta$ posterior is precise for large $N$
+\pause
+\item The $\beta$ posterior is precise for large $N$,
 \begin{equation}
 \label{hierNewCar2}
-p(\theta_{i} | \textbf{z}_{1:N}, z_{i, 1:T}) \propto p(z_{i, 1:T} | \theta_{i}) p(\theta_{i} | \hat{\beta}).
+p(\theta_{N+1} | \textbf{z}_{1:N+1}) \propto p(z_{N+1} | \theta_{N+1}) p(\theta_{N+1} | \hat{\beta}).
 \end{equation}
+\end{itemize}
 \end{frame}
 
 \begin{frame}
-\frametitle{Heterogeneity in the Model Posteriors}
+\frametitle{Evidence of Heterogeneity in the Model Posteriors}
 \begin{figure}
 \centering
-\includegraphics[width = \textwidth]{HierSingleKDE}
+\includegraphics[width = \textwidth]{hierSingleKDE2}
 \end{figure}
+\begin{itemize}
+\item Top: Kernel Density Estimate of $E(\theta_i | z_i)$ from the IH Model.
+\item Bottom: $p(\theta_{N+1} | \textbf{z}_{1:N})$ from the CH Model.
+\end{itemize}
 \end{frame}
 
-\begin{frame}
 \section{Updating Variational Bayes}
+
+\begin{frame}
 \frametitle{Updating Variational Bayes}
 \begin{itemize}
 \item Inference for self-driving vehicles needs to be fast.
@@ -468,27 +465,29 @@ p(\theta_{i} | \textbf{z}_{1:N}, z_{i, 1:T}) \propto p(z_{i, 1:T} | \theta_{i}) 
 \centering
 \includegraphics[width = \textwidth]{timeUpdate}
 \end{figure}
-\item How do we go from $q_{\lambda_S}(\theta_{i} | z_{i, 1:S})$ to $q_{\lambda_T}(\theta_{i} | z_{i, 1:T})$ for $S < T$?.
+\item Need to update $q_{\lambda_S}(\theta_{N+1} | z_{N+1, 1:S})$ to $q_{\lambda_T}(\theta_{N+1} | z_{N+1, 1:T})$.
 \end{itemize}
 \end{frame}
 
 \begin{frame}
-\frametitle{Approximating Bayesian Updating}
+\frametitle{Approximate Bayesian Updating}
 \begin{itemize}
 \item The Bayesian Update Equation: 
 \begin{equation}
 \label{updatePost}
-p(\theta_{i} | z_{i, 1:T}) \propto p(z_{i, S+1:T} | \theta_{i})p(\theta_{i} | z_{i, 1:S}).
+p(\theta_{N+1} | z_{N+1, 1:T}) \propto p(z_{N+1, S+1:T} | \theta_{N+1})p(\theta_{N+1} | z_{N+1, 1:S}).
 \end{equation}
-\item Computation requires evaluating the joint distribution,
+\pause
+\item Computation typically requires evaluating the joint distribution,
 \begin{equation}
 \label{updateJoint}
-p(\theta_{i}, z_{i, 1:T}) = p(z_{i, S+1:T} | \theta_{i})p(\theta_{i} | z_{i, 1:S}).
+p(\theta_{N+1}, z_{N+1, 1:T}) = p(z_{N+1, S+1:T} | \theta_{N+1})p(\theta_{N+1} | z_{N+1, 1:S}).
 \end{equation}
-\item We will approximate the Bayesian Update Equation in VB,
+\pause
+\item We use the VB approximation of the time $S$ posterior,
 \begin{equation}
 \label{ApproxJoint}
-\hat{p}(\theta_{i},  z_{i, 1:T}) = p(z_{i, S+1:T} | \theta_{i})q_{\lambda_S}(\theta_{i} | z_{i, 1:S}).
+\hat{p}(\theta_{N+1},  z_{N+1, 1:T}) = p(z_{N+1, S+1:T} | \theta_{i})q_{\lambda_S}(\theta_{N+1} | z_{N+1, 1:S}).
 \end{equation}
 \item Source of additional error: How close $q$ is to $p$.
 \end{itemize}
@@ -499,10 +498,10 @@ p(\theta_{i}, z_{i, 1:T}) = p(z_{i, S+1:T} | \theta_{i})p(\theta_{i} | z_{i, 1:S
 \begin{itemize}
 \item The updating score estimator:
 \begin{align*}
-\widehat{\frac{\delta\mathcal{L}(q, \lambda_T)}{\delta \lambda_T}}_{USC} &= \sum_{j = 1}^M \frac{\delta \log(q_{\lambda_T}(\theta_{N+1}^{(j)} | z_{N+1, 1:T}))}{\delta \lambda_T}  \\
-&\times \left(\log(q_{\lambda_S}(\theta_{N+1}^{(j)} | z_{N+1, 1:S}) - \log(q_{\lambda_T}(\theta_{N+1}^{(j)} | z_{N+1, 1:T})) \right)
+&\widehat{\frac{\partial\mathcal{L}(q, \lambda_T)}{\partial \lambda_T}}_{USC} = \sum_{j = 1}^M \frac{\partial \log(q_{\lambda_T}(\theta_{N+1}^{(j)} | z_{N+1, 1:T}))}{\partial \lambda_T}  \\
+&\times \left(\log(\hat{p}(\theta_{N+1},  z_{N+1, 1:T})) - \log(q_{\lambda_T}(\theta_{N+1}^{(j)} | z_{N+1, 1:T})) \right)
 \end{align*}
-where $\theta_{N+1}^{(j)} \sim q(\theta_{N+1} | z_{N+1, 1:T})$. 
+where $\theta_{N+1}^{(j)} \sim q_{\lambda_T}(\theta_{N+1} | z_{N+1, 1:T})$. 
 \end{itemize}
 \end{frame}
 
@@ -511,49 +510,190 @@ where $\theta_{N+1}^{(j)} \sim q(\theta_{N+1} | z_{N+1, 1:T})$.
 \begin{itemize}
 \item The updating reparameterised estimator:
 \begin{align*}
-\widehat{\frac{\delta\mathcal{L}(q, \lambda_T)}{\delta \lambda_T}}_{URP} &= \sum_{j = 1}^M \frac{\delta J(\lambda_T, \epsilon^{(j)})}{\delta \lambda_T} + \frac{\delta f(\lambda_T, \epsilon^{(j)})}{\delta \lambda_T} \\
-&\times \frac{\delta \log(q_{\lambda_S}(\theta_{N+1} |z_{N+1, 1:S}))}{\delta \theta_{N+1}} \bigg\rvert_{\theta_{N+1} = f(\lambda_T, \epsilon^{(j)}} 
+&\widehat{\frac{\partial\mathcal{L}(q, \lambda_T)}{\partial \lambda_T}}_{URP} = \sum_{j = 1}^M \frac{\partial J(\lambda_T, \epsilon^{(j)})}{\partial \lambda_T} + \frac{\partial f(\lambda_T, \epsilon^{(j)})}{\partial \lambda_T} \\
+&\times \frac{\partial \log(\hat{p}(\theta_{N+1},  z_{N+1, 1:T})}{\partial \theta_{N+1}} \bigg\rvert_{\theta_{N+1} = f(\lambda_T, \epsilon^{(j)})} 
 \end{align*}
 where $\epsilon^{(j)} \sim q(\epsilon)$.
 \end{itemize}
 \end{frame}
 
+\section{OHF: Results}
+
 \begin{frame}
-\section{Online Heterogeneous Forecasting: Results}
-\frametitle{Point Forecasts}
+\frametitle{Forecast Procedure}
 \begin{itemize}
-\item Introduce Naive / RNN models?
-\item Some stuff about point forecasts: Both pictures?
-\item Note that, on average, the homogenous model is as good as others
-\item Some stuff about different inference frameworks
-\item MAPs are not the whole story
+\item Inference on the training vehicles $i = 1, \dots 2000$ is available.
+\item For each test vehicle $i = 2001, \dots, 3387$, 
+\item For $T = 100, 110, \dots, 450$ and $h = 1, 2, \dots 30$:
+\begin{enumerate}
+\item Observe $z_{i, 1:T}$,
+\item Infer $p(\theta_{i} | \textbf{z}_{1:N}, z_{i, 1:T})$,
+\item Forecast $p(z_{i, T+h} | \textbf{z}_{1:N},  z_{i, 1:T})$.
+\end{enumerate}
+\vspace{2mm}
+\pause
+\item Heterogeneous inference is provided by:
+\begin{enumerate}
+\item Random Walk Metropolis Hastings MCMC
+\item Standard VB 
+\item Updating VB
+\end{enumerate}
+\item VB Approximations $q$ match the model prior distribution.
 \end{itemize}
 \end{frame}
+
+\begin{frame}
+\frametitle{Other Considered Models}
+\begin{itemize}
+\item Constant models are widely used, so we form 9 Naive Models.
+\item Future acceleration and angle are estimated by $\{\hat{a}_{i, T}, \hat{\delta}_{i, T}\}$.
+\begin{table}
+\begin{center}
+\resizebox{0.9\textwidth}{!}{%
+\begin{tabular}{|l|c|c|c|}
+\hline
+& $\hat{\delta}_{i, T} = \delta_{i, T}$ & $\hat{\delta}_{i, T} = 0.1 \sum_{s=T-9}^T \delta_{i, s}$ & $\hat{\delta}_{i, T} = \pi/2$ \\
+\hline
+$\hat{a}_{i, T} = a_{i, T}$ & Naive 1 & Naive 2 & Naive 3 \\
+$\hat{a}_{i, T} = 0.1 \sum_{s=T-9}^T a_{i, s}$ & Naive 4 & Naive 5 & Naive 6\\
+$\hat{a}_{i, T} = 0$ & Naive 7 & Naive 8 & Naive 9 \\
+\hline
+\end{tabular}}
+\end{center}
+\label{tableNaive}
+\end{table}
+\item A Recurrent Neural Network Model is not competitive with the Naive Models at this time.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Point Forecast Results}
+\begin{figure}
+\centering
+\includegraphics[width = \textwidth]{predictiveError}
+\end{figure}
+\end{frame}
+
 
 \begin{frame}
 \frametitle{Heterogeneous Variance Distributions}
+\begin{figure}
+\centering
+\includegraphics[width = \textwidth]{posVarMean}
+\end{figure}
 \begin{itemize}
-\item Some stuff about variance
-\item A note on erratic driver detection
-\item Two different pictures to go in here
+\item Black: $E(p(\theta_i | \textbf{z}_{1:N}, z_{N+1})), i > N$ from the CH Model
+\item Red: $E(p(\theta | \textbf{z}_{1:N}))$ from the Homogeneous Model
 \end{itemize}
 \end{frame}
 
 \begin{frame}
-\frametitle{Updating Variational Bayes Results}
-\begin{itemize}
-\item Compare to regular VB
-\item Time Complexity
-\item Difference in logscores
-\end{itemize}
+\frametitle{CH Logscore (UVB) - Homogenous Logscore at h = 30}
+\begin{figure}
+\centering
+\includegraphics[width = 0.7\textwidth]{varSplit}
+\end{figure}
 \end{frame}
 
 \begin{frame}
+\frametitle{Updating Variational Bayes Approximation Error}
+\begin{figure}
+\centering
+\includegraphics[width = 0.7\textwidth]{updateCost2}
+\end{figure}
+\end{frame}
+
+\begin{frame}
+\frametitle{Updating Variational Bayes Convergence Time}
+\begin{figure}
+\centering
+\includegraphics[width = \textwidth]{timing}
+\end{figure}
+\end{frame}
+
 \section{Extensions}
-\frametitle{Extending the Framework}
+
+\begin{frame}
+\frametitle{Vehicle Model Extensions}
+\begin{enumerate}
+\item \textbf{Acceleration / Angle Dependency:} 
+\begin{itemize} 
+\item Use a VAR model with correlated errors.
+\end{itemize}
+\pause
+\item \textbf{Lane Change Detection:} 
 \begin{itemize}
-\item Copula Project
-\item Other Applications
+\item Choose a probability threshold $\xi$,
+\item If $p(\mbox{Vehicle $i$ in different lane at time } T + h | z_{i, 1:T}) > \xi$ predict lane change.
+\end{itemize}
+\pause
+\item \textbf{Multi Vehicle Dependencies:}
+\begin{itemize}
+\item Jointly model the movement of multiple vehicles in close proximity.
+\end{itemize}
+\pause
+\item \textbf{Markov Switching Behaviour:}
+\begin{itemize}
+\item Follow the HMM literature, but provide trajectory models for each state
+\end{itemize}
+\end{enumerate}
+\end{frame}
+
+\begin{frame}
+\frametitle{Online Inference for New Units in Hierarchical Models}
+\begin{enumerate}
+\item \textbf{Online Classification:}
+\begin{itemize}
+\item Infer a posterior distribution and predict class labels
+\end{itemize}
+\pause
+\item \textbf{Online Clustering:} 
+\begin{itemize}
+\item The mixture prior assigns units to $K$ latent groups.
+\item A new unit can be assigned to a latent group as it is observed.
+\end{itemize}
+\pause
+\item \textbf{Anomaly Detection:}
+\begin{itemize} 
+\item Dirichlet processes allow units to be assigned to new latent groups.
+\item This represents a unit with parameters unlike any previously seen.
+\end{itemize}
+\end{enumerate}
+\end{frame}
+
+\begin{frame}
+\frametitle{MCMC Informed Variational Bayes}
+\begin{itemize}
+\item Choosing the family $q$ is an open problem.
+\item Flexible distributions are advocated.
+\pause
+\vspace{2mm}
+\item We have MCMC Samples of $p(\theta_i | \textbf{z}_{1:N})$ for $i \leq N$.
+\item Marginal / copula distribution estimation techniques are available.
+\pause
+\vspace{2mm}
+\item \textbf{Will a family for $p(\theta_i | \textbf{z}_{1:N})$ be suitable for $q_{\lambda}(\theta_{N+1} | \textbf{z}_{1:N+1})?$}
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}[allowframebreaks]
+\bibliographystyle{asa}
+\bibliography{references}
+\end{frame}
+
+\begin{frame}[label=SGA]
+\frametitle{Gradient Ascent}
+\begin{itemize}
+\item Repeat until $| \mathcal{L}(q, \lambda^{(m)}) - \mathcal{L}(q, \lambda{(m+1)})| < \nu$:
+\begin{equation*}
+\lambda^{(m+1)} = \lambda^{(m)} + \rho^{(m)} \widehat{\frac{\partial\mathcal{L}(q, \lambda)}{\partial \lambda}} \bigg\rvert_{\lambda = \lambda^{(m)}}
+\end{equation*}
+\begin{figure}
+\centering
+\includegraphics[width = 0.4\textwidth]{gradientascent}
+\end{figure}
+\item \hyperlink{VB}{Return}
 \end{itemize}
 \end{frame}
 

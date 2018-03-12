@@ -42,6 +42,25 @@ carsAug %>%
   mutate(n = seq_along(v),
          a = v - ifelse(n == 1, v, lag(v))) -> pacfData
 
+pacfData %>%
+  select(ID, frame, reldelta, a, n) %>%
+  filter(n > 100 & n <= 600) %>%
+  group_by(ID) %>%
+  mutate(frame = frame - min(frame),
+         `delta - pi/2` = reldelta - pi/2) %>%
+  ungroup() %>%
+  mutate(ID = case_when(ID == 194 ~ 'Vehicle 1', 
+                        ID == 3008 ~ 'Vehicle 2',
+                        ID == 10999 ~ 'Vehicle 3',
+                        ID == 20958 ~ 'Vehicle 4',
+                        ID == 21351 ~ 'Vehicle 5'),
+         ID = factor(ID)) %>%
+  ungroup() %>%
+  gather(var, value, -ID, -frame, -n, -reldelta) %>%
+  ggplot() + geom_line(aes(frame, value)) + 
+  facet_grid(var ~ ID) + 
+  labs(x = 'T', y = 'Value') + theme_bw()
+
 
 pacfs <- data.frame()
 for(i in 1:5){

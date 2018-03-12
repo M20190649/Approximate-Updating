@@ -103,16 +103,16 @@ for(i in 1:5){
 carsAug %>% 
   left_join(pred) %>%
   group_by(ID) %>%
-  mutate(relX = x - xfit,#sign(x - xfit) * sqrt((x-xfit)^2 + (y-yfit)^2),
+  mutate(relX = x - xfit,
          n = seq_along(time),
          lagRelX = ifelse(n == 1, 0, lag(relX)),
          lagDist = ifelse(n == 1, 0, lag(dist)),
          relv = sqrt((relX - lagRelX)^2 + (dist - lagDist)^2),
          reldelta = atan2(dist - lagDist, relX - lagRelX),
          class = factor(class, levels = 1:3, labels = c('bike', 'car', 'truck'))) %>%
-  filter(n > 1) %>%# & y > 600 & y < 1600) %>%
-  select(ID, changed, enterExit, frame, x, y, relX, lagRelX, lagDist, dist, lane, delta, v, relv, reldelta, proceeding, time, class) -> carsAug
+  filter(n > 1) -> plotData
 
+carsAug <- select(plotData, ID, changed, enterExit, frame, x, y, relX, lagRelX, lagDist, dist, lane, delta, v, relv, reldelta, proceeding, time, class) 
 write.csv(carsAug, 'carsAug.csv', row.names = FALSE)
 
 carsChanged %>% 
@@ -125,13 +125,27 @@ carsChanged %>%
          relv = sqrt((relX - lagRelX)^2 + (dist - lagDist)^2),
          reldelta = atan2(dist - lagDist, relX - lagRelX),
          class = factor(class, levels = 1:3, labels = c('bike', 'car', 'truck'))) %>%
-  filter(n > 1) %>%# & y > 600 & y < 1600) %>%
-  select(ID, changed, enterExit, frame, x, y, relX, lagRelX, lagDist, dist, lane, delta, v, relv, reldelta, proceeding, time, class) -> carsChanged
+  filter(n > 1) %>% plotDataCh
+
+plotData <- rbind(plotData, plotDataCh)
+
+carsChanged <- select(plotDataCh, ID, changed, enterExit, frame, x, y, relX, lagRelX, lagDist, dist, lane, delta, v, relv, reldelta, proceeding, time, class)
 
 write.csv(carsChanged, 'carsChanged.csv', row.names = FALSE)
 saveRDS(splinesID, 'splinesID.RDS')
 
 
+plotData %>%
+  filter(ID > 1000 & ID < 2000) %>%
+  ggplot() + geom_path(aes(x, y, group = ID)) +
+  geom_path(aes(xfit, yfit, group = ID), colour = 'red') + 
+  theme_bw() + 
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title = element_blank())
 
+plotData %>%
+  filter(ID < 15) %>%
+  ggplot() + geom_path(aes(relX, dist, group = ID))
 
 

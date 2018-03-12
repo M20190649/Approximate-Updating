@@ -206,6 +206,7 @@ densities %>%
   group_by(var, support) %>%
   summarise(dens = sum(dens)) -> densMixMod
 
+densMixMod %>%
   ggplot(densMixMod) + geom_line(aes(support, dens)) +
   geom_line(data=densities, aes(support, dens, colour = factor(group))) +
   facet_wrap(~var, scales = 'free', ncol = 6, labeller = label_parsed) + 
@@ -478,6 +479,8 @@ posMeans %>%
   theme(axis.text.x = element_text(angle = 45, hjust = 1))-> p2
 
 gridExtra::grid.arrange(p2, p1, ncol = 1)
+
+
 }
 
 sliceSampler{
