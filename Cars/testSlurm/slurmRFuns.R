@@ -208,7 +208,6 @@ carsVBMixScore <- function(data, lambda, priorMix, K = 6, S = 250, maxIter = 500
   return(list(lambda=lambda, LB = LB[1:min(iter-1, maxIter)], iter = min(maxIter, iter-1)))
 }
 
-
 carsVBMixScoreDiag <- function(data, lambda, priorMix, S = 250, maxIter = 5000, alpha = 0.01, beta1 = 0.9, beta2 = 0.99, threshold = 0.01){
   
   dimLambda <- nrow(lambda)
@@ -287,7 +286,6 @@ carsVBMixScoreDiag <- function(data, lambda, priorMix, S = 250, maxIter = 5000, 
   print(paste0('iter: ', min(iter-1, maxIter), ' ELBO: ', LB[min(iter-1, maxIter)]))
   return(list(lambda=lambda, LB = LB[1:min(iter-1, maxIter)], iter = min(maxIter, iter-1)))
 }
-
 
 fitCarMods <- function(data, prior, starting, S = 10, mixComps = 6){
   results <- list()
