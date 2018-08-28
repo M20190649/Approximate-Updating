@@ -1,0 +1,257 @@
+  \documentclass[12pt,a4paper]{article}\usepackage[]{graphicx}\usepackage[]{color}
+%% maxwidth is the original width if it is less than linewidth
+%% otherwise use linewidth (to make sure the graphics do not exceed the margin)
+\makeatletter
+\def\maxwidth{ %
+  \ifdim\Gin@nat@width>\linewidth
+    \linewidth
+  \else
+    \Gin@nat@width
+  \fi
+}
+\makeatother
+
+\definecolor{fgcolor}{rgb}{0.345, 0.345, 0.345}
+\newcommand{\hlnum}[1]{\textcolor[rgb]{0.686,0.059,0.569}{#1}}%
+\newcommand{\hlstr}[1]{\textcolor[rgb]{0.192,0.494,0.8}{#1}}%
+\newcommand{\hlcom}[1]{\textcolor[rgb]{0.678,0.584,0.686}{\textit{#1}}}%
+\newcommand{\hlopt}[1]{\textcolor[rgb]{0,0,0}{#1}}%
+\newcommand{\hlstd}[1]{\textcolor[rgb]{0.345,0.345,0.345}{#1}}%
+\newcommand{\hlkwa}[1]{\textcolor[rgb]{0.161,0.373,0.58}{\textbf{#1}}}%
+\newcommand{\hlkwb}[1]{\textcolor[rgb]{0.69,0.353,0.396}{#1}}%
+\newcommand{\hlkwc}[1]{\textcolor[rgb]{0.333,0.667,0.333}{#1}}%
+\newcommand{\hlkwd}[1]{\textcolor[rgb]{0.737,0.353,0.396}{\textbf{#1}}}%
+\let\hlipl\hlkwb
+\hbadness=99999
+
+\usepackage{framed}
+\makeatletter
+\newenvironment{kframe}{%
+ \def\at@end@of@kframe{}%
+ \ifinner\ifhmode%
+  \def\at@end@of@kframe{\end{minipage}}%
+  \begin{minipage}{\columnwidth}%
+ \fi\fi%
+ \def\FrameCommand##1{\hskip\@totalleftmargin \hskip-\fboxsep
+ \colorbox{shadecolor}{##1}\hskip-\fboxsep
+     % There is no \\@totalrightmargin, so:
+     \hskip-\linewidth \hskip-\@totalleftmargin \hskip\columnwidth}%
+ \MakeFramed {\advance\hsize-\width
+   \@totalleftmargin\z@ \linewidth\hsize
+   \@setminipage}}%
+ {\par\unskip\endMakeFramed%
+ \at@end@of@kframe}
+\makeatother
+
+\definecolor{shadecolor}{rgb}{.97, .97, .97}
+\definecolor{messagecolor}{rgb}{0, 0, 0}
+\definecolor{warningcolor}{rgb}{1, 0, 1}
+\definecolor{errorcolor}{rgb}{1, 0, 0}
+\newenvironment{knitrout}{}{} % an empty environment to be redefined in TeX
+
+\usepackage{alltt}\usepackage[]{graphicx}\usepackage[]{color}
+%% maxwidth is the original width if it is less than linewidth
+%% otherwise use linewidth (to make sure the graphics do not exceed the margin)
+\makeatletter
+\def\maxwidth{ %
+  \ifdim\Gin@nat@width>\linewidth
+    \linewidth
+  \else
+    \Gin@nat@width
+  \fi
+}
+\makeatother
+
+\usepackage{alltt}%
+\usepackage[]{graphicx}\usepackage[]{color}
+%% maxwidth is the original width if it is less than linewidth
+%% otherwise use linewidth (to make sure the graphics do not exceed the margin)
+
+%2multibyte Version: 5.50.0.2960 CodePage: 1252
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage[centertags]{amsmath}
+\usepackage{graphicx}%
+\usepackage{natbib}
+\usepackage{color}
+\usepackage[dvipsnames,svgnames*]{xcolor}
+\usepackage{array}
+\usepackage[hidelinks]{hyperref}
+\usepackage[font=small,skip=5pt]{caption}
+\usepackage{amsmath}
+\usepackage{subfig}
+\usepackage{amsthm}
+\usepackage[]{algorithm2e}
+%\usepackage{tikz}
+%\usetikzlibrary{bayesnet}
+\usepackage{url}
+\usepackage{ulem}
+\usepackage{afterpage}
+\setcounter{MaxMatrixCols}{30}
+
+\def\app#1#2{%
+  \mathrel{%
+    \setbox0=\hbox{$#1\sim$}%
+    \setbox2=\hbox{%
+      \rlap{\hbox{$#1\propto$}}%
+      \lower1.1\ht0\box0%
+    }%i
+    \raise0.25\ht2\box2%
+  }%
+}
+\def\approxprop{\mathpalette\app\relax}
+
+\setlength{\topmargin}{0in}
+\setlength{\oddsidemargin}{0.08in}
+\setlength{\evensidemargin}{0.08in}
+\setlength{\textwidth}{6.5in}
+\setlength{\textheight}{9in}
+\setlength\parindent{0pt}
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+
+\title{Variational Bayesian Exponentially Tilted Empirical Likelihood}
+\begin{document}
+\maketitle
+
+\section{Background}
+
+\citet{Chib2017} introduces Bayesian inference based on moment conditions, basing inference on the satisfication of the $d-$dimensional moment conditions,
+
+\begin{equation}
+\label{emp:moments}
+E \left[ g(Y, \theta) \right] = 0,
+\end{equation}
+where the expectation is with respect to the true data generation process $p$.
+
+The likelihood is replaced with the exponentially tilted empirical likelihood (ETEL), defined by
+\begin{equation}
+\label{emp:etel}
+p(y_{1:T} | \theta) = \prod_{t=1}^T p^*_t(\theta)
+\end{equation}
+where each $p^*_t$ is chosesn to minimise the KL divergence between $(p_1, p_2, \ldots, p_T)$ and the empirical probabilities $(1/T, 1/T, \ldots 1/T)$ subject to the conditions
+\begin{equation}
+\label{emp:sumRestrict}
+\sum_{t=1}^T p_t = 1
+\end{equation}
+and
+\begin{equation}
+\label{emp:momentRestrict}
+\sum_{t=1}^T p_t g(y_t, \theta) = 0.
+\end{equation}
+It can be shown that the solution to this is given by
+\begin{equation}
+\label{emp:solnP}
+p^*_t(\theta) = \frac{\exp \{\hat{\lambda}^{\prime} g(y_t, \theta) \}}{ \sum_{s=1}^T \exp \{\hat{\lambda}^{\prime} g(y_s, \theta) \}}
+\end{equation}
+where
+\begin{equation}
+\label{emp:solnLambda}
+\hat{\lambda} = \lambda(\theta) = \arg \underset{\lambda}{\min} \frac{1}{T} \sum_{t=1}^T \exp \{\lambda^{\prime} g(y_t, \theta) \}.
+\end{equation}
+
+This results in the ETEL posterior
+\begin{equation}
+\label{emp:post}
+p(\theta | y_{1:T}) \propto p(\theta) \prod_{t=1}^T\frac{\exp \{\hat{\lambda}^{\prime} g(y_t, \theta) \}}{ \sum_{s=1}^T \exp \{\hat{\lambda}^{\prime} g(y_s, \theta) \}}.
+\end{equation}
+
+\citet{Chib2017} proposes a Metropolis Hastings sampler for the posterior, following the steps
+\begin{enumerate}
+\item Draw $\theta$ from a suitable candidate distribution
+\item Solve (\ref{emp:solnLambda}) for this draw
+\item Calculate (\ref{emp:post}) as part of the Metropolis Hastings acceptance probability
+\item Accept or reject $\theta$ as per standard MH
+\end{enumerate}
+This sounds quite slow, and may benefit from VB.
+\\
+
+\section{Implementation of VB}
+
+Reparameterised and Stein VB requires the derivative of $\log(p(\theta, y_{1:T})$ with respect to $\theta$ as part of the ELBO gradient estiamtor. This derivative is complicated by $\hat{\lambda}$ being a function of $\theta$.
+\\
+
+If, for every $\theta \in \Theta$, the solution to  (\ref{emp:solnLambda}) is unique, and, defining $h(\theta, \lambda(\theta)) =  \frac{1}{T} \sum_{t=1}^T \exp \{\lambda^{\prime} g(y_t, \theta) \}$, the hessian matrix $\frac{\partial^2  h(\theta, \lambda(\theta))}{\partial \lambda^2}$ is positive-defiite, the optimal $\hat{\lambda}$ is found by satisfying the first order condition
+\begin{equation}
+\label{emp:lambdaDeriv}
+\frac{\partial h(\theta, \lambda(\theta))}{\partial \lambda} = 0.
+\end{equation}
+Taking the derivative of both sides of this with respect to $\theta$ results in
+\begin{equation}
+\label{emp:thetaDeriv}
+\frac{\partial^2  h(\theta, \lambda(\theta))}{\partial \lambda \partial \theta^{\prime}} + \frac{\partial^2  h(\theta, \lambda(\theta))}{\partial \lambda \partial \lambda^{\prime}} \frac{\partial \lambda(\theta)}{\partial \theta} = 0,
+\end{equation}
+where
+\begin{equation}
+\label{emp:hessian}
+\frac{\partial^2  h(\theta, \lambda(\theta))}{\partial \lambda \partial \lambda^{\prime}} = \frac{1}{T} \sum_{t=1}^T g(y_t, \theta) g(y_t, \theta)^{\prime} \exp\{\hat{\lambda}^{\prime} g(y_t, \theta) \}
+\end{equation}
+and
+\begin{equation}
+\label{emp:crossDeriv}
+\frac{\partial^ 2  h(\theta, \lambda(\theta))}{\partial \lambda \partial \theta^{\prime}} = \frac{1}{T} \sum_{t=1}^T \exp\{\hat{\lambda}^{\prime} g(y_t, \theta) \} \left( \mathbb{I} + g(y_t, \theta) \hat{\lambda}^{\prime} \right) \frac{\partial g(y_t, \theta)}{\partial \theta}.
+\end{equation}
+(\ref{emp:thetaDeriv}) may be solved for $\partial \lambda(\theta) / \partial \theta$ by
+\begin{equation}
+\label{emp:thetaDerivSoln}
+ \frac{\partial \lambda(\theta)}{\partial \theta} = -\left(\frac{\partial^2  h(\theta, \lambda(\theta))}{\partial \lambda \partial \lambda^{\prime}}\right)^{-1}\frac{\partial^2  h(\theta, \lambda(\theta))}{\partial \lambda \partial \theta^{\prime}}.
+\end{equation}
+Note that (\ref{emp:crossDeriv}) assumes that the dimension of $\theta$ is equal to the dimension of $g(y, \theta)$ (and also $\lambda$).
+\\
+
+We may then take the derivative of the log-likelihood with respect to $\theta$ via
+\begin{align}
+\frac{\partial \log(p(y_{1:T}, \theta))}{\partial \theta} &= \frac{\partial \log(p(\theta))}{\partial \theta} + \frac{\partial}{\partial \theta} \sum_{t=1}^T \log \left( \frac{\exp \{\hat{\lambda}^{\prime} g(y_t, \theta) \}}{ \sum_{s=1}^T \exp \{\hat{\lambda}^{\prime} g(y_s, \theta) \}} \right), \nonumber \\
+&= \frac{\partial \log(p(\theta))}{\partial \theta} + \sum_{t=1}^T \frac{\partial}{\partial \theta} \left[\hat{\lambda}^{\prime} g(y_t, \theta) \right]  - T \frac{\partial}{\partial \theta} \log \left(  \sum_{s=1}^T \exp \{\hat{\lambda}^{\prime} g(y_s, \theta) \} \right), \nonumber \\
+&= \frac{\partial \log(p(\theta))}{\partial \theta} + \sum_{t=1}^T \left(\frac{\partial \hat{\lambda}^{\prime}}{\partial \theta} g(y_t, \theta) + \frac{\partial g(y_t, \theta)^{\prime}}{\partial \theta}\hat{\lambda}  \right) \nonumber \\
+&- \frac{T}{\sum_{s=1}^T \exp \{\hat{\lambda}^{\prime} g(y_s, \theta) \}}\left(\sum_{s=1}^T \exp \{\hat{\lambda}^{\prime} g(y_s, \theta) \} \left(\frac{\partial \hat{\lambda}^{\prime}}{\partial \theta} g(y_s, \theta) + \frac{\partial g(y_s, \theta)^{\prime}}{\partial \theta}\hat{\lambda}  \right) \right). \label{emp:logpDeriv}
+\end{align}
+
+If the moment conditions are differentiable with respect to $\theta$ we may use ETEL in place of the likelihood function in Variational Bayes. Like in the Metropolis Hastings sampler, each gradient calculation requries optimisation of (\ref{emp:solnLambda}), with $O(d^3)$ additional calculations for (\ref{emp:thetaDerivSoln}). I found that approximatately $90\%$ of the compuation time for the example below was taken by (\ref{emp:solnLambda}), so there is little additional overhead.
+
+\section{Example}
+
+\citet{Chib2017} have numerous examples in their original paper, the simplest of which is the linear regression model
+\begin{equation}
+y_t = \alpha + \beta z_t + e_t,
+\end{equation}
+where $\alpha = 0$ and $\beta = 1$ for all $t = 1, 2, \dots, 250$.
+\\
+
+Errors $e_t$ are simulated from the mixture distribution
+\begin{equation}
+\label{emp:mixture}
+e_t \sim \left\{ \begin{array}{cr} \mathcal{N}(0.75, 0.75^2) & \mbox{ with probability } 0.5, \\
+\mathcal{N}(-0.75, 1.25^2) & \mbox{  with probability } 0.5. \end{array} \right. 
+\end{equation}
+
+BETEL is implemented with the following moment conditions:
+\begin{equation}
+g(y_t, \theta) = \left[\begin{array}{c} e_t \\ e_t z_t \\ e_t^3 - \nu \end{array}\right],
+\end{equation}
+equivalent to the standard regression moment assumptions and an additional free parameter $\nu$ relating to the error skewness. They do not add any moment conditions relating to the varianace.
+\\
+
+The unknown parameters are given by $\theta = \{\alpha, \beta, \nu \}$.
+\\
+
+Inferencce is based on 
+\begin{enumerate}
+\item The BETEL Metropolis Hastings algorithm described in Section 1, 
+\item A Metropolis Hastings using the parametric likelihood given by (\ref{emp:mixture}) where the mixture probabilities, means, variances, and hence $\nu$, is known,
+\item VBETEL using the reparameteresied gradient estimator for a Gaussian $q$ 
+\item VBETEL using the Stein gradient estimator with 75 $\theta$ particles as $q$.
+\end{enumerate}
+
+\begin{figure}[hbtp]
+\centering
+\includegraphics[width = 0.95\textwidth]{VBETEL}
+\caption{Marginal Densities for each parameter}
+\end{figure}
+
+
+\bibliographystyle{asa}
+\bibliography{references}
+
+
+\end{document}
